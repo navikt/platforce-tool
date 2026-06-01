@@ -1,4 +1,4 @@
-package no.nav.template
+package no.nav.platforce.tool
 
 import org.junit.jupiter.api.Test
 

@@ -1,4 +1,4 @@
-package no.nav.template
+package no.nav.platforce.tool
 
 import io.prometheus.client.CollectorRegistry
 import io.prometheus.client.Counter

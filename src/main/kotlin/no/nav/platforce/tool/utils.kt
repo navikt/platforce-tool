@@ -1,6 +1,6 @@
 @file:Suppress("ktlint:standard:filename")
 
-package no.nav.template
+package no.nav.platforce.tool
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter

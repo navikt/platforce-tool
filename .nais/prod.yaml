@@ -1,10 +1,10 @@
 apiVersion: "nais.io/v1alpha1"
 kind: "Application"
 metadata:
-  name: template
-  namespace: teamcrm
+  name: platforce-tool
+  namespace: platforce
   labels:
-    team: teamcrm
+    team: platforce
 spec:
   image: "{{ image }}"
   port: 8080
@@ -21,7 +21,6 @@ spec:
   observability:
     logging:
       destinations:
-        - id: elastic
         - id: loki
   resources:
     limits:

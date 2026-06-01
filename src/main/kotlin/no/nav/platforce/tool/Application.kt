@@ -1,9 +1,9 @@
-package no.nav.template
+package no.nav.platforce.tool
 
 import mu.KotlinLogging
-import no.nav.template.token.AuthRouteBuilder
-import no.nav.template.token.DefaultTokenValidator
-import no.nav.template.token.MockTokenValidator
+import no.nav.platforce.tool.token.AuthRouteBuilder
+import no.nav.platforce.tool.token.DefaultTokenValidator
+import no.nav.platforce.tool.token.MockTokenValidator
 import org.http4k.core.HttpHandler
 import org.http4k.core.Method
 import org.http4k.core.Response
