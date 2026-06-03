@@ -9,6 +9,9 @@ const val env_AZURE_OPENID_CONFIG_TOKEN_ENDPOINT = "AZURE_OPENID_CONFIG_TOKEN_EN
 
 const val env_NAIS_CLUSTER_NAME = "NAIS_CLUSTER_NAME"
 
+const val secret_PLATFORCE_TOOLING_APP_ID = "PLATFORCE_TOOLING_APP_ID"
+const val secret_PLATFORCE_TOOLING_PRIVATE_KEY = "PLATFORCE_TOOLING_PRIVATE_KEY"
+
 /**
  * Shortcut for fetching environment variables
  */
