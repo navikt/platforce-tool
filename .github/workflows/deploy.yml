@@ -72,20 +72,20 @@ jobs:
           CLUSTER: dev-gcp
           RESOURCE: .nais/dev.yaml
           VAR: image=${{ needs.build.outputs.image }},DEPLOY_CLUSTER=dev-gcp
-  deploy-prod:
-    name: Deploy to prod-gcp
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout v5.0.1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Nais Deploy v2
-        uses: nais/deploy/actions/deploy@fa754451577294aae42872a69b888b3470478ec1 # v2
-        env:
-          CLUSTER: prod-gcp
-          RESOURCE: .nais/prod.yaml
-          VAR: image=${{ needs.build.outputs.image }},DEPLOY_CLUSTER=prod-gcp
+#  deploy-prod:
+#    name: Deploy to prod-gcp
+#    needs: build
+#    if: github.ref == 'refs/heads/main'
+#    runs-on: ubuntu-latest
+#    permissions:
+#      id-token: write
+#      contents: read
+#    steps:
+#      - name: Checkout v5.0.1
+#        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+#      - name: Nais Deploy v2
+#        uses: nais/deploy/actions/deploy@fa754451577294aae42872a69b888b3470478ec1 # v2
+#        env:
+#          CLUSTER: prod-gcp
+#          RESOURCE: .nais/prod.yaml
+#          VAR: image=${{ needs.build.outputs.image }},DEPLOY_CLUSTER=prod-gcp

@@ -47,8 +47,8 @@ spec:
 #        - application: salesforce
 #          namespace: teamcrm
 #          cluster: dev-external
-#  envFrom:
-#    - secret: template
+  envFrom:
+  - secret: platforce-tool
   env:
     - name: AN_ENV
       value: "a value in dev"
