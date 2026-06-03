@@ -45,6 +45,34 @@ class Application {
                 val jwt = jwtFactory.createJwt()
                 Response(OK).body(listInstallations(jwt))
             },
+            "/internal/repos" bind Method.GET to {
+                val installationId = 137708755L
+
+                val jwtFactory = GithubJwtFactory()
+                val jwt = jwtFactory.createJwt()
+
+                val token =
+                    createInstallationToken(
+                        installationId = installationId,
+                        jwt = jwt,
+                    )
+
+                val request =
+                    Request
+                        .Builder()
+                        .url("https://api.github.com/installation/repositories")
+                        .header("Authorization", "Bearer $token")
+                        .header("Accept", "application/vnd.github+json")
+                        .header("X-GitHub-Api-Version", "2022-11-28")
+                        .build()
+
+                var result = ""
+                httpClient.newCall(request).execute().use {
+                    result = it.body.string()
+                }
+
+                Response(OK).body(result)
+            },
         )
 
     private val httpClient: OkHttpClient =
