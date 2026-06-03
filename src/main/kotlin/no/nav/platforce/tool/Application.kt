@@ -13,6 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.http4k.core.HttpHandler
 import org.http4k.core.Method
 import org.http4k.core.Response
+import org.http4k.core.Status
 import org.http4k.core.Status.Companion.OK
 import org.http4k.routing.bind
 import org.http4k.routing.routes
@@ -20,6 +21,7 @@ import org.http4k.server.Http4kServer
 import org.http4k.server.Netty
 import org.http4k.server.asServer
 import java.time.Duration
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 class Application {
@@ -126,9 +128,42 @@ class Application {
                     httpClient
                         .newCall(request)
                         .execute()
-                        .use { it.body.string() }
+                        .use { response ->
+
+                            val body = response.body.string() ?: ""
+
+                            if (!response.isSuccessful) {
+                                return@to Response(Status(response.code, "GitHub Error"))
+                                    .body(body)
+                            }
+
+                            val gson = Gson()
+
+                            val parsed =
+                                gson.fromJson(
+                                    body,
+                                    GitHubContentResponse::class.java,
+                                )
+
+                            val decoded = decodeGitHubBase64(parsed.content)
+
+                            decoded
+                        }
                 Response(OK).body(result)
             },
+        )
+
+    data class GitHubContentResponse(
+        val content: String,
+        val encoding: String? = null,
+    )
+
+    fun decodeGitHubBase64(content: String): String =
+        String(
+            Base64.getDecoder().decode(
+                content.replace("\n", ""),
+            ),
+            Charsets.UTF_8,
         )
 
     private val httpClient: OkHttpClient =
