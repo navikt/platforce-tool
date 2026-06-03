@@ -11,7 +11,7 @@ version '0.1.1'
 
 jar {
     manifest {
-        attributes 'Main-Class': 'no.nav.template.BootstrapKt'
+        attributes 'Main-Class': 'no.nav.platforce.tool.BootstrapKt'
     }
 }
 
@@ -21,7 +21,7 @@ shadowJar {
 }
 
 application {
-    mainClassName = 'no.nav.template.BootstrapKt'
+    mainClassName = 'no.nav.platforce.tool.BootstrapKt'
 }
 
 repositories {
