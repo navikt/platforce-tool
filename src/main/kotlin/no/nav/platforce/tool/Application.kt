@@ -38,7 +38,7 @@ class Application {
             "/internal/isAlive" bind Method.GET to { Response(OK) },
             "/internal/isReady" bind Method.GET to { Response(OK) },
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
-            "/internal/hello" bind Method.GET to { Response(OK).body("Hello") },
+            "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello") },
             "/internal/list" bind Method.GET to {
                 val jwtFactory = GithubJwtFactory()
