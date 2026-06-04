@@ -1,4 +1,4 @@
-package no.nav.platforce.tool.token
+package no.nav.platforce.tool.entra
 
 import no.nav.platforce.tool.Metrics
 import org.http4k.core.HttpHandler

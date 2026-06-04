@@ -2,14 +2,19 @@ package no.nav.platforce.tool
 
 import com.google.gson.Gson
 import mu.KotlinLogging
-import no.nav.platforce.tool.token.AuthRouteBuilder
-import no.nav.platforce.tool.token.DefaultTokenValidator
-import no.nav.platforce.tool.token.MockTokenValidator
-import okhttp3.ConnectionPool
+import no.nav.platforce.tool.entra.AuthRouteBuilder
+import no.nav.platforce.tool.entra.DefaultTokenValidator
+import no.nav.platforce.tool.entra.MockTokenValidator
+import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
+import no.nav.platforce.tool.github.DefaultGithubClient
+import no.nav.platforce.tool.github.GithubAppAuthenticator
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.bouncycastle.openssl.PEMKeyPair
+import org.bouncycastle.openssl.PEMParser
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
 import org.http4k.core.HttpHandler
 import org.http4k.core.Method
 import org.http4k.core.Response
@@ -20,9 +25,9 @@ import org.http4k.routing.routes
 import org.http4k.server.Http4kServer
 import org.http4k.server.Netty
 import org.http4k.server.asServer
-import java.time.Duration
+import java.io.StringReader
+import java.security.interfaces.RSAPrivateKey
 import java.util.Base64
-import java.util.concurrent.TimeUnit
 
 class Application {
     private val log = KotlinLogging.logger { }
@@ -33,6 +38,27 @@ class Application {
 
     val cluster = if (local) "local" else env(env_NAIS_CLUSTER_NAME)
 
+    private val httpClient: OkHttpClient = OkHttpClient.Builder().build()
+
+    val githubAuthenticator =
+        GithubAppAuthenticator(
+            appId = env(secret_PLATFORCE_TOOLING_APP_ID),
+            privateKey = parsePrivateKey(env(secret_PLATFORCE_TOOLING_PRIVATE_KEY)),
+            httpClient = httpClient,
+        )
+
+    val githubTokenHandler =
+        DefaultGithubAccessTokenHandler(
+            authenticator = githubAuthenticator,
+            httpClient = httpClient,
+        )
+
+    val githubClient =
+        DefaultGithubClient(
+            tokenHandler = githubTokenHandler,
+            httpClient = httpClient,
+        )
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -42,139 +68,22 @@ class Application {
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello") },
-            "/internal/list" bind Method.GET to {
-                val jwtFactory = GithubJwtFactory()
-                val jwt = jwtFactory.createJwt()
-                Response(OK).body(listInstallations(jwt))
-            },
             "/internal/repos" bind Method.GET to {
-                val installationId = 137708755L
-
-                val jwtFactory = GithubJwtFactory()
-                val jwt = jwtFactory.createJwt()
-
-                val token =
-                    createInstallationToken(
-                        installationId = installationId,
-                        jwt = jwt,
-                    )
-
-                val request =
-                    Request
-                        .Builder()
-                        .url("https://api.github.com/installation/repositories")
-                        .header("Authorization", "Bearer $token")
-                        .header("Accept", "application/vnd.github+json")
-                        .header("X-GitHub-Api-Version", "2022-11-28")
-                        .build()
-
-                var result = ""
-                httpClient.newCall(request).execute().use {
-                    result = it.body.string()
-                }
-
-                Response(OK).body(result)
-            },
-            "internal/simtest" bind Method.GET to {
-                val installationId = 137708755L
-
-                val jwtFactory = GithubJwtFactory()
-                val jwt = jwtFactory.createJwt()
-
-                val token =
-                    createInstallationToken(
-                        installationId = installationId,
-                        jwt = jwt,
-                    )
-
-                val request =
-                    Request
-                        .Builder()
-                        .url("https://api.github.com/repos/navikt/simtest")
-                        .header("Authorization", "Bearer $token")
-                        .header("Accept", "application/vnd.github+json")
-                        .header("X-GitHub-Api-Version", "2022-11-28")
-                        .build()
-
-                val result =
-                    httpClient
-                        .newCall(request)
-                        .execute()
-                        .use { it.body.string() }
-                Response(OK).body(result)
+                Response(OK).body(githubClient.listRepositories().joinToString("\n"))
             },
             "/internal/filetest" bind Method.GET to {
-                val installationId = 137708755L
-
-                val jwtFactory = GithubJwtFactory()
-                val jwt = jwtFactory.createJwt()
-
-                val token =
-                    createInstallationToken(
-                        installationId = installationId,
-                        jwt = jwt,
+                val file =
+                    githubClient.getFile(
+                        owner = "navikt",
+                        repo = "simtest",
+                        path = "build.gradle",
                     )
 
-                val request =
-                    Request
-                        .Builder()
-                        .url("https://api.github.com/repos/navikt/simtest/contents/build.gradle")
-                        .header("Authorization", "Bearer $token")
-                        .header("Accept", "application/vnd.github+json")
-                        .header("X-GitHub-Api-Version", "2022-11-28")
-                        .build()
-
-                val result =
-                    httpClient
-                        .newCall(request)
-                        .execute()
-                        .use { response ->
-
-                            val body = response.body.string() ?: ""
-
-                            if (!response.isSuccessful) {
-                                return@to Response(Status(response.code, "GitHub Error"))
-                                    .body(body)
-                            }
-
-                            val gson = Gson()
-
-                            val parsed =
-                                gson.fromJson(
-                                    body,
-                                    GitHubContentResponse::class.java,
-                                )
-
-                            val decoded = decodeGitHubBase64(parsed.content)
-
-                            decoded
-                        }
-                Response(OK).body(result)
+                Response(OK)
+                    .header("Content-Type", "text/plain")
+                    .body(file)
             },
         )
-
-    data class GitHubContentResponse(
-        val content: String,
-        val encoding: String? = null,
-    )
-
-    fun decodeGitHubBase64(content: String): String =
-        String(
-            Base64.getDecoder().decode(
-                content.replace("\n", ""),
-            ),
-            Charsets.UTF_8,
-        )
-
-    private val httpClient: OkHttpClient =
-        OkHttpClient
-            .Builder()
-//            .connectionPool(ConnectionPool(5, 60, TimeUnit.SECONDS))
-//            .connectTimeout(Duration.ofSeconds(60))
-//            .readTimeout(Duration.ofSeconds(60))
-//            .writeTimeout(Duration.ofSeconds(60))
-//            .retryOnConnectionFailure(false)
-            .build()
 
     /**
      * authbind: a variant of bind that takes care of authentication with use of tokenValidator
@@ -186,91 +95,15 @@ class Application {
         apiServer(8080).start()
     }
 
-    val gson = Gson()
+    fun parsePrivateKey(pem: String): RSAPrivateKey {
+        val reader = PEMParser(StringReader(pem))
+        val converter = JcaPEMKeyConverter()
 
-    fun getInstallationId(
-        owner: String,
-        repo: String,
-        jwt: String,
-    ): Long {
-        val request =
-            Request
-                .Builder()
-                .url("https://api.github.com/repos/$owner/$repo/installation")
-                .header("Authorization", "Bearer $jwt")
-                .header("Accept", "application/vnd.github+json")
-                .build()
+        val keyPair =
+            converter.getKeyPair(
+                reader.readObject() as PEMKeyPair,
+            )
 
-        httpClient.newCall(request).execute().use { response ->
-
-            if (!response.isSuccessful) {
-                throw RuntimeException(
-                    "Failed to get installation. " +
-                        "HTTP ${response.code}: ${response.body?.string()}",
-                )
-            }
-
-            val body =
-                response.body?.string()
-                    ?: error("Missing response body")
-
-            return gson
-                .fromJson(
-                    body,
-                    InstallationResponse::class.java,
-                ).id
-        }
-    }
-
-    data class AccessTokenResponse(
-        val token: String,
-    )
-
-    fun createInstallationToken(
-        installationId: Long,
-        jwt: String,
-    ): String {
-        val request =
-            Request
-                .Builder()
-                .url("https://api.github.com/app/installations/$installationId/access_tokens")
-                .post("{}".toRequestBody("application/json".toMediaType()))
-                .header("Authorization", "Bearer $jwt")
-                .header("Accept", "application/vnd.github+json")
-                .build()
-
-        httpClient.newCall(request).execute().use { response ->
-
-            if (!response.isSuccessful) {
-                throw RuntimeException(
-                    "Failed to create installation token. " +
-                        "HTTP ${response.code}: ${response.body?.string()}",
-                )
-            }
-
-            val body =
-                response.body?.string()
-                    ?: error("Missing response body")
-
-            return gson
-                .fromJson(
-                    body,
-                    AccessTokenResponse::class.java,
-                ).token
-        }
-    }
-
-    fun listInstallations(jwt: String): String {
-        val request =
-            Request
-                .Builder()
-                .url("https://api.github.com/app/installations")
-                .header("Authorization", "Bearer $jwt")
-                .header("Accept", "application/vnd.github+json")
-                .build()
-
-        httpClient.newCall(request).execute().use { response ->
-            return response.body.string()
-        }
+        return keyPair.private as RSAPrivateKey
     }
 }

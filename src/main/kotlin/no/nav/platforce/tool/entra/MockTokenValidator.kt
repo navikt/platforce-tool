@@ -1,4 +1,4 @@
-package no.nav.platforce.tool.token
+package no.nav.platforce.tool.entra
 
 import no.nav.security.token.support.core.jwt.JwtToken
 import org.http4k.core.Request
