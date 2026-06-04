@@ -1,4 +1,4 @@
-package no.nav.platforce.tool.token
+package no.nav.platforce.tool.entra
 
 import no.nav.platforce.tool.env
 import no.nav.platforce.tool.env_AZURE_APP_CLIENT_ID
