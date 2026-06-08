@@ -17,10 +17,9 @@ fun dependencyScanRoutes(
             .body(Gson().toJson(cache.get()))
     },
     "/internal/api/dependency-scan/refresh" bind Method.POST to {
-        cache.update(scanner.scanAllRepositoriesWithProgress(cache))
-
-        Response(Status.OK)
-            .body("Refreshed")
+        val result = scanner.scanAllRepositoriesWithProgress(cache)
+        cache.update(result)
+        Response(Status.OK).body("Refreshed")
     },
     "/internal/api/dependency-scan/progress" bind Method.GET to {
         Response(Status.OK)
