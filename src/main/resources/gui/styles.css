@@ -66,23 +66,35 @@ button:hover {
 }
 
 .repo-header {
-    padding: 12px;
     cursor: pointer;
+    background: #f7f7f7;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #f7f7f7;
+    padding: 12px 14px;
+    gap: 12px;
+}
+
+.repo-header > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .repo-name {
-    font-weight: bold;
+    font-weight: 600;
+    margin-right: 10px;
+    white-space: nowrap;
 }
 
 .badge {
     font-size: 12px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    margin-left: 5px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 /* summary badges */
@@ -93,10 +105,10 @@ button:hover {
 /* pills */
 .pill {
     font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 999px;
-    font-weight: bold;
-    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .plugin {
@@ -121,7 +133,17 @@ button:hover {
 
 .row {
     display: grid;
-    grid-template-columns: 80px 1fr 120px 120px;
-    padding: 6px 0;
-    border-bottom: 1px solid #eee;
+    grid-template-columns: 120px 1fr 160px 120px;
+    gap: 10px;
+    align-items: center;
+}
+
+.repo-toggle {
+    font-size: 14px;
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.repo-header:hover .repo-toggle {
+    opacity: 1;
 }

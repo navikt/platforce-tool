@@ -4,6 +4,7 @@ const text = document.getElementById("progressText");
 
 let progressInterval = null;
 let isRefreshing = false;
+let hasActiveScan = false
 
 async function fetchProgress() {
     const res = await fetch("/internal/api/dependency-scan/progress");
@@ -93,7 +94,7 @@ function render(data) {
                     <span class="badge update">${update} UPDATE</span>
                     <span class="badge ahead">${ahead} AHEAD</span>
                 </div>
-                <div>▼</div>
+                <div class="repo-toggle">▼</div>
             </div>
 
             <div class="table">
@@ -113,10 +114,14 @@ function render(data) {
             </div>
         `;
 
-        el.querySelector(".repo-header")
-            .addEventListener("click", () => {
-                el.classList.toggle("open");
-            });
+        const header = el.querySelector(".repo-header");
+        const toggle = el.querySelector(".repo-toggle");
+
+        header.addEventListener("click", () => {
+            const isOpen = el.classList.toggle("open");
+
+            toggle.textContent = isOpen ? "▲" : "▼";
+        });
 
         container.appendChild(el);
     });
@@ -128,9 +133,12 @@ async function refresh() {
     if (isRefreshing) return;
 
     isRefreshing = true;
+    hasActiveScan = true;
 
     text.innerText = "Starting scan...";
     bar.style.width = "0%";
+
+    startProgressPolling()
 
     await fetch("/internal/api/dependency-scan/refresh", {
         method: "POST"
@@ -139,6 +147,8 @@ async function refresh() {
     await loadData();
 
     isRefreshing = false;
+    // NOTE: we do NOT stop hasActiveScan here
+    // it is stopped by pollProgress when backend finishes
 }
 
 async function loadData() {
@@ -148,6 +158,8 @@ async function loadData() {
 
 async function pollProgress() {
     try {
+        if (!hasActiveScan) return;
+
         const p = await fetchProgress();
 
         if (!p || !p.total || p.total === 0) {
@@ -161,6 +173,8 @@ async function pollProgress() {
 
         if (!p.running && p.done >= p.total) {
             text.innerText = "Done";
+
+            hasActiveScan = false;
 
             // stop polling when finished
             clearInterval(progressInterval);
@@ -186,5 +200,5 @@ document.getElementById("refreshBtn")
     .addEventListener("click", refresh);
 
 // INIT
-startProgressPolling();
 loadData();
+startProgressPolling();
