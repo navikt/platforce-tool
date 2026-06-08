@@ -3,36 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <title>Dependency Scanner</title>
-    <link rel="stylesheet" href="/internal/gui/styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
 
-<div id="title">
+<div class="page-title">
     Dependency Scanner
 </div>
 
 <div class="toolbar">
-    <button id="refreshButton">
-        Refresh Scan
-    </button>
+    <button id="refreshBtn">Refresh scan</button>
+
+    <div id="progressWrapper">
+        <div id="progressText">Idle</div>
+        <div class="bar">
+            <div id="progressBar"></div>
+        </div>
+    </div>
 </div>
 
-<table id="results">
-    <thead>
-    <tr>
-        <th>Repository</th>
-        <th>Kind</th>
-        <th>Dependency</th>
-        <th>Current</th>
-        <th>Target</th>
-        <th>Status</th>
-    </tr>
-    </thead>
+<div id="container"></div>
 
-    <tbody></tbody>
-</table>
-
-<script src="/internal/gui/script.js"></script>
-
+<script src="script.js"></script>
 </body>
 </html>

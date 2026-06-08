@@ -1,16 +1,21 @@
 body {
     background: #dddddd;
     font-family: Arial, sans-serif;
-    margin: 20px;
+    margin: 0;
+    padding: 20px;
 }
 
-#title {
-    font-size: 30px;
-    margin-bottom: 20px;
+.page-title {
+    font-size: 28px;
+    font-weight: bold;
     color: #333;
+    margin-bottom: 20px;
 }
 
 .toolbar {
+    display: flex;
+    gap: 20px;
+    align-items: center;
     margin-bottom: 20px;
 }
 
@@ -18,7 +23,7 @@ button {
     background: #3498DB;
     color: white;
     border: none;
-    padding: 10px 16px;
+    padding: 10px 14px;
     border-radius: 6px;
     cursor: pointer;
 }
@@ -27,35 +32,96 @@ button:hover {
     background: #2980B9;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
+/* progress */
+#progressWrapper {
+    flex: 1;
+}
+
+.bar {
+    height: 10px;
+    background: #ccc;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+#progressBar {
+    height: 100%;
+    width: 0%;
+    background: #27ae60;
+    transition: width 0.2s;
+}
+
+#progressText {
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+/* repo card */
+.repo {
     background: white;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    border: 1px solid #ddd;
 }
 
-th {
-    background: #3498DB;
-    color: white;
+.repo-header {
     padding: 12px;
-    text-align: left;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f7f7f7;
 }
 
-td {
+.repo-name {
+    font-weight: bold;
+}
+
+.badge {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-left: 5px;
+}
+
+/* summary badges */
+.ok { background: #dcfce7; color: #166534; }
+.update { background: #fee2e2; color: #991b1b; }
+.ahead { background: #ede9fe; color: #6b21a8; }
+
+/* pills */
+.pill {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-weight: bold;
+    display: inline-block;
+}
+
+.plugin {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.dependency {
+    background: #dcfce7;
+    color: #166534;
+}
+
+/* table */
+.table {
+    display: none;
     padding: 10px;
-    border-bottom: 1px solid #ddd;
 }
 
-.status-UPDATE {
-    color: #c0392b;
-    font-weight: bold;
+.repo.open .table {
+    display: block;
 }
 
-.status-OK {
-    color: #27ae60;
-    font-weight: bold;
-}
-
-.status-AHEAD {
-    color: #8e44ad;
-    font-weight: bold;
+.row {
+    display: grid;
+    grid-template-columns: 80px 1fr 120px 120px;
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
 }
