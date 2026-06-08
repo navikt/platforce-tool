@@ -88,7 +88,7 @@ button:hover {
 }
 
 .badge {
-    min-width: 64px;       /* ensures 2-digit numbers fit */
+    max-width: 64px;       /* ensures 2-digit numbers fit */
     text-align: center;
     justify-content: center;
     font-size: 12px;
@@ -155,10 +155,10 @@ button:hover {
     opacity: 1;
 }
 
-.repo:nth-child(odd) {
+.table:nth-child(odd) {
     background-color: #f7faff;
 }
 
-.repo:nth-child(even) {
+.table:nth-child(even) {
     background-color: #ffffff;
 }
