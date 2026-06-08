@@ -89,10 +89,9 @@ function render(data) {
             <div class="repo-header">
                 <div>
                     <div class="repo-name">${repo || "UNKNOWN"}</div>
-
-                    <span class="badge ok">${ok} OK</span>
-                    <span class="badge update">${update} UPDATE</span>
-                    <span class="badge ahead">${ahead} AHEAD</span>
+                    <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
+                    <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
+                    <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
                 </div>
                 <div class="repo-toggle">▼</div>
             </div>
