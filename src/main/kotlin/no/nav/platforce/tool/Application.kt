@@ -2,6 +2,9 @@ package no.nav.platforce.tool
 
 import com.google.gson.Gson
 import mu.KotlinLogging
+import no.nav.platforce.tool.dependencies.DependencyScanCache
+import no.nav.platforce.tool.dependencies.DependencyScanner
+import no.nav.platforce.tool.dependencies.dependencyScanRoutes
 import no.nav.platforce.tool.entra.AuthRouteBuilder
 import no.nav.platforce.tool.entra.DefaultTokenValidator
 import no.nav.platforce.tool.entra.MockTokenValidator
@@ -61,6 +64,10 @@ class Application {
             httpClient = httpClient,
         )
 
+    private val dependencyScanCache = DependencyScanCache()
+
+    private val dependencyScanner = DependencyScanner(githubClient)
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -80,12 +87,13 @@ class Application {
                         repo = "simtest",
                         path = "build.gradle",
                     )
-
-                Response(OK)
-                    .header("Content-Type", "text/plain")
-                    .body(file)
+                Response(OK).header("Content-Type", "text/plain").body(file)
             },
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
+            *dependencyScanRoutes(
+                dependencyScanCache,
+                dependencyScanner,
+            ).toTypedArray(),
         )
 
     /**
