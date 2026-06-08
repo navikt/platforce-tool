@@ -1,0 +1,61 @@
+body {
+    background: #dddddd;
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+
+#title {
+    font-size: 30px;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.toolbar {
+    margin-bottom: 20px;
+}
+
+button {
+    background: #3498DB;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #2980B9;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+th {
+    background: #3498DB;
+    color: white;
+    padding: 12px;
+    text-align: left;
+}
+
+td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.status-UPDATE {
+    color: #c0392b;
+    font-weight: bold;
+}
+
+.status-OK {
+    color: #27ae60;
+    font-weight: bold;
+}
+
+.status-AHEAD {
+    color: #8e44ad;
+    font-weight: bold;
+}
