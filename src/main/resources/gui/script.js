@@ -31,19 +31,55 @@ function groupByRepo(data) {
 }
 
 function render(data) {
+
+    console.log("📦 RAW API DATA RECEIVED:", data);
+
     container.innerHTML = "";
 
-    const grouped = groupByRepo(data);
+    if (!data) {
+        console.warn("⚠️ render() called with null/undefined data");
+        return;
+    }
 
-    grouped.forEach((findingsRaw, repo) => {
+    if (!Array.isArray(data)) {
+        console.error("❌ Expected array but got:", typeof data, data);
+        return;
+    }
 
-        const safeFindings = (findingsRaw || []).filter(f =>
-            f && f.kind && f.status
-        );
+    console.log(`📊 Rendering ${data.length} repository scans`);
 
-        const ok = safeFindings.filter(f => f.status === "OK").length;
-        const update = safeFindings.filter(f => f.status === "UPDATE").length;
-        const ahead = safeFindings.filter(f => f.status === "AHEAD").length;
+    data.forEach((repoScan, index) => {
+
+        console.log(`\n🔎 Repo [${index}] raw object:`, repoScan);
+
+        const repo = repoScan?.repository;
+        const findingsRaw = repoScan?.findings;
+
+        if (!repo) {
+            console.warn("⚠️ Missing repository field:", repoScan);
+        }
+
+        if (!Array.isArray(findingsRaw)) {
+            console.error("❌ findings is not array for repo:", repo, findingsRaw);
+        }
+
+        const findings = (findingsRaw || []).filter(f => {
+            const valid = f && f.kind && f.status;
+
+            if (!valid) {
+                console.warn("⚠️ Dropping invalid finding:", f);
+            }
+
+            return valid;
+        });
+
+        console.log(`📁 ${repo}: ${findings.length}/${findingsRaw?.length ?? 0} valid findings`);
+
+        const ok = findings.filter(f => f.status === "OK").length;
+        const update = findings.filter(f => f.status === "UPDATE").length;
+        const ahead = findings.filter(f => f.status === "AHEAD").length;
+
+        console.log(`📈 ${repo} stats -> OK:${ok}, UPDATE:${update}, AHEAD:${ahead}`);
 
         const el = document.createElement("div");
         el.className = "repo";
@@ -51,7 +87,7 @@ function render(data) {
         el.innerHTML = `
             <div class="repo-header">
                 <div>
-                    <div class="repo-name">${repo}</div>
+                    <div class="repo-name">${repo || "UNKNOWN"}</div>
 
                     <span class="badge ok">${ok} OK</span>
                     <span class="badge update">${update} UPDATE</span>
@@ -61,7 +97,7 @@ function render(data) {
             </div>
 
             <div class="table">
-                ${safeFindings.map(f => {
+                ${findings.map(f => {
 
             const kind = (f.kind || "UNKNOWN").toLowerCase();
 
@@ -84,6 +120,8 @@ function render(data) {
 
         container.appendChild(el);
     });
+
+    console.log("✅ Render complete");
 }
 
 async function refresh() {
