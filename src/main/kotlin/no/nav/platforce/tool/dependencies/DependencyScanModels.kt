@@ -4,7 +4,7 @@ import java.time.Instant
 
 data class RepositoryDependencyScan(
     val repository: String,
-    val scannedAt: Instant,
+    val scannedAt: String,
     val findings: List<DependencyFinding>,
 )
 
