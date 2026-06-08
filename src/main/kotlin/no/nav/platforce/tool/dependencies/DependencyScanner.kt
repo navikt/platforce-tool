@@ -8,10 +8,39 @@ class DependencyScanner(
 ) {
     private val parser = GradleDependencyParser()
 
-    fun scanAllRepositories(): List<RepositoryDependencyScan> =
-        githubClient
-            .listRepositories()
-            .mapNotNull(::scanRepository)
+    fun scanAllRepositoriesWithProgress(cache: DependencyScanCache): List<RepositoryDependencyScan> {
+        val repos = githubClient.listRepositories()
+
+        cache.setProgress(
+            ScanProgress(
+                total = repos.size,
+                done = 0,
+                running = true,
+            ),
+        )
+
+        val results = mutableListOf<RepositoryDependencyScan>()
+
+        repos.forEachIndexed { index, repo ->
+            scanRepository(repo)?.let {
+                results += it
+            }
+
+            cache.setProgress(
+                cache.getProgress().copy(
+                    done = index + 1,
+                ),
+            )
+        }
+
+        cache.setProgress(
+            cache.getProgress().copy(
+                running = false,
+            ),
+        )
+
+        return results
+    }
 
     private fun scanRepository(repository: String): RepositoryDependencyScan? {
         val owner = repository.substringBefore("/")
