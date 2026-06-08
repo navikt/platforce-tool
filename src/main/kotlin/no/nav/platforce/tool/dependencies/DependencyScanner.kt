@@ -73,7 +73,7 @@ class DependencyScanner(
 
         return RepositoryDependencyScan(
             repository = repository,
-            scannedAt = Instant.now(),
+            scannedAt = Instant.now().toString(),
             findings = findings,
         )
     }
