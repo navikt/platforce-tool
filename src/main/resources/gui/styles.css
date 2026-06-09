@@ -192,26 +192,35 @@ button:hover {
 
     min-width: 70px;
 
-    padding: 2px 8px;
-
+    padding: 2px 10px;
     border-radius: 999px;
 
     font-size: 11px;
     font-weight: 600;
+
+    background: transparent;
+
+    border: 1px solid currentColor;
+    box-sizing: border-box;
 }
 
 .status-ok {
-    background-color: #e7f6ec;
     color: #1f7a4d;
+    background-color: rgba(31, 122, 77, 0.08);
 }
 
 .status-update {
-    background-color: #fdecec;
     color: #b42318;
+    background-color: rgba(180, 35, 24, 0.08);
 }
 
 .status-ahead {
-    background-color: #eef4ff;
     color: #2b5bbb;
+    background-color: rgba(43, 91, 187, 0.08);
+}
+
+.status-unknown {
+    color: #666;
+    background-color: rgba(120, 120, 120, 0.06);
 }
 
