@@ -78,8 +78,8 @@ button:hover {
     grid-template-columns:
         260px   /* repo name */
         80px    /* OK */
-        100px   /* UPDATE */
-        90px;   /* AHEAD */
+        80px   /* UPDATE */
+        80px;   /* AHEAD */
     gap: 8px;
     align-items: center;
 }
