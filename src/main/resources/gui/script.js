@@ -107,9 +107,12 @@ function render(data) {
                 <div class="repo-actions">
                     ${
                         hasActionable
-                ? `<a class="pr-button" href="https://google.com" target="_blank">
+                ? `<button
+                        class="pr-button"
+                        onclick="event.stopPropagation(); createPr('${repo}')"
+                    >
                         Create PR
-                   </a>`
+                    </button>`
                 : `<span class="pr-button disabled">Create PR</span>`
                      }
 
@@ -154,12 +157,9 @@ function render(data) {
         `;
 
         const header = el.querySelector(".repo-header");
-        const toggle = el.querySelector(".repo-toggle");
 
         header.addEventListener("click", () => {
-            const isOpen = el.classList.toggle("open");
-
-            toggle.textContent = isOpen ? "▲" : "▼";
+            el.classList.toggle("open");
         });
 
         el.querySelector(".repo-name-link")
@@ -244,6 +244,19 @@ function startProgressPolling() {
     if (progressInterval) return;
 
     progressInterval = setInterval(pollProgress, 500);
+}
+
+async function createPr(repo) {
+    const [owner, name] = repo.split("/");
+
+    const res = await fetch(
+        `/internal/api/dependency-scan/pr/${owner}/${name}`,
+        { method: "POST" }
+    );
+
+    const url = await res.text();
+
+    window.open(url, "_blank");
 }
 
 // UI binding

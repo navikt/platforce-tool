@@ -2,6 +2,7 @@ package no.nav.platforce.tool
 
 import com.google.gson.Gson
 import mu.KotlinLogging
+import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
 import no.nav.platforce.tool.dependencies.DependencyScanner
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
@@ -68,6 +69,8 @@ class Application {
 
     private val dependencyScanner = DependencyScanner(githubClient)
 
+    private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -93,6 +96,7 @@ class Application {
             *dependencyScanRoutes(
                 dependencyScanCache,
                 dependencyScanner,
+                pullRequestService,
             ).toTypedArray(),
         )
 
