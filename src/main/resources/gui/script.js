@@ -100,15 +100,34 @@ function render(data) {
                 ${findings.map(f => {
 
             const kind = (f.kind || "UNKNOWN").toLowerCase();
+            const status = (f.status || "UNKNOWN");
+
+            const rowClass =
+                kind === "plugin"
+                    ? "plugin-row"
+                    : "dependency-row";
 
             return `
-                        <div class="row">
-                            <div class="pill ${kind}">${f.kind || "UNKNOWN"}</div>
-                            <div>${f.key || "-"}</div>
-                            <div>${f.currentVersion || "-"}</div>
-                            <div>${f.status || "UNKNOWN"}</div>
-                        </div>
-                    `;
+    <div class="row ${rowClass}">
+        <div class="pill ${kind}">
+            ${f.kind || "UNKNOWN"}
+        </div>
+
+        <div>
+            ${f.key || "-"}
+        </div>
+
+        <div>
+            ${f.currentVersion || "-"}
+        </div>
+
+        <div>
+            <span class="status-pill status-${status.toLowerCase()}">
+                ${status}
+            </span>
+        </div>
+    </div>
+`;
         }).join("")}
             </div>
         `;
