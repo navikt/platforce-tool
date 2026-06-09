@@ -66,18 +66,22 @@ button:hover {
 }
 
 .repo-header {
-    display: grid;
-    grid-template-columns: 1fr 120px;
-    align-items: center;
     padding: 12px 14px;
     gap: 10px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
 }
 
 .repo-header > div:first-child {
     display: grid;
-    grid-template-columns: 220px 1fr;
+    grid-template-columns:
+        260px   /* repo name */
+        80px    /* OK */
+        100px   /* UPDATE */
+        90px;   /* AHEAD */
+    gap: 8px;
     align-items: center;
-    gap: 12px;
 }
 
 .repo-name {
@@ -143,6 +147,8 @@ button:hover {
     grid-template-columns: 120px 1fr 160px 120px;
     gap: 10px;
     align-items: center;
+    padding: 6px 10px;
+    border-radius: 4px;
 }
 
 .repo-toggle {
@@ -155,10 +161,10 @@ button:hover {
     opacity: 1;
 }
 
-.table:nth-child(odd) {
+.table .row:nth-child(odd) {
     background-color: #f7faff;
 }
 
-.table:nth-child(even) {
+.table .row:nth-child(even) {
     background-color: #ffffff;
 }
