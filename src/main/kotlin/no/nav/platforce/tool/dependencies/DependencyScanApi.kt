@@ -5,11 +5,12 @@ import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.routing.bind
-import org.http4k.routing.routes
+import org.http4k.routing.path
 
 fun dependencyScanRoutes(
     cache: DependencyScanCache,
     scanner: DependencyScanner,
+    pullRequestService: DependencyPullRequestService,
 ) = listOf(
     "/internal/api/dependency-scan" bind Method.GET to {
         Response(Status.OK)
@@ -25,5 +26,16 @@ fun dependencyScanRoutes(
         Response(Status.OK)
             .header("Content-Type", "application/json")
             .body(Gson().toJson(cache.getProgress()))
+    },
+    "/internal/api/dependency-scan/pr/{owner}/{repo}" bind Method.POST to { req ->
+
+        val owner = req.path("owner")!!
+        val repo = req.path("repo")!!
+
+        val url = pullRequestService.createPullRequest(owner, repo)
+
+        Response(Status.OK)
+            .header("Content-Type", "text/plain")
+            .body(url)
     },
 )
