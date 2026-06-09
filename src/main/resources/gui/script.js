@@ -56,6 +56,7 @@ function render(data) {
 
         const repo = repoScan?.repository;
         const repoUrl = `https://github.com/${repo}`;
+        const [owner, repoName] = (repo || "unknown/unknown").split("/");
         const findingsRaw = repoScan?.findings;
 
         if (!repo) {
