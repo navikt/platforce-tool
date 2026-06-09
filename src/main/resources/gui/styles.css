@@ -168,3 +168,50 @@ button:hover {
 .table .row:nth-child(even) {
     background-color: #ffffff;
 }
+
+.row.plugin-row {
+    background-color: #f9fbfe;
+}
+
+.row.plugin-row:nth-child(odd) {
+    background-color: #eef5ff;
+}
+
+.row.dependency-row {
+    background-color: #f9fffa;
+}
+
+.row.dependency-row:nth-child(odd) {
+    background-color: #eaf4ec;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    min-width: 70px;
+
+    padding: 2px 8px;
+
+    border-radius: 999px;
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.status-ok {
+    background-color: #e7f6ec;
+    color: #1f7a4d;
+}
+
+.status-update {
+    background-color: #fdecec;
+    color: #b42318;
+}
+
+.status-ahead {
+    background-color: #eef4ff;
+    color: #2b5bbb;
+}
+
