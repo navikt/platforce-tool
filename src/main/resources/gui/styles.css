@@ -249,7 +249,8 @@ button:hover {
 }
 
 .pr-button {
-    font-size: 12px;
+    margin-right: 26px;
+    font-size: 13px;
     padding: 4px 10px;
     border-radius: 6px;
 
@@ -267,7 +268,7 @@ button:hover {
 }
 
 .pr-button.disabled {
-    opacity: 0.4;
+    opacity: 0.15;
     cursor: not-allowed;
     pointer-events: none;
 }
