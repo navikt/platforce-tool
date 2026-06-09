@@ -4,7 +4,8 @@ const text = document.getElementById("progressText");
 
 let progressInterval = null;
 let isRefreshing = false;
-let hasActiveScan = false
+let hasActiveScan = false;
+let isStartingScan = false;
 
 async function fetchProgress() {
     const res = await fetch("/internal/api/dependency-scan/progress");
@@ -152,6 +153,7 @@ async function refresh() {
 
     isRefreshing = true;
     hasActiveScan = true;
+    isStartingScan = true;
 
     text.innerText = "Starting scan...";
     bar.style.width = "0%";
@@ -182,11 +184,17 @@ async function pollProgress() {
 
         if (!p || !p.total || p.total === 0) {
             bar.style.width = "0%";
-            text.innerText = "Idle";
+            if (!isStartingScan) {
+                text.innerText = "Idle";
+            }
+
             return;
         }
 
         const percent = (p.done / p.total) * 100;
+        if (isStartingScan && p.total > 0) {
+            isStartingScan = false;
+        }
         bar.style.width = percent + "%";
 
         if (!p.running && p.done >= p.total) {
