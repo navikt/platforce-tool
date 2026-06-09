@@ -101,6 +101,7 @@ button:hover {
     display: inline-flex;
     align-items: center;
     font-variant-numeric: tabular-nums; /* stable number width */
+    border: 1px dotted currentColor;
 }
 
 /* summary badges */
@@ -200,23 +201,23 @@ button:hover {
 
     background: transparent;
 
-    border: 1px solid currentColor;
+    border: 1px dotted currentColor;
     box-sizing: border-box;
 }
 
 .status-ok {
     color: #1f7a4d;
-    background-color: rgba(31, 122, 77, 0.08);
+    background-color: rgb(220, 252, 231);
 }
 
 .status-update {
     color: #b42318;
-    background-color: rgba(180, 35, 24, 0.08);
+    background-color: rgb(255, 226, 226);
 }
 
 .status-ahead {
     color: #2b5bbb;
-    background-color: rgba(43, 91, 187, 0.08);
+    background-color: #ede9fe;
 }
 
 .status-unknown {
@@ -224,3 +225,49 @@ button:hover {
     background-color: rgba(120, 120, 120, 0.06);
 }
 
+.repo-name-link {
+    font-weight: 600;
+    color: #1f2a44;
+    text-decoration: none;
+
+    max-width: 260px;
+    display: inline-block;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.repo-name-link:hover {
+    text-decoration: underline;
+}
+
+.repo-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pr-button {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+
+    border: 1px solid #cfd6e4;
+    background: #f5f7fb;
+    color: #2f3b52;
+
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.pr-button:hover {
+    background: #e9eef7;
+}
+
+.pr-button.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}

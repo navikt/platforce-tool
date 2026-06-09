@@ -55,6 +55,7 @@ function render(data) {
         console.log(`\n🔎 Repo [${index}] raw object:`, repoScan);
 
         const repo = repoScan?.repository;
+        const repoUrl = `https://github.com/${repo}`;
         const findingsRaw = repoScan?.findings;
 
         if (!repo) {
@@ -75,6 +76,14 @@ function render(data) {
             return valid;
         });
 
+        const actionableFindings = findings.filter(f =>
+            f.status === "UPDATE" || f.status === "AHEAD"
+        );
+
+        const hasActionable = actionableFindings.length > 0;
+
+        const branchName = `dependency-update-${repoName}`;
+
         console.log(`📁 ${repo}: ${findings.length}/${findingsRaw?.length ?? 0} valid findings`);
 
         const ok = findings.filter(f => f.status === "OK").length;
@@ -89,12 +98,22 @@ function render(data) {
         el.innerHTML = `
             <div class="repo-header">
                 <div>
-                    <div class="repo-name">${repo || "UNKNOWN"}</div>
+                    <a class="repo-name-link" href="${repoUrl}">${repo || "UNKNOWN"}</a>
                     <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                     <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                     <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
                 </div>
-                <div class="repo-toggle">▼</div>
+                <div class="repo-actions">
+                    ${
+                        hasUpdates
+                ? `<a class="pr-button" href="https://google.com" target="_blank">
+                        Create PR
+                   </a>`
+                : `<span class="pr-button disabled">Create PR</span>`
+                     }
+
+                    <div class="repo-toggle">▼</div>
+                </div>
             </div>
 
             <div class="table">
