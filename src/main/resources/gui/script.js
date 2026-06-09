@@ -106,7 +106,7 @@ function render(data) {
                 </div>
                 <div class="repo-actions">
                     ${
-                        hasUpdates
+                        hasActionable
                 ? `<a class="pr-button" href="https://google.com" target="_blank">
                         Create PR
                    </a>`
