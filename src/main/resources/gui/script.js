@@ -162,6 +162,11 @@ function render(data) {
             toggle.textContent = isOpen ? "▲" : "▼";
         });
 
+        el.querySelector(".repo-name-link")
+            ?.addEventListener("click", event => {
+                event.stopPropagation();
+            });
+
         container.appendChild(el);
     });
 

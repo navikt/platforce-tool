@@ -156,6 +156,11 @@ button:hover {
     font-size: 14px;
     opacity: 0.7;
     transition: transform 0.2s ease;
+    cursor: pointer;
+}
+
+.repo.open .repo-toggle {
+    transform: rotate(180deg);
 }
 
 .repo-header:hover .repo-toggle {
@@ -226,16 +231,12 @@ button:hover {
 }
 
 .repo-name-link {
-    font-weight: 600;
+    display: inline;
+    width: auto;
+
     color: #1f2a44;
     text-decoration: none;
-
-    max-width: 260px;
-    display: inline-block;
-
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-weight: 600;
 }
 
 .repo-name-link:hover {
