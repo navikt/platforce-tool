@@ -26,7 +26,7 @@ class DependencyPullRequestService(
                 .filter { it.status != DependencyStatus.OK }
 
         if (actionable.isEmpty()) {
-            return "No changes required"
+            return "No changes required "
         }
 
         val baseBranch = githubClient.getDefaultBranch(owner, repo)
