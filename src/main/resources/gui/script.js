@@ -305,7 +305,6 @@ function renderTable(containerId, entries, type) {
     addRow.className = "target-row";
 
     addRow.innerHTML = `
-        <div class="pill ${type}">NEW</div>
         <input class="key" placeholder="group:name or plugin.id" />
         <input class="version" placeholder="version" />
         <button class="add">+</button>
