@@ -287,8 +287,6 @@ function renderTable(containerId, entries, type) {
         row.className = "target-row";
 
         row.innerHTML = `
-            <div class="pill ${type}">${type}</div>
-
             <input class="key" value="${key}" />
             <input class="version" value="${version}" />
 
@@ -372,6 +370,9 @@ document.getElementById("saveTargets")
 
         alert("Target versions updated");
     });
+
+document.getElementById("refreshBtn")
+    .addEventListener("click", refresh);
 
 const targetCard =
     document.getElementById("targetVersionsCard");
