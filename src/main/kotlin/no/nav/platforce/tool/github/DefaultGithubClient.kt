@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.github
 
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import mu.KotlinLogging
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -89,6 +90,37 @@ class DefaultGithubClient(
 
             val parsed = gson.fromJson(body, GithubContentResponse::class.java)
             return parsed.sha
+        }
+    }
+
+    override fun getBranchHeadSha(
+        owner: String,
+        repo: String,
+        branch: String,
+    ): String {
+        log.info(
+            "Fetching branch head sha owner $owner/$repo branch $branch",
+        )
+
+        val request =
+            authenticatedRequest(
+                "https://api.github.com/repos/$owner/$repo/git/ref/heads/$branch",
+            )
+
+        httpClient.newCall(request).execute().use { response ->
+
+            val body =
+                response.body?.string()
+                    ?: error("Missing body")
+
+            if (!response.isSuccessful) {
+                error("Failed to fetch branch head sha: $body")
+            }
+
+            return gson
+                .fromJson(body, GitRefResponse::class.java)
+                .gitObject
+                .sha
         }
     }
 
@@ -256,5 +288,14 @@ class DefaultGithubClient(
 
     private data class Repository(
         val full_name: String,
+    )
+
+    private data class GitRefResponse(
+        @SerializedName("object")
+        val gitObject: GitObject,
+    )
+
+    private data class GitObject(
+        val sha: String,
     )
 }
