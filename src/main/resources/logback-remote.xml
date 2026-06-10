@@ -8,6 +8,8 @@
     <logger name="org.apache.kafka" level="INFO"/>
     <logger name="o.a.k.clients" level="INFO"/>
     <logger name="io.netty" level="INFO"/>
+    <logger name="io.netty.channel.DefaultChannelPipeline" level="ERROR"/>
+    <logger name="io.netty.channel.nio" level="ERROR"/>
 
     <root level="INFO">
         <appender-ref ref="stdout_json" />
