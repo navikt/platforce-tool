@@ -52,4 +52,10 @@ interface GithubClient {
         head: String,
         base: String,
     ): String
+
+    fun resolveBranchName(
+        owner: String,
+        repo: String,
+        baseName: String,
+    ): String
 }

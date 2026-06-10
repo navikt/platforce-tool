@@ -30,7 +30,11 @@ class DependencyPullRequestService(
         }
 
         val baseBranch = githubClient.getDefaultBranch(owner, repo)
-        val branchName = "chore/update-dependencies-${LocalDate.now()}"
+        val baseBranchName =
+            "chore/update-dependencies-${java.time.LocalDate.now()}"
+
+        val branchName =
+            githubClient.resolveBranchName(owner, repo, baseBranchName)
 
         val filePath = "build.gradle"
 

@@ -5,7 +5,9 @@ import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
 import no.nav.platforce.tool.dependencies.DependencyScanner
+import no.nav.platforce.tool.dependencies.TargetVersionsStore
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
+import no.nav.platforce.tool.dependencies.targetVersionsRoutes
 import no.nav.platforce.tool.entra.AuthRouteBuilder
 import no.nav.platforce.tool.entra.DefaultTokenValidator
 import no.nav.platforce.tool.entra.MockTokenValidator
@@ -71,6 +73,8 @@ class Application {
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
 
+    private val targetVersionsStore = TargetVersionsStore()
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -93,11 +97,8 @@ class Application {
                 Response(OK).header("Content-Type", "text/plain").body(file)
             },
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
-            *dependencyScanRoutes(
-                dependencyScanCache,
-                dependencyScanner,
-                pullRequestService,
-            ).toTypedArray(),
+            *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
+            *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
         )
 
     /**
