@@ -373,16 +373,6 @@ document.getElementById("saveTargets")
         alert("Target versions updated");
     });
 
-// UI binding
-document.getElementById("refreshBtn")
-    .addEventListener("click", refresh);
-
-document.getElementById("scrollToTargets")
-    .addEventListener("click", () => {
-        document.getElementById("targetVersionsSection")
-            .scrollIntoView({ behavior: "smooth" });
-    });
-
 const targetCard =
     document.getElementById("targetVersionsCard");
 
