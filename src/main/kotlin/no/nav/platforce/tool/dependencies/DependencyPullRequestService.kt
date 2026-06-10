@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.dependencies
 
 import no.nav.platforce.tool.github.GithubClient
+import java.time.LocalDate
 
 class DependencyPullRequestService(
     private val githubClient: GithubClient,
@@ -29,7 +30,7 @@ class DependencyPullRequestService(
         }
 
         val baseBranch = githubClient.getDefaultBranch(owner, repo)
-        val branchName = "chore/update-gradle-dependencies"
+        val branchName = "chore/update-dependencies-${LocalDate.now()}"
 
         val filePath = "build.gradle"
 
@@ -37,21 +38,34 @@ class DependencyPullRequestService(
 
         val updatedContent = updater.apply(currentContent, actionable)
 
-        val sha = githubClient.getFileSha(owner, repo, filePath, baseBranch)
+        val branchSha =
+            githubClient.getBranchHeadSha(
+                owner,
+                repo,
+                baseBranch,
+            )
 
         githubClient.createBranch(
             owner,
             repo,
             branchName,
-            sha,
+            branchSha,
         )
+
+        val fileSha =
+            githubClient.getFileSha(
+                owner,
+                repo,
+                filePath,
+                branchName,
+            )
 
         githubClient.updateFile(
             owner,
             repo,
             filePath,
             updatedContent,
-            sha,
+            fileSha,
             branchName,
             "chore: update Gradle dependencies",
         )

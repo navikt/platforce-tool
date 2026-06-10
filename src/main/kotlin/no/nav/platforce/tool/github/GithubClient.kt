@@ -21,6 +21,12 @@ interface GithubClient {
         branch: String,
     ): String
 
+    fun getBranchHeadSha(
+        owner: String,
+        repo: String,
+        branch: String,
+    ): String
+
     fun createBranch(
         owner: String,
         repo: String,
