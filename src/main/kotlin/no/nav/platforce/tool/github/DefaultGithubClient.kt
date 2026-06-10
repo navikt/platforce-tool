@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.github
 
 import com.google.gson.Gson
+import mu.KotlinLogging
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -12,6 +13,8 @@ class DefaultGithubClient(
     private val httpClient: OkHttpClient,
 ) : GithubClient {
     private val gson = Gson()
+
+    private val log = KotlinLogging.logger { }
 
     private data class RepoResponse(
         val default_branch: String,
@@ -50,6 +53,7 @@ class DefaultGithubClient(
         owner: String,
         repo: String,
     ): String {
+        log.info { "Get default branch owner $owner/$repo" }
         val request = authenticatedRequest("https://api.github.com/repos/$owner/$repo")
 
         httpClient.newCall(request).execute().use { response ->
@@ -70,6 +74,7 @@ class DefaultGithubClient(
         path: String,
         branch: String,
     ): String {
+        log.info { "Fetching file sha with owner $owner/$repo at $path with branch $branch" }
         val request =
             authenticatedRequest(
                 "https://api.github.com/repos/$owner/$repo/contents/$path?ref=$branch",
@@ -93,6 +98,8 @@ class DefaultGithubClient(
         branch: String,
         sha: String,
     ) {
+        log.info { "Create Branch with owner $owner/$repo at with branch $branch, sha $sha" }
+
         val payload =
             mapOf(
                 "ref" to "refs/heads/$branch",
