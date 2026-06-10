@@ -69,11 +69,11 @@ class Application {
 
     private val dependencyScanCache = DependencyScanCache()
 
-    private val dependencyScanner = DependencyScanner(githubClient)
+    private val targetVersionsStore = TargetVersionsStore()
+
+    private val dependencyScanner = DependencyScanner(githubClient, targetVersionsStore)
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
-
-    private val targetVersionsStore = TargetVersionsStore()
 
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 

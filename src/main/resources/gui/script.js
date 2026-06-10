@@ -383,6 +383,35 @@ document.getElementById("scrollToTargets")
             .scrollIntoView({ behavior: "smooth" });
     });
 
+const targetCard =
+    document.getElementById("targetVersionsCard");
+
+const targetToggle =
+    targetCard.querySelector(".toggle");
+
+targetCard
+    .querySelector(".repo-header")
+    .addEventListener("click", () => {
+
+        const isOpen =
+            targetCard.classList.toggle("open");
+
+        targetToggle.textContent =
+            isOpen ? "▲" : "▼";
+    });
+
+document
+    .getElementById("jumpToTargetsBtn")
+    .addEventListener("click", () => {
+
+        document
+            .getElementById("targetVersionsCard")
+            .scrollIntoView({
+                behavior: "smooth"
+            });
+    });
+
+
 // INIT
 async function initTargets() {
     const data = await fetchTargetVersions();

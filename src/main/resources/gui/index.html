@@ -10,9 +10,6 @@
 
 <div class="page-title">
     Dependency Scanner
-    <button id="scrollToTargets" class="btn-secondary">
-        Target Versions ↓
-    </button>
 </div>
 
 <div class="toolbar">
@@ -26,21 +23,59 @@
     </div>
 </div>
 
+<button
+        id="jumpToTargetsBtn"
+        class="btn-secondary">
+    Target Versions
+</button>
+
 <div id="container"></div>
 
-<div id="targetVersionsSection" class="section">
+<div id="targetVersionsCard" class="repo">
 
-    <h2>Target Versions</h2>
+    <div class="repo-header">
+        <div class="repo-name">
+            Target Versions
+        </div>
 
-    <h3>Plugins</h3>
-    <div id="pluginsTable"></div>
+        <div class="toggle">
+            ▼
+        </div>
+    </div>
 
-    <h3>Dependencies</h3>
-    <div id="depsTable"></div>
+    <div class="target-content">
 
-    <button id="saveTargets" class="btn-primary">
-        Save Target Versions
-    </button>
+        <div class="target-section plugins">
+
+            <div class="target-section-header">
+                <span class="section-pill plugin-pill">
+                    Plugins
+                </span>
+            </div>
+
+            <div id="pluginsTable"></div>
+
+        </div>
+
+        <div class="target-section dependencies">
+
+            <div class="target-section-header">
+                <span class="section-pill dependency-pill">
+                    Dependencies
+                </span>
+            </div>
+
+            <div id="depsTable"></div>
+
+        </div>
+
+        <div class="target-actions">
+            <button id="saveTargets" class="btn-primary">
+                Save Target Versions
+            </button>
+        </div>
+
+    </div>
 
 </div>
 
