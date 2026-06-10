@@ -10,6 +10,9 @@
 
 <div class="page-title">
     Dependency Scanner
+    <button id="scrollToTargets" class="btn-secondary">
+        Target Versions ↓
+    </button>
 </div>
 
 <div class="toolbar">
@@ -24,6 +27,22 @@
 </div>
 
 <div id="container"></div>
+
+<div id="targetVersionsSection" class="section">
+
+    <h2>Target Versions</h2>
+
+    <h3>Plugins</h3>
+    <div id="pluginsTable"></div>
+
+    <h3>Dependencies</h3>
+    <div id="depsTable"></div>
+
+    <button id="saveTargets" class="btn-primary">
+        Save Target Versions
+    </button>
+
+</div>
 
 <script src="/internal/gui/script.js"></script>
 </body>

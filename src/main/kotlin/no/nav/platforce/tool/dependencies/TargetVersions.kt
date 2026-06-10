@@ -21,3 +21,50 @@ object TargetVersions {
             "org.http4k:http4k-client-okhttp" to "6.39.0.0",
         )
 }
+
+data class TargetVersionsState(
+    val plugins: MutableMap<String, String>,
+    val dependencies: MutableMap<String, String>,
+)
+
+class TargetVersionsStore {
+    private val state =
+        TargetVersionsState(
+            plugins = TargetVersions.plugins.toMutableMap(),
+            dependencies = TargetVersions.dependencies.toMutableMap(),
+        )
+
+    fun get(): TargetVersionsState = state
+
+    fun updatePlugins(map: Map<String, String>) {
+        state.plugins.clear()
+        state.plugins.putAll(map)
+    }
+
+    fun updateDependencies(map: Map<String, String>) {
+        state.dependencies.clear()
+        state.dependencies.putAll(map)
+    }
+
+    fun addPlugin(
+        key: String,
+        version: String,
+    ) {
+        state.plugins[key] = version
+    }
+
+    fun addDependency(
+        key: String,
+        version: String,
+    ) {
+        state.dependencies[key] = version
+    }
+
+    fun removePlugin(key: String) {
+        state.plugins.remove(key)
+    }
+
+    fun removeDependency(key: String) {
+        state.dependencies.remove(key)
+    }
+}

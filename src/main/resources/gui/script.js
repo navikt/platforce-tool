@@ -259,10 +259,136 @@ async function createPr(repo) {
     window.open(url, "_blank");
 }
 
+async function fetchTargetVersions() {
+    const res = await fetch("/internal/api/target-versions");
+    return await res.json();
+}
+
+let targetState = null;
+
+function renderTargets(data) {
+    targetState = data;
+
+    const plugins = Object.entries(data.plugins || {});
+    const deps = Object.entries(data.dependencies || {});
+
+    renderTable("pluginsTable", plugins, "plugin");
+    renderTable("depsTable", deps, "dependency");
+}
+
+function renderTable(containerId, entries, type) {
+    const container = document.getElementById(containerId);
+
+    container.innerHTML = "";
+
+    entries.forEach(([key, version]) => {
+
+        const row = document.createElement("div");
+        row.className = "target-row";
+
+        row.innerHTML = `
+            <div class="pill ${type}">${type}</div>
+
+            <input class="key" value="${key}" />
+            <input class="version" value="${version}" />
+
+            <button class="remove">✕</button>
+        `;
+
+        row.querySelector(".remove").onclick = () => {
+            row.remove();
+        };
+
+        container.appendChild(row);
+    });
+
+    // add new row
+    const addRow = document.createElement("div");
+    addRow.className = "target-row";
+
+    addRow.innerHTML = `
+        <div class="pill ${type}">NEW</div>
+        <input class="key" placeholder="group:name or plugin.id" />
+        <input class="version" placeholder="version" />
+        <button class="add">+</button>
+    `;
+
+    addRow.querySelector(".add").onclick = () => {
+        const k = addRow.querySelector(".key").value;
+        const v = addRow.querySelector(".version").value;
+
+        if (!k || !v) return;
+
+        const newRow = document.createElement("div");
+        newRow.className = "target-row";
+
+        newRow.innerHTML = `
+            <div class="pill ${type}">${type}</div>
+            <input class="key" value="${k}" />
+            <input class="version" value="${v}" />
+            <button class="remove">✕</button>
+        `;
+
+        newRow.querySelector(".remove").onclick = () => newRow.remove();
+
+        container.insertBefore(newRow, addRow);
+    };
+
+    container.appendChild(addRow);
+}
+
+document.getElementById("saveTargets")
+    .addEventListener("click", async () => {
+
+        function read(containerId) {
+            const rows = document.querySelectorAll(`#${containerId} .target-row`);
+
+            const map = {};
+
+            rows.forEach(r => {
+                const key = r.querySelector(".key")?.value;
+                const version = r.querySelector(".version")?.value;
+
+                if (key && version) {
+                    map[key] = version;
+                }
+            });
+
+            return map;
+        }
+
+        const payload = {
+            plugins: read("pluginsTable"),
+            dependencies: read("depsTable")
+        };
+
+        await fetch("/internal/api/target-versions/update", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+
+        alert("Target versions updated");
+    });
+
 // UI binding
 document.getElementById("refreshBtn")
     .addEventListener("click", refresh);
 
+document.getElementById("scrollToTargets")
+    .addEventListener("click", () => {
+        document.getElementById("targetVersionsSection")
+            .scrollIntoView({ behavior: "smooth" });
+    });
+
 // INIT
+async function initTargets() {
+    const data = await fetchTargetVersions();
+    renderTargets(data);
+}
+
+initTargets();
 loadData();
 startProgressPolling();

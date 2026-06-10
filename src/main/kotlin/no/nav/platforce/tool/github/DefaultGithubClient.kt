@@ -277,6 +277,33 @@ class DefaultGithubClient(
             Charsets.UTF_8,
         )
 
+    override fun resolveBranchName(
+        owner: String,
+        repo: String,
+        baseName: String,
+    ): String {
+        fun exists(branch: String): Boolean {
+            val url =
+                "https://api.github.com/repos/$owner/$repo/git/ref/heads/$branch"
+
+            val request = authenticatedRequest(url)
+
+            httpClient.newCall(request).execute().use { response ->
+                return response.isSuccessful
+            }
+        }
+
+        var candidate = baseName
+        var counter = 2
+
+        while (exists(candidate)) {
+            candidate = "$baseName-$counter"
+            counter++
+        }
+
+        return candidate
+    }
+
     private data class GithubContentResponse(
         val content: String,
         val sha: String,
