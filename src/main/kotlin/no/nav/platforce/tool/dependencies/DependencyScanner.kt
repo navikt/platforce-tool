@@ -5,6 +5,7 @@ import java.time.Instant
 
 class DependencyScanner(
     private val githubClient: GithubClient,
+    private val targetVersionStore: TargetVersionsStore,
 ) {
     private val parser = GradleDependencyParser()
 
@@ -54,7 +55,7 @@ class DependencyScanner(
 
         val findings = mutableListOf<DependencyFinding>()
 
-        TargetVersions.plugins.forEach { (plugin, target) ->
+        targetVersionStore.get().plugins.forEach { (plugin, target) ->
             val current = parsed.plugins[plugin] ?: return@forEach
 
             findings +=
@@ -77,7 +78,7 @@ class DependencyScanner(
                 )
         }
 
-        TargetVersions.dependencies.forEach { (dep, target) ->
+        targetVersionStore.get().dependencies.forEach { (dep, target) ->
             val current = parsed.dependencies[dep] ?: return@forEach
 
             findings +=

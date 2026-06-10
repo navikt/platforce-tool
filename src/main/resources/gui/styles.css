@@ -276,10 +276,17 @@ button:hover {
 
 .target-row {
     display: grid;
-    grid-template-columns: 90px 1fr 1fr 40px;
-    gap: 10px;
-    margin-bottom: 8px;
+
+    grid-template-columns:
+        1fr
+        140px
+        80px;
+
+    gap: 12px;
+
     align-items: center;
+
+    padding: 8px 10px;
 }
 
 .target-row input {
@@ -305,3 +312,78 @@ button:hover {
     border-radius: 6px;
     cursor: pointer;
 }
+
+.target-content {
+    display: none;
+    padding: 16px;
+}
+
+#targetVersionsCard.open .target-content {
+    display: block;
+}
+
+.target-section {
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.target-section.plugins {
+    background: #f9fbfe;
+    border: 1px solid #dce8f7;
+}
+
+.target-section.dependencies {
+    background: #f9fffa;
+    border: 1px solid #dce8df;
+}
+
+.section-pill {
+    display: inline-block;
+
+    font-size: 13px;
+    font-weight: 700;
+
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+
+    padding: 6px 12px;
+
+    border-radius: 999px;
+
+    margin-bottom: 12px;
+}
+
+.plugin-pill {
+    background: #eef5ff;
+    color: #2458a6;
+    border: 1px solid #2458a6;
+}
+
+.dependency-pill {
+    background: #eaf4ec;
+    color: #2d6b39;
+    border: 1px solid #2d6b39;
+}
+
+.target-section.plugins .target-row:nth-child(odd) {
+    background: #eef5ff;
+}
+
+.target-section.plugins .target-row:nth-child(even) {
+    background: #f9fbfe;
+}
+
+.target-section.dependencies .target-row:nth-child(odd) {
+    background: #eaf4ec;
+}
+
+.target-section.dependencies .target-row:nth-child(even) {
+    background: #f9fffa;
+}
+
+.target-actions {
+    margin-top: 20px;
+    text-align: right;
+}
+
