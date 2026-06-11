@@ -34,7 +34,6 @@ spec:
     application:
       enabled: true
       allowAllUsers: true
-      tenant: trygdeetaten.no
       claims:
         extra:
           - azp_name
