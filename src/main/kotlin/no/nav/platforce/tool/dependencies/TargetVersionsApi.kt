@@ -19,8 +19,7 @@ fun targetVersionsRoutes(store: TargetVersionsStore) =
             val body = req.bodyString()
             val parsed = Gson().fromJson(body, TargetVersionsState::class.java)
 
-            store.updatePlugins(parsed.plugins)
-            store.updateDependencies(parsed.dependencies)
+            store.update(parsed)
 
             Response(Status.OK).body("updated")
         },
