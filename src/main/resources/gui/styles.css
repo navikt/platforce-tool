@@ -274,19 +274,12 @@ button:hover {
     pointer-events: none;
 }
 
-.target-row {
+target-row {
     display: grid;
-
-    grid-template-columns:
-        1fr
-        140px
-        80px;
-
+    grid-template-columns: 301px 1fr 50px;
     gap: 12px;
-
     align-items: center;
-
-    padding: 8px 10px;
+    padding: 1px 5px;
 }
 
 .target-row input {
@@ -385,5 +378,35 @@ button:hover {
 .target-actions {
     margin-top: 20px;
     text-align: right;
+}
+
+.tabs {
+    display: flex;
+
+    margin-bottom: 20px;
+
+    border-bottom: 2px solid #d9e3ee;
+}
+
+.tab {
+    cursor: pointer;
+    padding: 14px 22px;
+    font-size: 28px;
+    font-weight: 600;
+    color: #607080;
+    border-bottom: 4px solid transparent;
+    transition:
+            background-color .15s,
+            border-color .15s;
+}
+
+.tab:hover {
+    background: #f4f8fc;
+}
+
+.tab.active {
+    color: #0e2a3d;
+    border-bottom: 4px solid #3498DB;
+    background: white;
 }
 
