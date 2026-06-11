@@ -1,5 +1,11 @@
 package no.nav.platforce.tool.dependencies
 
+import no.nav.platforce.tool.db.TargetVersion
+import no.nav.platforce.tool.db.TargetVersionType
+import no.nav.sf.keytool.db.PostgresDatabase
+import org.jetbrains.exposed.sql.transactions.transaction
+import java.time.Instant
+
 object TargetVersions {
     val plugins =
         mapOf(
@@ -27,20 +33,70 @@ data class TargetVersionsState(
     val dependencies: MutableMap<String, String>,
 )
 
-class TargetVersionsStore {
+class TargetVersionsStore(
+    private val userId: String = "default",
+    private val team: String? = null,
+) {
     private val state =
         TargetVersionsState(
             plugins = TargetVersions.plugins.toMutableMap(),
             dependencies = TargetVersions.dependencies.toMutableMap(),
         )
 
-    fun get(): TargetVersionsState = state
+    fun get(): TargetVersionsState {
+        val versions = PostgresDatabase.getForUser(userId)
 
+        return TargetVersionsState(
+            plugins =
+                versions
+                    .filter { it.type == TargetVersionType.PLUGIN }
+                    .associate { it.key to it.version }
+                    .toMutableMap(),
+            dependencies =
+                versions
+                    .filter { it.type == TargetVersionType.DEPENDENCY }
+                    .associate { it.key to it.version }
+                    .toMutableMap(),
+        )
+    }
+
+    fun update(state: TargetVersionsState) {
+        val now = Instant.now()
+
+        val versions =
+            state.plugins.map {
+                TargetVersion(
+                    userId = userId,
+                    team = team,
+                    type = TargetVersionType.PLUGIN,
+                    key = it.key,
+                    version = it.value,
+                    createdAt = now,
+                    updatedAt = now,
+                )
+            } +
+                state.dependencies.map {
+                    TargetVersion(
+                        userId = userId,
+                        team = team,
+                        type = TargetVersionType.DEPENDENCY,
+                        key = it.key,
+                        version = it.value,
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                }
+
+        PostgresDatabase.replaceForUser(userId, team, versions)
+    }
+
+    // old
     fun updatePlugins(map: Map<String, String>) {
         state.plugins.clear()
         state.plugins.putAll(map)
     }
 
+    // old
     fun updateDependencies(map: Map<String, String>) {
         state.dependencies.clear()
         state.dependencies.putAll(map)
@@ -66,5 +122,39 @@ class TargetVersionsStore {
 
     fun removeDependency(key: String) {
         state.dependencies.remove(key)
+    }
+
+    init {
+        transaction(PostgresDatabase.database) {
+            val existing = PostgresDatabase.getForUser(userId)
+
+            if (existing.isEmpty()) {
+                val seed =
+                    TargetVersions.plugins.map { (k, v) ->
+                        TargetVersion(
+                            userId = userId,
+                            team = team,
+                            type = TargetVersionType.PLUGIN,
+                            key = k,
+                            version = v,
+                            createdAt = Instant.now(),
+                            updatedAt = Instant.now(),
+                        )
+                    } +
+                        TargetVersions.dependencies.map { (k, v) ->
+                            TargetVersion(
+                                userId = userId,
+                                team = team,
+                                type = TargetVersionType.DEPENDENCY,
+                                key = k,
+                                version = v,
+                                createdAt = Instant.now(),
+                                updatedAt = Instant.now(),
+                            )
+                        }
+
+                PostgresDatabase.replaceForUser(userId, team, seed)
+            }
+        }
     }
 }

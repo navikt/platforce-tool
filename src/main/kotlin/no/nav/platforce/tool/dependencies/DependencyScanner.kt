@@ -55,7 +55,9 @@ class DependencyScanner(
 
         val findings = mutableListOf<DependencyFinding>()
 
-        targetVersionStore.get().plugins.forEach { (plugin, target) ->
+        val store = targetVersionStore.get()
+
+        store.plugins.forEach { (plugin, target) ->
             val current = parsed.plugins[plugin] ?: return@forEach
 
             findings +=
@@ -78,7 +80,7 @@ class DependencyScanner(
                 )
         }
 
-        targetVersionStore.get().dependencies.forEach { (dep, target) ->
+        store.dependencies.forEach { (dep, target) ->
             val current = parsed.dependencies[dep] ?: return@forEach
 
             findings +=

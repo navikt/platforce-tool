@@ -7,6 +7,7 @@ import no.nav.platforce.tool.db.TARGET_VERSIONS
 import no.nav.platforce.tool.db.TargetVersion
 import no.nav.platforce.tool.db.TargetVersionsTable
 import no.nav.platforce.tool.db.toTargetVersion
+import no.nav.platforce.tool.dependencies.TargetVersions
 import no.nav.platforce.tool.env
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
