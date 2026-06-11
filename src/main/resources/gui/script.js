@@ -320,7 +320,6 @@ function renderTable(containerId, entries, type) {
         newRow.className = "target-row";
 
         newRow.innerHTML = `
-            <div class="pill ${type}">${type}</div>
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
             <button class="remove">✕</button>
@@ -391,14 +390,34 @@ targetCard
     });
 
 document
-    .getElementById("jumpToTargetsBtn")
-    .addEventListener("click", () => {
+    .querySelectorAll(".tab")
+    .forEach(tab => {
 
-        document
-            .getElementById("targetVersionsCard")
-            .scrollIntoView({
-                behavior: "smooth"
-            });
+        tab.addEventListener("click", () => {
+
+            document
+                .querySelectorAll(".tab")
+                .forEach(t => t.classList.remove("active"));
+
+            tab.classList.add("active");
+
+            const selected =
+                tab.dataset.tab;
+
+            document
+                .getElementById("scannerTab")
+                .style.display =
+                selected === "scanner"
+                    ? "block"
+                    : "none";
+
+            document
+                .getElementById("targetsTab")
+                .style.display =
+                selected === "targets"
+                    ? "block"
+                    : "none";
+        });
     });
 
 

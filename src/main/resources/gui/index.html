@@ -8,75 +8,85 @@
 
 <body>
 
-<div class="page-title">
-    Dependency Scanner
-</div>
-
-<div class="toolbar">
-    <button id="refreshBtn">Refresh scan</button>
-
-    <div id="progressWrapper">
-        <div id="progressText">Idle</div>
-        <div class="bar">
-            <div id="progressBar"></div>
-        </div>
+<div class="tabs">
+    <div
+            class="tab active"
+            data-tab="scanner">
+        Dependency Scanner
+    </div>
+    <div
+            class="tab"
+            data-tab="targets">
+        Target Versions
     </div>
 </div>
 
-<button
-        id="jumpToTargetsBtn"
-        class="btn-secondary">
-    Target Versions
-</button>
+<div id="scannerTab">
 
-<div id="container"></div>
+    <div class="toolbar">
+        <button id="refreshBtn">Refresh scan</button>
 
-<div id="targetVersionsCard" class="repo">
-
-    <div class="repo-header">
-        <div class="repo-name">
-            Target Versions
-        </div>
-
-        <div class="toggle">
-            ▼
+        <div id="progressWrapper">
+            <div id="progressText">Idle</div>
+            <div class="bar">
+                <div id="progressBar"></div>
+            </div>
         </div>
     </div>
 
-    <div class="target-content">
+    <div id="container"></div>
 
-        <div class="target-section plugins">
+</div>
 
-            <div class="target-section-header">
+<div id="targetsTab" style="display:none">
+
+    <div id="targetVersionsCard" class="repo open">
+
+        <div class="repo-header">
+            <div class="repo-name">
+                Target Versions
+            </div>
+
+            <div class="toggle">
+                ▼
+            </div>
+        </div>
+
+        <div class="target-content">
+
+            <div class="target-section plugins">
+
+                <div class="target-section-header">
                 <span class="section-pill plugin-pill">
                     Plugins
                 </span>
+                </div>
+
+                <div id="pluginsTable"></div>
+
             </div>
 
-            <div id="pluginsTable"></div>
+            <div class="target-section dependencies">
 
-        </div>
-
-        <div class="target-section dependencies">
-
-            <div class="target-section-header">
+                <div class="target-section-header">
                 <span class="section-pill dependency-pill">
                     Dependencies
                 </span>
+                </div>
+
+                <div id="depsTable"></div>
+
             </div>
 
-            <div id="depsTable"></div>
+            <div class="target-actions">
+                <button id="saveTargets" class="btn-primary">
+                    Save Target Versions
+                </button>
+            </div>
 
-        </div>
-
-        <div class="target-actions">
-            <button id="saveTargets" class="btn-primary">
-                Save Target Versions
-            </button>
         </div>
 
     </div>
-
 </div>
 
 <script src="/internal/gui/script.js"></script>
