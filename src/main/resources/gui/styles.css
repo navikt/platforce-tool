@@ -397,7 +397,6 @@ button:hover {
     cursor: pointer;
     padding: 14px 22px;
     font-size: 22px;
-    border-radius: 14px;
     font-weight: 600;
     color: #607080;
     border-bottom: 4px solid transparent;
