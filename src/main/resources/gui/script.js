@@ -372,23 +372,6 @@ document.getElementById("saveTargets")
 document.getElementById("refreshBtn")
     .addEventListener("click", refresh);
 
-const targetCard =
-    document.getElementById("targetVersionsCard");
-
-const targetToggle =
-    targetCard.querySelector(".toggle");
-
-targetCard
-    .querySelector(".repo-header")
-    .addEventListener("click", () => {
-
-        const isOpen =
-            targetCard.classList.toggle("open");
-
-        targetToggle.textContent =
-            isOpen ? "▲" : "▼";
-    });
-
 document
     .querySelectorAll(".tab")
     .forEach(tab => {
