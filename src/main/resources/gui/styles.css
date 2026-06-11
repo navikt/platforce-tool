@@ -381,8 +381,8 @@ button:hover {
 }
 
 .target-actions {
-    margin-top: 20px;
-    text-align: right;
+    margin-top: 10px;
+    text-align: left;
 }
 
 .tabs {
@@ -396,7 +396,8 @@ button:hover {
 .tab {
     cursor: pointer;
     padding: 14px 22px;
-    font-size: 28px;
+    font-size: 22px;
+    border-radius: 14px;
     font-weight: 600;
     color: #607080;
     border-bottom: 4px solid transparent;
@@ -419,10 +420,10 @@ button:hover {
     display: grid;
 
     grid-template-columns:
-        minmax(400px, 500px)
-        minmax(500px, 700px);
+        minmax(500px, 533px)
+        minmax(500px, 533px);
 
-    gap: 24px;
+    gap: 14px;
 
     align-items: start;
 }
