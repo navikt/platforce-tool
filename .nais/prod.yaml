@@ -28,16 +28,17 @@ spec:
     requests:
       cpu: 10m
       memory: 512Mi
-  #  ingresses:
-  #    - "https://sf-mellomvare.template.intern.nav.no"
-  #  azure:
-  #    application:
-  #      enabled: true
-  #      allowAllUsers: true
-  #      claims:
-  #        extra:
-  #          - azp_name
-  #          - NAVident
+  ingresses:
+    - "https://platforce-tool.intern.nav.no"
+  azure:
+    application:
+      enabled: true
+      allowAllUsers: true
+      tenant: trygdeetaten.no
+      claims:
+        extra:
+          - azp_name
+          - NAVident
   #    sidecar:
   #      enabled: false
   #  accessPolicy:
@@ -46,9 +47,8 @@ spec:
   #        - application: salesforce
   #          namespace: teamcrm
   #          cluster: prod-external
-  #  envFrom:
-  #    - secret: template
-
+  envFrom:
+    - secret: platforce-tool
   env:
     - name: AN_ENV
-      value: "a value in prod"
+      value: "a value in dev"
