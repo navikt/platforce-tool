@@ -274,10 +274,10 @@ button:hover {
     pointer-events: none;
 }
 
-target-row {
+.target-row {
     display: grid;
-    grid-template-columns: 301px 1fr 50px;
-    gap: 12px;
+    grid-template-columns: 300px 110px 70px;
+    gap: 8px;
     align-items: center;
     padding: 1px 5px;
 }
@@ -286,6 +286,11 @@ target-row {
     padding: 6px;
     border: 1px solid #ccc;
     border-radius: 6px;
+}
+
+.target-row input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .btn-primary {
@@ -408,5 +413,17 @@ target-row {
     color: #0e2a3d;
     border-bottom: 4px solid #3498DB;
     background: white;
+}
+
+.target-grid {
+    display: grid;
+
+    grid-template-columns:
+        minmax(400px, 500px)
+        minmax(500px, 700px);
+
+    gap: 24px;
+
+    align-items: start;
 }
 
