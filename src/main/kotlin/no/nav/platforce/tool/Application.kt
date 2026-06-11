@@ -1,6 +1,5 @@
 package no.nav.platforce.tool
 
-import com.google.gson.Gson
 import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
@@ -14,17 +13,14 @@ import no.nav.platforce.tool.entra.MockTokenValidator
 import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
 import no.nav.platforce.tool.github.DefaultGithubClient
 import no.nav.platforce.tool.github.GithubAppAuthenticator
-import okhttp3.MediaType.Companion.toMediaType
+import no.nav.sf.keytool.db.PostgresDatabase
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.bouncycastle.openssl.PEMKeyPair
 import org.bouncycastle.openssl.PEMParser
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
 import org.http4k.core.HttpHandler
 import org.http4k.core.Method
 import org.http4k.core.Response
-import org.http4k.core.Status
 import org.http4k.core.Status.Companion.OK
 import org.http4k.routing.ResourceLoader
 import org.http4k.routing.bind
@@ -35,7 +31,6 @@ import org.http4k.server.Netty
 import org.http4k.server.asServer
 import java.io.StringReader
 import java.security.interfaces.RSAPrivateKey
-import java.util.Base64
 
 class Application {
     private val log = KotlinLogging.logger { }
@@ -97,6 +92,8 @@ class Application {
                 Response(OK).header("Content-Type", "text/plain").body(file)
             },
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
+            "/internal/clearDb" authbind Method.GET to clearDbHandler,
+            "/internal/initDb" authbind Method.GET to initDbHandler,
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
             *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
         )
@@ -121,5 +118,15 @@ class Application {
             )
 
         return keyPair.private as RSAPrivateKey
+    }
+
+    private val clearDbHandler: HttpHandler = {
+        PostgresDatabase.createTargetVersionsTable(true)
+        Response(OK).body("Table recreated")
+    }
+
+    private val initDbHandler: HttpHandler = {
+        PostgresDatabase.createTargetVersionsTable(false)
+        Response(OK).body("Table created")
     }
 }
