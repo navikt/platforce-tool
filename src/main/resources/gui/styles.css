@@ -567,8 +567,8 @@ button:hover {
 }
 
 .note-icon .icon-svg {
-    width: 28px;
-    height: 28px;
+    width: 18px;
+    height: 18px;
 }
 
 .note-icon[data-has-note="true"] {
