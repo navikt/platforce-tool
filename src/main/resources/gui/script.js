@@ -7,6 +7,8 @@ let isRefreshing = false;
 let hasActiveScan = false;
 let isStartingScan = false;
 
+let lastLoadedData = [];
+
 async function fetchProgress() {
     const res = await fetch("/internal/api/dependency-scan/progress");
     return await res.json();
@@ -255,6 +257,8 @@ async function loadData() {
         ]);
 
     notes = noteData || {};
+
+    lastLoadedData = scanData || [];
 
     render(scanData);
 }
