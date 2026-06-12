@@ -503,6 +503,7 @@ button:hover {
 }
 
 .icon-btn {
+    color: #202733;   /* 👈 controls SVG via currentColor */
     width: 28px;
     height: 28px;
 
