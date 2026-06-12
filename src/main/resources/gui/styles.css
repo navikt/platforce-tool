@@ -502,3 +502,31 @@ button:hover {
     border-color: #74c0fc;
 }
 
+.remove-btn {
+    width: 28px;
+    height: 28px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border: 1px solid #e1e5ee;
+    background: white;
+    border-radius: 6px;
+
+    cursor: pointer;
+
+    color: #6b7280; /* controls SVG via currentColor */
+    padding: 0;
+}
+
+.remove-btn:hover {
+    background: #f8fafc;
+    color: #ef4444;
+    border-color: #fca5a5;
+}
+
+.remove-btn svg {
+    pointer-events: none;
+}
+
