@@ -78,8 +78,10 @@ button:hover {
     grid-template-columns:
         260px   /* repo name */
         80px    /* OK */
-        80px   /* UPDATE */
-        80px;   /* AHEAD */
+        80px    /* UPDATE */
+        80px    /* AHEAD */
+        30px    /* note icon*/
+        100px;  /* paddding */
     gap: 8px;
     align-items: center;
 }
@@ -438,11 +440,21 @@ button:hover {
 }
 
 .repo-note-view {
-    margin: 12px;
-    padding: 12px;
-    border-top: 1px solid #ddd;
+    display: none;
+    margin: 6px 12px;
+    padding: 6px 10px;
+
+    border-left: 3px solid #d6dce5;
+    background: #fafbfd;
+
+    font-size: 13px;
     color: #555;
+
     white-space: pre-wrap;
+}
+
+.repo.open .repo-note-view {
+    display: block;
 }
 
 .repo-note-editor {

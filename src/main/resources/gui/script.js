@@ -100,6 +100,8 @@ function render(data) {
         const el = document.createElement("div");
         el.className = "repo";
 
+        const noteText = notes?.[repo]?.trim() || "";
+
         el.innerHTML = `
             <div class="repo-header">
                 <div>
@@ -125,9 +127,9 @@ function render(data) {
                 </div>
             </div>
             
-            <div class="repo-note-view">
-                ${notes[repo] || ""}
-            </div>
+            ${noteText ? `
+                <div class="repo-note-view">${noteText}</div>
+                ` : ""}
 
             <div class="repo-note-editor hidden">
                 <textarea>${notes[repo] || ""}</textarea>
