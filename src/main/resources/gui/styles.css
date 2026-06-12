@@ -427,3 +427,31 @@ button:hover {
     align-items: start;
 }
 
+.note-icon {
+    margin-left: 10px;
+    cursor: pointer;
+    opacity: 0.55;
+}
+
+.note-icon:hover {
+    opacity: 1;
+}
+
+.repo-note-view {
+    margin: 12px;
+    padding: 12px;
+    border-top: 1px solid #ddd;
+    color: #555;
+    white-space: pre-wrap;
+}
+
+.repo-note-editor {
+    padding: 12px;
+}
+
+.repo-note-editor textarea {
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+}
+
