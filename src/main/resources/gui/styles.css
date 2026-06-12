@@ -502,31 +502,45 @@ button:hover {
     border-color: #74c0fc;
 }
 
-.remove-btn {
+.icon-btn {
     width: 28px;
     height: 28px;
 
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
 
-    border: 1px solid #e1e5ee;
-    background: white;
+    border: 1px solid #d7dde6;
     border-radius: 6px;
 
+    background: #fff;
     cursor: pointer;
 
-    color: #6b7280; /* controls SVG via currentColor */
     padding: 0;
+
+    transition: all 0.15s ease;
 }
 
-.remove-btn:hover {
-    background: #f8fafc;
-    color: #ef4444;
-    border-color: #fca5a5;
+.icon-btn svg {
+    width: 18px;
+    height: 18px;
 }
 
-.remove-btn svg {
-    pointer-events: none;
+.icon-btn:hover {
+    background: #f5f8ff;
+    border-color: #b8c6dd;
+}
+
+.icon-btn:active {
+    transform: scale(0.95);
+}
+
+/* optional semantic colors */
+.remove-btn:hover svg path {
+    fill: #c0392b;
+}
+
+.add-btn:hover svg path {
+    fill: #2c7be5;
 }
 
