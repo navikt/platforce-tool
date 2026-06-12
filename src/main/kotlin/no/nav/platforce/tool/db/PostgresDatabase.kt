@@ -3,6 +3,7 @@ package no.nav.sf.keytool.db
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import mu.KotlinLogging
+import no.nav.platforce.tool.db.REPOSITORY_NOTES
 import no.nav.platforce.tool.db.RepositoryNotesTable
 import no.nav.platforce.tool.db.TARGET_VERSIONS
 import no.nav.platforce.tool.db.TargetVersion
@@ -57,6 +58,21 @@ object PostgresDatabase {
             }
 
             log.info { "Creating table $TARGET_VERSIONS" }
+            SchemaUtils.create(TargetVersionsTable)
+        }
+    }
+
+    fun createRepositoryNotesTable(dropFirst: Boolean = false) {
+        transaction {
+            if (dropFirst) {
+                log.info { "Dropping table $REPOSITORY_NOTES" }
+                val dropStatement =
+                    TransactionManager.current().connection.prepareStatement("DROP TABLE $REPOSITORY_NOTES", false)
+                dropStatement.executeUpdate()
+                log.info { "Drop performed" }
+            }
+
+            log.info { "Creating table $REPOSITORY_NOTES" }
             SchemaUtils.create(TargetVersionsTable)
         }
     }
