@@ -2,6 +2,22 @@ const container = document.getElementById("container");
 const bar = document.getElementById("progressBar");
 const text = document.getElementById("progressText");
 
+const EDIT_NOTE_SVG = `
+<svg class="icon-svg" width="20" height="20" viewBox="0 0 24 24">
+<path fill-rule="evenodd" clip-rule="evenodd"
+d="M16.9697 2.96968C18.091 1.84836 19.909 1.84836 21.0303 2.96968C22.1517 4.091 22.1517 5.90902 21.0303 7.03034L19.5303 8.53033L15.1973 12.8634C15.0052 13.0555 14.771 13.2003 14.5132 13.2862L10.2372 14.7115C9.96767 14.8014 9.67055 14.7312 9.46968 14.5303C9.2688 14.3295 9.19866 14.0323 9.28849 13.7628L10.7138 9.48679C10.7998 9.22906 10.9445 8.99486 11.1366 8.80276L15.4666 4.47277Z"
+fill="currentColor"/>
+</svg>
+`;
+
+const CREATE_NOTE_SVG = `
+<svg class="icon-svg" width="20" height="20" viewBox="0 0 24 24">
+<path fill-rule="evenodd" clip-rule="evenodd"
+d="M19.6381 4.41742C18.3693 3.13949 16.3036 3.13578 15.0302 4.40915L5.65182 13.7876C5.56169 13.8777 5.49602 13.9893 5.461 14.1118L4.04679 19.0616C3.97205 19.3232 4.04482 19.6047 4.23693 19.7973C4.42905 19.9899 4.7104 20.0634 4.97215 19.9893L9.91261 18.5912C10.0359 18.5563 10.1481 18.4904 10.2387 18.3999L19.6298 9.00875C20.8967 7.74183 20.9004 5.68889 19.6381 4.41742Z"
+fill="currentColor"/>
+</svg>
+`;
+
 let progressInterval = null;
 let isRefreshing = false;
 let hasActiveScan = false;
@@ -111,7 +127,7 @@ function render(data) {
                     <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                     <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                     <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
-                    <span class="note-icon" data-repo="${repo}">${noteExists ? "📝" : "📄"}</span>
+                    <span class="note-icon" data-repo="${repo}" data-has-note="${noteExists}">${noteExists ? EDIT_NOTE_SVG : CREATE_NOTE_SVG}</span>
                 </div>
                 <div class="repo-actions">
                     ${
@@ -405,7 +421,7 @@ function renderTable(containerId, entries, type) {
         <input class="version" placeholder="version" />
         <button class="icon-btn add-btn" title="add">  
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M3.75 12C3.75 7.44365 7.44365 3.75 12 3.75C16.5563 3.75 20.25 7.44365 20.25 12C20.25 16.5563 16.5563 20.25 12 20.25C7.44365 20.25 3.75 16.5563 3.75 12ZM12 2.25C6.61522 2.25 2.25 6.61522 2.25 12C2.25 17.3848 6.61522 21.75 12 21.75C17.3848 21.75 21.75 17.3848 21.75 12C21.75 6.61522 17.3848 2.25 12 2.25ZM12 6.75C12.4142 6.75 12.75 7.08579 12.75 7.5V11.25H16.5C16.9142 11.25 17.25 11.5858 17.25 12C17.25 12.4142 16.9142 12.75 16.5 12.75H12.75V16.5C12.75 16.9142 12.4142 17.25 12 17.25C11.5858 17.25 11.25 16.9142 11.25 16.5V12.75H7.5C7.08579 12.75 6.75 12.4142 6.75 12C6.75 11.5858 7.08579 11.25 7.5 11.25H11.25V7.5C11.25 7.08579 11.5858 6.75 12 6.75Z"/>
+<path d="M12.75 5.5C12.75 5.08579 12.4142 4.75 12 4.75C11.5858 4.75 11.25 5.08579 11.25 5.5V11.25H5.5C5.08579 11.25 4.75 11.5858 4.75 12C4.75 12.4142 5.08579 12.75 5.5 12.75H11.25V18.5C11.25 18.9142 11.5858 19.25 12 19.25C12.4142 19.25 12.75 18.9142 12.75 18.5V12.75H18.5C18.9142 12.75 19.25 12.4142 19.25 12C19.25 11.5858 18.9142 11.25 18.5 11.25H12.75V5.5Z" fill="currentColor"/>
 </svg>
 </button>
     `;

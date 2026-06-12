@@ -545,3 +545,33 @@ button:hover {
     fill: #2c7be5;
 }
 
+.note-icon {
+    width: 28px;
+    height: 28px;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    cursor: pointer;
+
+    color: #6b7280; /* subtle grey */
+    border-radius: 6px;
+
+    transition: all 0.15s ease;
+}
+
+.note-icon:hover {
+    background: #f5f8ff;
+    color: #2c7be5;
+}
+
+.note-icon .icon-svg {
+    width: 18px;
+    height: 18px;
+}
+
+.note-icon[data-has-note="true"] {
+    color: #2c7be5;
+}
+
