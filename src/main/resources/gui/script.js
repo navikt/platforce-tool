@@ -162,8 +162,13 @@ function render(data) {
             ${f.key || "-"}
         </div>
 
-        <div>
-            ${f.currentVersion || "-"}
+        <div class="version-cell">
+            <span class="current-version">${f.currentVersion || "-"}</span>
+            ${
+                (f.status === "UPDATE" || f.status === "AHEAD") && f.targetVersion
+                    ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
+                    : ""
+            }
         </div>
 
         <div>

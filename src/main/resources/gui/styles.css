@@ -471,3 +471,34 @@ button:hover {
     display: none;
 }
 
+.version-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.current-version {
+    font-family: monospace;
+}
+
+.target-version-pill {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    border: 1px solid #c7d2e3;
+    background: #f5f8ff;
+    color: #3b4a66;
+    font-family: monospace;
+}
+
+.status-pill.status-update {
+    background: #fff4e5;
+    border-color: #ffcc80;
+}
+
+.status-pill.status-ahead {
+    background: #e7f5ff;
+    border-color: #74c0fc;
+}
+
