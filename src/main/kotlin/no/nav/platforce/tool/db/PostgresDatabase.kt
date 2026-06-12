@@ -73,7 +73,7 @@ object PostgresDatabase {
             }
 
             log.info { "Creating table $REPOSITORY_NOTES" }
-            SchemaUtils.create(TargetVersionsTable)
+            SchemaUtils.create(RepositoryNotesTable)
         }
     }
 
