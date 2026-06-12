@@ -3,6 +3,7 @@ package no.nav.sf.keytool.db
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import mu.KotlinLogging
+import no.nav.platforce.tool.db.RepositoryNotesTable
 import no.nav.platforce.tool.db.TARGET_VERSIONS
 import no.nav.platforce.tool.db.TargetVersion
 import no.nav.platforce.tool.db.TargetVersionsTable
@@ -12,11 +13,13 @@ import no.nav.platforce.tool.env
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.time.Instant
 
 const val NAIS_DB_JDBC_URL = "NAIS_DATABASE_PLATFORCE_TOOL_PLATFORCE_TOOL_JDBC_URL"
 
@@ -86,6 +89,53 @@ object PostgresDatabase {
                     it[TargetVersionsTable.createdAt] = version.createdAt
                     it[TargetVersionsTable.updatedAt] = version.updatedAt
                 }
+            }
+        }
+    }
+
+    fun getRepositoryNotes(userId: String): Map<String, String> =
+        transaction(database) {
+            RepositoryNotesTable
+                .selectAll()
+                .where {
+                    RepositoryNotesTable.userId eq userId
+                }.associate {
+                    it[RepositoryNotesTable.repository] to
+                        it[RepositoryNotesTable.note]
+                }
+        }
+
+    fun saveRepositoryNote(
+        userId: String,
+        team: String?,
+        repository: String,
+        note: String,
+    ) {
+        transaction(database) {
+            RepositoryNotesTable.deleteWhere {
+                (RepositoryNotesTable.userId eq userId) and
+                    (RepositoryNotesTable.repository eq repository)
+            }
+
+            RepositoryNotesTable.insert {
+                it[RepositoryNotesTable.userId] = userId
+                it[RepositoryNotesTable.team] = team
+                it[RepositoryNotesTable.repository] = repository
+                it[RepositoryNotesTable.note] = note
+                it[createdAt] = Instant.now()
+                it[updatedAt] = Instant.now()
+            }
+        }
+    }
+
+    fun deleteRepositoryNote(
+        userId: String,
+        repository: String,
+    ) {
+        transaction(database) {
+            RepositoryNotesTable.deleteWhere {
+                (RepositoryNotesTable.userId eq userId) and
+                    (RepositoryNotesTable.repository eq repository)
             }
         }
     }

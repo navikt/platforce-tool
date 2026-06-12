@@ -93,6 +93,10 @@ function render(data) {
 
         console.log(`📈 ${repo} stats -> OK:${ok}, UPDATE:${update}, AHEAD:${ahead}`);
 
+        const noteExists =
+            notes[repo] &&
+            notes[repo].trim().length > 0;
+
         const el = document.createElement("div");
         el.className = "repo";
 
@@ -103,6 +107,7 @@ function render(data) {
                     <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                     <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                     <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
+                    <span class="note-icon" data-repo="${repo}">${noteExists ? "📝" : "📄"}</span>
                 </div>
                 <div class="repo-actions">
                     ${
@@ -118,6 +123,18 @@ function render(data) {
 
                     <div class="repo-toggle">▼</div>
                 </div>
+            </div>
+            
+            <div class="repo-note-view">
+                ${notes[repo] || ""}
+            </div>
+
+            <div class="repo-note-editor hidden">
+                <textarea>${notes[repo] || ""}</textarea>
+            
+                <button class="save-note-btn">
+                    Save
+                </button>
             </div>
 
             <div class="table">
@@ -155,6 +172,37 @@ function render(data) {
         }).join("")}
             </div>
         `;
+
+        const noteIcon =
+            el.querySelector(".note-icon");
+
+        noteIcon.addEventListener("click", e => {
+
+            e.stopPropagation();
+
+            el.classList.add("open");
+
+            const editor =
+                el.querySelector(".repo-note-editor");
+
+            editor.classList.toggle("hidden");
+        });
+
+        el.querySelector(".save-note-btn")
+            .addEventListener("click", async () => {
+
+                const note =
+                    el.querySelector("textarea").value;
+
+                await saveNote(
+                    repo,
+                    note
+                );
+
+                notes[repo] = note;
+
+                render(lastLoadedData);
+            });
 
         const header = el.querySelector(".repo-header");
 
@@ -197,8 +245,16 @@ async function refresh() {
 }
 
 async function loadData() {
-    const data = await fetchData();
-    render(data);
+
+    const [scanData, noteData] =
+        await Promise.all([
+            fetchData(),
+            fetchNotes()
+        ]);
+
+    notes = noteData || {};
+
+    render(scanData);
 }
 
 async function pollProgress() {
@@ -262,6 +318,28 @@ async function createPr(repo) {
 async function fetchTargetVersions() {
     const res = await fetch("/internal/api/target-versions");
     return await res.json();
+}
+
+let notes = {};
+
+async function fetchNotes() {
+    const res =
+        await fetch("/internal/api/repository-notes");
+
+    return await res.json();
+}
+
+async function saveNote(repository, note) {
+    await fetch("/internal/api/repository-notes", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            repository,
+            note
+        })
+    });
 }
 
 let targetState = null;
@@ -403,8 +481,6 @@ document
         });
     });
 
-
-// INIT
 async function initTargets() {
     const data = await fetchTargetVersions();
     renderTargets(data);

@@ -13,6 +13,8 @@ import no.nav.platforce.tool.entra.MockTokenValidator
 import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
 import no.nav.platforce.tool.github.DefaultGithubClient
 import no.nav.platforce.tool.github.GithubAppAuthenticator
+import no.nav.platforce.tool.notes.RepositoryNotesStore
+import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.sf.keytool.db.PostgresDatabase
 import okhttp3.OkHttpClient
 import org.bouncycastle.openssl.PEMKeyPair
@@ -70,6 +72,8 @@ class Application {
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
 
+    val repositoryNotesStore = RepositoryNotesStore()
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -96,6 +100,7 @@ class Application {
             "/internal/initDb" bind Method.GET to initDbHandler,
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
             *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
+            *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
         )
 
     /**

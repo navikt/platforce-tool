@@ -3,10 +3,8 @@ package no.nav.platforce.tool.dependencies
 import com.google.gson.Gson
 import org.http4k.core.Method
 import org.http4k.core.Response
-import org.http4k.core.Response.Companion.invoke
 import org.http4k.core.Status
 import org.http4k.routing.bind
-import org.http4k.routing.path
 
 fun targetVersionsRoutes(store: TargetVersionsStore) =
     listOf(
