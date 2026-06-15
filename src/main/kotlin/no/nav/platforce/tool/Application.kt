@@ -95,7 +95,7 @@ class Application {
                     )
                 Response(OK).header("Content-Type", "text/plain").body(file)
             },
-            "/internal/gui" authbind Method.GET to static(ResourceLoader.Classpath("gui")),
+            "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
             "/internal/clearDb" bind Method.GET to clearDbHandler,
             "/internal/initDb" bind Method.GET to initDbHandler,
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
