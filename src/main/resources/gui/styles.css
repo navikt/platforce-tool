@@ -137,12 +137,25 @@ button:hover {
 
 /* table */
 .table {
-    display: none;
-    padding: 10px;
+    max-height: 0;
+    overflow: hidden;
+
+    opacity: 0;
+
+    transition:
+            max-height 0.25s ease,
+            opacity 0.15s ease;
+
+    padding-left: 10px;
+    padding-right: 10px;
 }
 
 .repo.open .table {
-    display: block;
+    max-height: 2000px;
+    opacity: 1;
+
+    padding-top: 10px;
+    padding-bottom: 10px;
 }
 
 .row {
