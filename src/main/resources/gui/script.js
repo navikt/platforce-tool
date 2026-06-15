@@ -26,6 +26,8 @@ let isRefreshing = false;
 let hasActiveScan = false;
 let isStartingScan = false;
 
+let refreshEpoch = 0;
+
 let lastLoadedData = [];
 
 async function fetchProgress() {
@@ -256,6 +258,7 @@ async function refresh() {
     if (isRefreshing) return;
 
     isRefreshing = true;
+
     hasActiveScan = true;
     isStartingScan = true;
 
