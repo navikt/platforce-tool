@@ -46,6 +46,7 @@ spec:
           - NAVident
     sidecar:
       enabled: true
+      autoLogin: true
   #    sidecar:
   #      enabled: false
   #  accessPolicy:
