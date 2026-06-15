@@ -10,6 +10,14 @@ class DependencyScanner(
     private val parser = GradleDependencyParser()
 
     fun scanAllRepositoriesWithProgress(cache: DependencyScanCache): List<RepositoryDependencyScan> {
+        cache.setProgress(
+            ScanProgress(
+                total = 0,
+                done = 0,
+                running = true,
+            ),
+        )
+
         val repos = githubClient.listRepositories()
 
         cache.setProgress(

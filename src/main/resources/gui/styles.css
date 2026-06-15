@@ -138,24 +138,11 @@ button:hover {
 /* table */
 .table {
     display: none;
-    opacity: 0;
     padding: 10px;
 }
 
 .repo.open .table {
     display: block;
-    animation: fadeInRows 150ms ease;
-}
-
-@keyframes fadeInRows {
-    from {
-        opacity: 0;
-        transform: translateY(-3px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 .row {
