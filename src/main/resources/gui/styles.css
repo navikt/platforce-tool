@@ -135,7 +135,7 @@ button:hover {
     color: #166534;
 }
 
-/* table */
+/* table  opacity 0.15s ease;*/
 .table {
     max-height: 0;
     overflow: hidden;
@@ -143,8 +143,7 @@ button:hover {
     opacity: 0;
 
     transition:
-            max-height 0.25s ease,
-            opacity 0.15s ease;
+            max-height 0.25s ease
 
     padding-left: 10px;
     padding-right: 10px;
