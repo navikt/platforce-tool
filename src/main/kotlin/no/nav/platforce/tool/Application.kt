@@ -16,7 +16,10 @@ import no.nav.platforce.tool.github.GithubAppAuthenticator
 import no.nav.platforce.tool.notes.RepositoryNotesStore
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.sf.keytool.db.PostgresDatabase
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.bouncycastle.openssl.PEMKeyPair
 import org.bouncycastle.openssl.PEMParser
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
@@ -44,6 +47,8 @@ class Application {
     val cluster = if (local) "local" else env(env_NAIS_CLUSTER_NAME)
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder().build()
+
+    val mediaTypeJson = "application/json".toMediaType()
 
     val githubAuthenticator =
         GithubAppAuthenticator(
@@ -101,6 +106,11 @@ class Application {
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
             *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
             *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
+            "/internal/naistest" bind Method.GET to { request ->
+                val auth = request.header("Authorization")
+                val result = callNaisGraphql(auth)
+                Response(OK).body(result)
+            },
         )
 
     /**
@@ -135,5 +145,39 @@ class Application {
         // PostgresDatabase.createTargetVersionsTable(false)
         PostgresDatabase.createRepositoryNotesTable(false)
         Response(OK).body("Tables created")
+    }
+
+    fun callNaisGraphql(authHeader: String?): String {
+        val query =
+            """
+            {
+              me {
+                __typename
+              }
+            }
+            """.trimIndent()
+
+        val body =
+            """
+            {
+              "query": ${query.trim().let { "\"\"\"$it\"\"\"" }}
+            }
+            """.trimIndent()
+
+        val request =
+            Request
+                .Builder()
+                .url("https://console.nav.cloud.nais.io/graphql")
+                .addHeader("Content-Type", "application/json")
+                .apply {
+                    if (authHeader != null) {
+                        addHeader("Authorization", authHeader)
+                    }
+                }.post(body.toRequestBody(mediaTypeJson))
+                .build()
+
+        httpClient.newCall(request).execute().use { resp ->
+            return resp.body.string()
+        }
     }
 }
