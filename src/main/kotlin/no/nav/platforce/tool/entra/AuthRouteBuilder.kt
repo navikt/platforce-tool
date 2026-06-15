@@ -20,7 +20,12 @@ data class AuthRouteBuilder(
             if (token != null) {
                 action(request)
             } else {
-                Response(Status.UNAUTHORIZED)
+                Response(Status.FOUND)
+                    .header(
+                        "Location",
+                        "/oauth2/login?redirect=${request.uri}",
+                    )
+                // Response(Status.UNAUTHORIZED)
             }
         }
 }
