@@ -126,7 +126,9 @@ function render(data) {
         el.innerHTML = `
             <div class="repo-header">
                 <div>
-                    <a class="repo-name-link" href="${repoUrl}">${repo || "UNKNOWN"}</a>
+                    <div class="repo-namecell">
+                        <a class="repo-name-link" href="${repoUrl}">${repo || "UNKNOWN"}</a>
+                    </div>
                     <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                     <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                     <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
