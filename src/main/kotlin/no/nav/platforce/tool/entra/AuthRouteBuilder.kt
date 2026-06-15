@@ -23,9 +23,8 @@ data class AuthRouteBuilder(
                 Response(Status.FOUND)
                     .header(
                         "Location",
-                        "/oauth2/login?redirect=${request.uri}",
+                        "/oauth2/login?redirect=/internal/gui",
                     )
-                // Response(Status.UNAUTHORIZED)
             }
         }
 }
