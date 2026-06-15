@@ -137,6 +137,7 @@ function render(data) {
                         hasActionable
                 ? `<button
                         class="pr-button"
+                        data-repo="${repo}"
                         onclick="event.stopPropagation(); createPr('${repo}')"
                     >
                         Create PR
@@ -333,16 +334,47 @@ function startProgressPolling() {
 }
 
 async function createPr(repo) {
-    const [owner, name] = repo.split("/");
 
-    const res = await fetch(
-        `/internal/api/dependency-scan/pr/${owner}/${name}`,
-        { method: "POST" }
-    );
+    const button =
+        document.querySelector(
+            `.pr-button[data-repo="${repo}"]`
+        );
 
-    const url = await res.text();
+    if (!button) {
+        return;
+    }
 
-    window.open(url, "_blank");
+    try {
+        button.disabled = true;
+        button.innerHTML = `
+            <span class="spinner"></span>
+            Creating...
+        `;
+        const [owner, name] = repo.split("/");
+        const res = await fetch(
+            `/internal/api/dependency-scan/pr/${owner}/${name}`,
+            {
+                method: "POST"
+            }
+        );
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+        const url = await res.text();
+        button.innerHTML = `
+            <span class="pr-done">
+                ✓ Done
+            </span>
+        `;
+        setTimeout(() => {
+            window.open(url, "_blank");
+        }, 300);
+    } catch (e) {
+        console.error(e);
+        button.disabled = false;
+        button.innerHTML = "Create PR";
+        alert("Failed to create PR");
+    }
 }
 
 async function fetchTargetVersions() {
