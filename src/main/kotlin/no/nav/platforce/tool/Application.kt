@@ -1,6 +1,7 @@
 package no.nav.platforce.tool
 
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
@@ -27,6 +28,7 @@ import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
 import org.http4k.core.HttpHandler
 import org.http4k.core.Method
 import org.http4k.core.Response
+import org.http4k.core.Status
 import org.http4k.core.Status.Companion.OK
 import org.http4k.routing.ResourceLoader
 import org.http4k.routing.bind
@@ -38,6 +40,7 @@ import org.http4k.server.asServer
 import java.io.File
 import java.io.StringReader
 import java.security.interfaces.RSAPrivateKey
+import java.util.Base64
 
 class Application {
     private val log = KotlinLogging.logger { }
@@ -110,10 +113,31 @@ class Application {
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
             *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
             *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
-            "/internal/naistest" bind Method.GET to { request ->
-                val auth = request.header("Authorization") // "preferred_username": "Bjorn.Hagglund@nav.no",
-                val result = callNaisTeams()
-                Response(OK).body(result)
+            "/internal/all-teams" bind Method.GET to { _ ->
+                val teams = getAllTeams()
+
+                Response(OK)
+                    .header("Content-Type", "application/json")
+                    .body(gson.toJson(teams))
+            },
+            "/internal/my-teams" bind Method.GET to { request ->
+
+                val authHeader =
+                    request.header("Authorization")
+                        ?: return@to Response(Status.UNAUTHORIZED).body("Missing Authorization header")
+
+                val email =
+                    try {
+                        extractPreferredUsername(authHeader)
+                    } catch (e: Exception) {
+                        return@to Response(Status.UNAUTHORIZED).body("Invalid token: ${e.message}")
+                    }
+
+                val userTeams = getUserTeams(email)
+
+                Response(OK)
+                    .header("Content-Type", "application/json")
+                    .body(gson.toJson(userTeams))
             },
         )
 
@@ -248,7 +272,7 @@ class Application {
                 .build()
 
         httpClient.newCall(request).execute().use { response ->
-            return response.body?.string() ?: "empty response"
+            return response.body.string() ?: "empty response"
         }
     }
 
@@ -262,4 +286,151 @@ class Application {
         val query: String,
         val variables: Map<String, Any?> = emptyMap(),
     )
+
+    data class TeamInfo(
+        val slug: String,
+        val slackChannel: String?,
+    )
+
+    fun readServiceToken(): String =
+        File(System.getenv("NAIS_SERVICE_ACCOUNT_TOKEN_PATH"))
+            .readText(Charsets.UTF_8)
+            .trim()
+
+    fun getAllTeams(): List<TeamInfo> {
+        val allTeams = mutableListOf<TeamInfo>()
+
+        var cursor: String? = null
+        var hasNextPage = true
+
+        val token = readServiceToken()
+
+        val query = loadGraphQL("/graphql/team-information.graphql")
+
+        while (hasNextPage) {
+            val payload =
+                GraphQLRequest(
+                    query = query,
+                    variables =
+                        mapOf(
+                            "teamFirst" to 200,
+                            "teamAfter" to cursor,
+                        ),
+                )
+
+            val bodyJson = gson.toJson(payload)
+
+            val request =
+                Request
+                    .Builder()
+                    .url("https://console.nav.cloud.nais.io/graphql")
+                    .addHeader("Authorization", "Bearer $token")
+                    .addHeader("Content-Type", mediaTypeJson.toString())
+                    .post(bodyJson.toRequestBody(mediaTypeJson))
+                    .build()
+
+            httpClient.newCall(request).execute().use { response ->
+
+                if (!response.isSuccessful) {
+                    throw RuntimeException("HTTP ${response.code}: ${response.message}")
+                }
+
+                val root = JsonParser.parseString(response.body.string()).asJsonObject
+
+                // GraphQL errors check
+                if (root.has("errors")) {
+                    throw RuntimeException(root["errors"].toString())
+                }
+
+                val data = root["data"].asJsonObject
+                val teams = data["teams"].asJsonObject
+                val nodes = teams["nodes"].asJsonArray
+                val pageInfo = teams["pageInfo"].asJsonObject
+
+                for (node in nodes) {
+                    val obj = node.asJsonObject
+
+                    allTeams.add(
+                        TeamInfo(
+                            slug = obj["slug"].asString,
+                            slackChannel = obj["slackChannel"]?.takeIf { !it.isJsonNull }?.asString,
+                        ),
+                    )
+                }
+
+                hasNextPage = pageInfo["hasNextPage"].asBoolean
+                cursor = pageInfo["endCursor"]?.takeIf { !it.isJsonNull }?.asString
+            }
+        }
+
+        return allTeams
+    }
+
+    fun getUserTeams(email: String): Set<String> {
+        val token = readServiceToken()
+
+        val query = loadGraphQL("/graphql/team-memberships-for-user.graphql")
+
+        val payload =
+            GraphQLRequest(
+                query = query,
+                variables = mapOf("email" to email),
+            )
+
+        val bodyJson = gson.toJson(payload)
+
+        val request =
+            Request
+                .Builder()
+                .url("https://console.nav.cloud.nais.io/graphql")
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", mediaTypeJson.toString())
+                .post(bodyJson.toRequestBody(mediaTypeJson))
+                .build()
+
+        httpClient.newCall(request).execute().use { response ->
+
+            val root = JsonParser.parseString(response.body.string()).asJsonObject
+
+            if (root.has("errors")) {
+                throw RuntimeException(root["errors"].toString())
+            }
+
+            val nodes =
+                root["data"]
+                    .asJsonObject["user"]
+                    .asJsonObject["teams"]
+                    .asJsonObject["nodes"]
+                    .asJsonArray
+
+            return nodes
+                .map {
+                    it.asJsonObject["team"].asJsonObject["slug"].asString
+                }.toSet()
+        }
+    }
+
+    fun extractPreferredUsername(authHeader: String?): String {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw RuntimeException("Missing Bearer token")
+        }
+
+        val token = authHeader.removePrefix("Bearer ").trim()
+
+        val parts = token.split(".")
+
+        if (parts.size < 2) {
+            throw RuntimeException("Invalid JWT token")
+        }
+
+        val payloadJson =
+            String(
+                Base64.getUrlDecoder().decode(parts[1]),
+            )
+
+        val payload = JsonParser.parseString(payloadJson).asJsonObject
+
+        return payload["preferred_username"]?.asString
+            ?: throw RuntimeException("preferred_username not found in token")
+    }
 }
