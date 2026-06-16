@@ -1,5 +1,6 @@
 package no.nav.platforce.tool
 
+import com.google.gson.Gson
 import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
@@ -40,6 +41,8 @@ import java.security.interfaces.RSAPrivateKey
 
 class Application {
     private val log = KotlinLogging.logger { }
+
+    val gson = Gson()
 
     val local: Boolean = System.getenv(env_NAIS_CLUSTER_NAME) == null
 
@@ -108,9 +111,9 @@ class Application {
             *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
             *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
             "/internal/naistest" bind Method.GET to { request ->
-                val auth = request.header("Authorization") // EXtract prefered username later
+                val auth = request.header("Authorization") // "preferred_username": "Bjorn.Hagglund@nav.no",
                 val result = callNaisApi()
-                Response(OK).body(result + "\n\n" + auth)
+                Response(OK).body(result)
             },
         )
 
@@ -194,12 +197,12 @@ class Application {
             }
             """.trimIndent()
 
-        val bodyJson =
-            """
-            {
-              "query": "$query"
-            }
-            """.trimIndent()
+        val payload =
+            mapOf(
+                "query" to query,
+            )
+
+        val bodyJson = gson.toJson(payload)
 
         val request =
             Request
