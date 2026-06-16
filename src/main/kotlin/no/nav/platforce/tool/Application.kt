@@ -34,6 +34,7 @@ import org.http4k.routing.static
 import org.http4k.server.Http4kServer
 import org.http4k.server.Netty
 import org.http4k.server.asServer
+import java.io.File
 import java.io.StringReader
 import java.security.interfaces.RSAPrivateKey
 
@@ -107,9 +108,9 @@ class Application {
             *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
             *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
             "/internal/naistest" bind Method.GET to { request ->
-                val auth = request.header("Authorization")
-                val result = callNaisGraphql(auth)
-                Response(OK).body(result)
+                val auth = request.header("Authorization") // EXtract prefered username later
+                val result = callNaisApi()
+                Response(OK).body(result + "\n\n" + auth)
             },
         )
 
@@ -174,6 +175,39 @@ class Application {
                         addHeader("Authorization", authHeader)
                     }
                 }.post(body.toRequestBody(mediaTypeJson))
+                .build()
+
+        httpClient.newCall(request).execute().use { resp ->
+            return resp.body.string()
+        }
+    }
+
+    fun callNaisApi(): String {
+        val token = File(env(env_NAIS_SERVICE_ACCOUNT_TOKEN_PATH)).readText(Charsets.UTF_8)
+
+        val query =
+            """
+            {
+              me {
+                __typename
+              }
+            }
+            """.trimIndent()
+
+        val bodyJson =
+            """
+            {
+              "query": "$query"
+            }
+            """.trimIndent()
+
+        val request =
+            Request
+                .Builder()
+                .url("https://console.nav.cloud.nais.io/graphql")
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", "application/json")
+                .post(bodyJson.toRequestBody(mediaTypeJson))
                 .build()
 
         httpClient.newCall(request).execute().use { resp ->
