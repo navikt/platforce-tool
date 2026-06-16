@@ -139,6 +139,30 @@ class Application {
                     .header("Content-Type", "application/json")
                     .body(gson.toJson(userTeams))
             },
+            "/internal/my-apps" bind Method.GET to { request ->
+                val authHeader =
+                    request.header("Authorization")
+                        ?: return@to Response(Status.UNAUTHORIZED).body("Missing Authorization")
+
+                val email = extractPreferredUsername(authHeader)
+
+                val userTeams = getUserTeams(email) // Set<String>
+
+                val result =
+                    userTeams.map { teamSlug ->
+
+                        val apps = fetchTeamApps(teamSlug)
+
+                        TeamAppsGroup(
+                            team = teamSlug,
+                            apps = apps,
+                        )
+                    }
+
+                Response(OK)
+                    .header("Content-Type", "application/json")
+                    .body(gson.toJson(result))
+            },
         )
 
     /**
@@ -432,5 +456,56 @@ class Application {
 
         return payload["preferred_username"]?.asString
             ?: throw RuntimeException("preferred_username not found in token")
+    }
+
+    data class AppInfo(
+        val name: String,
+    )
+
+    data class TeamAppsGroup(
+        val team: String,
+        val apps: List<AppInfo>,
+    )
+
+    fun fetchTeamApps(teamSlug: String): List<AppInfo> {
+        val token = readServiceToken()
+        val query = loadGraphQL("/graphql/team-apps.graphql")
+
+        val payload =
+            GraphQLRequest(
+                query = query,
+                variables = mapOf("slug" to teamSlug),
+            )
+
+        val bodyJson = gson.toJson(payload)
+
+        val request =
+            Request
+                .Builder()
+                .url("https://console.nav.cloud.nais.io/graphql")
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", mediaTypeJson.toString())
+                .post(bodyJson.toRequestBody(mediaTypeJson))
+                .build()
+
+        httpClient.newCall(request).execute().use { response ->
+
+            val root =
+                JsonParser
+                    .parseString(
+                        response.body?.string() ?: error("empty response"),
+                    ).asJsonObject
+
+            val nodes =
+                root
+                    .getAsJsonObject("data")
+                    .getAsJsonObject("team")
+                    .getAsJsonObject("workloads")
+                    .getAsJsonArray("nodes")
+
+            return nodes.map {
+                AppInfo(it.asJsonObject["name"].asString)
+            }
+        }
     }
 }
