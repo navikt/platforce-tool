@@ -493,18 +493,29 @@ class Application {
             val root =
                 JsonParser
                     .parseString(
-                        response.body?.string() ?: error("empty response"),
+                        response.body?.string() ?: return emptyList(),
                     ).asJsonObject
 
-            val nodes =
-                root
-                    .getAsJsonObject("data")
-                    .getAsJsonObject("team")
-                    .getAsJsonObject("workloads")
-                    .getAsJsonArray("nodes")
+            val data =
+                root["data"]?.takeIf { !it.isJsonNull }?.asJsonObject
+                    ?: return emptyList()
 
-            return nodes.map {
-                AppInfo(it.asJsonObject["name"].asString)
+            val team =
+                data["team"]?.takeIf { !it.isJsonNull }?.asJsonObject
+                    ?: return emptyList()
+
+            val workloads =
+                team["workloads"]?.takeIf { !it.isJsonNull }?.asJsonObject
+                    ?: return emptyList()
+
+            val nodes =
+                workloads["nodes"]?.takeIf { !it.isJsonNull }?.asJsonArray
+                    ?: return emptyList()
+
+            return nodes.mapNotNull { node ->
+                val obj = node.asJsonObject
+                val name = obj["name"]?.takeIf { !it.isJsonNull }?.asString
+                name?.let { AppInfo(it) }
             }
         }
     }
