@@ -112,7 +112,7 @@ class Application {
             *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
             "/internal/naistest" bind Method.GET to { request ->
                 val auth = request.header("Authorization") // "preferred_username": "Bjorn.Hagglund@nav.no",
-                val result = callNaisApi()
+                val result = callNaisTeams()
                 Response(OK).body(result)
             },
         )
@@ -217,4 +217,49 @@ class Application {
             return resp.body.string()
         }
     }
+
+    fun callNaisTeams(): String {
+        val token =
+            File(System.getenv("NAIS_SERVICE_ACCOUNT_TOKEN_PATH"))
+                .readText(Charsets.UTF_8)
+                .trim()
+
+        val query = loadGraphQL("/graphql/team-information.graphql")
+
+        val payload =
+            GraphQLRequest(
+                query = query,
+                variables =
+                    mapOf(
+                        "teamFirst" to 200,
+                        "teamAfter" to null,
+                    ),
+            )
+
+        val bodyJson = gson.toJson(payload)
+
+        val request =
+            okhttp3.Request
+                .Builder()
+                .url("https://console.nav.cloud.nais.io/graphql")
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", "application/json")
+                .post(bodyJson.toRequestBody("application/json".toMediaType()))
+                .build()
+
+        httpClient.newCall(request).execute().use { response ->
+            return response.body?.string() ?: "empty response"
+        }
+    }
+
+    fun loadGraphQL(path: String): String =
+        object {}
+            .javaClass
+            .getResource(path)!!
+            .readText()
+
+    data class GraphQLRequest(
+        val query: String,
+        val variables: Map<String, Any?> = emptyMap(),
+    )
 }
