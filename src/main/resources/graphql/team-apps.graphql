@@ -1,0 +1,10 @@
+query TeamApps($slug: String!) {
+  team(slug: $slug) {
+    slug
+    workloads {
+      nodes {
+        name
+      }
+    }
+  }
+}
