@@ -47,6 +47,10 @@ spec:
     sidecar:
       enabled: true
       autoLogin: true
+  accessPolicy:
+    outbound:
+      external:
+        - host: console.nav.cloud.nais.io
   #    sidecar:
   #      enabled: false
   #  accessPolicy:
