@@ -124,10 +124,15 @@ function render({ repos, scans }) {
                         </a>
                     </div>
 
-                    <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
-                    <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
-                    <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
-
+                    ${
+                        isScanned ? `
+                            <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
+                            <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
+                            <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>`
+                        : isMissing
+                            ? `<span class="badge missing">NOT INSTALLED</span>`
+                            : `<span class="badge pending">NOT SCANNED</span>`
+                    }
                     ${
             noteExists
                 ? `<span class="note-icon" data-repo="${repo}">
@@ -142,7 +147,7 @@ function render({ repos, scans }) {
                 <div class="repo-actions">
                     ${
             isMissing
-                ? `<button class="install-button">Install App</button>`
+                ? `<button class="pr-button install-button">Install App</button>`
                 : hasActionable
                     ? `<button class="pr-button"
                                            onclick="event.stopPropagation(); createPr('${repo}')">
@@ -151,7 +156,7 @@ function render({ repos, scans }) {
                     : `<span class="pr-button disabled">Create PR</span>`
         }
 
-                    <div class="repo-toggle">▼</div>
+                    ${isScanned ? `<div class="repo-toggle">▼</div>` : ``}
                 </div>
             </div>
 
