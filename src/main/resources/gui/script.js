@@ -24,6 +24,8 @@ let refreshEpoch = 0;
 
 let lastLoadedData = [];
 
+let ignoredRepositories = [];
+
 async function fetchRepoView() {
     const res = await fetch("/internal/repos/view");
     return await res.json();
@@ -36,6 +38,14 @@ async function fetchProgress() {
 
 async function fetchData() {
     const res = await fetch("/internal/api/dependency-scan");
+    return await res.json();
+}
+
+async function fetchIgnoredRepositories() {
+    const res =
+        await fetch(
+            "/internal/api/ignored-repositories"
+        );
     return await res.json();
 }
 
@@ -60,6 +70,8 @@ function render({ repos, scans }) {
 
     container.innerHTML = "";
 
+    const ignoredSet = new Set(ignoredRepositories);
+
     if (!Array.isArray(repos)) {
         console.error("❌ Expected repos array but got:", repos);
         return;
@@ -75,7 +87,9 @@ function render({ repos, scans }) {
 
     console.log(`📊 Rendering ${repos.length} repos`);
 
-    repos.forEach((repoView, index) => {
+    repos.filter(repoView =>
+        !ignoredSet.has(repoView.name)
+    ).forEach(repoView => {
 
         const repo = repoView?.name;
         const state = repoView?.state;
@@ -147,7 +161,8 @@ function render({ repos, scans }) {
                 <div class="repo-actions">
                     ${
             isMissing
-                ? `<button class="pr-button install-button">Install App</button>`
+                ? `<button class="pr-button ignore-button" onclick="event.stopPropagation(); ignoreRepository('${repo}')">Ignore</button>
+                <button class="pr-button install-button">Install App</button>`
                 : hasActionable
                     ? `<button class="pr-button"
                                            onclick="event.stopPropagation(); createPr('${repo}')">
@@ -265,14 +280,17 @@ async function refresh() {
 
 async function loadData() {
 
-    const [repoViewData, scanData, noteData] =
+    const [repoViewData, scanData, noteData, ignoredData] =
         await Promise.all([
             fetchRepoView(),
             fetchData(),
-            fetchNotes()
+            fetchNotes(),
+            fetchIgnoredRepositories()
         ]);
 
     notes = noteData || {};
+
+    ignoredRepositories = ignoredData?.repositories || [];
 
     lastLoadedData = {
         repos: repoViewData || [],
@@ -280,6 +298,8 @@ async function loadData() {
     };
 
     render(lastLoadedData);
+
+    renderIgnoredRepositories();
 }
 
 async function pollProgress() {
@@ -551,6 +571,132 @@ document
 async function initTargets() {
     const data = await fetchTargetVersions();
     renderTargets(data);
+}
+
+async function ignoreRepository(repo) {
+
+    if (
+        ignoredRepositories.includes(repo)
+    ) {
+        return;
+    }
+
+    ignoredRepositories.push(repo);
+
+    await saveIgnoredRepositories();
+
+    await loadData();
+}
+
+async function saveIgnoredRepositories() {
+
+    await fetch(
+        "/internal/api/ignored-repositories/update",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                repositories:
+                ignoredRepositories
+            })
+        }
+    );
+}
+
+function renderIgnoredRepositories() {
+
+    const container =
+        document.getElementById(
+            "ignoredReposTable"
+        );
+
+    container.innerHTML = "";
+
+    ignoredRepositories
+        .sort()
+        .forEach(repo => {
+
+            const row =
+                document.createElement("div");
+
+            row.className =
+                "target-row";
+
+            row.innerHTML = `
+                <input
+                    class="key"
+                    value="${repo}"
+                />
+
+                <button class="remove">
+                    ${TRASH_SVG}
+                </button>
+            `;
+
+            row.querySelector(".remove")
+                .addEventListener(
+                    "click",
+                    async () => {
+
+                        ignoredRepositories =
+                            ignoredRepositories
+                                .filter(
+                                    r => r !== repo
+                                );
+
+                        await saveIgnoredRepositories();
+
+                        renderIgnoredRepositories();
+                    }
+                );
+
+            container.appendChild(row);
+        });
+
+    const addRow =
+        document.createElement("div");
+
+    addRow.className =
+        "add-row";
+
+    addRow.innerHTML = `
+        <button class="add-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" 
+                d="M4.5 6.25C4.08579 6.25 3.75 6.58579 3.75 7C3.75 7.41421 4.08579 7.75 4.5 7.75H5.30548L6.18119 19.1342C6.25132 20.046 7.01159 20.75 7.92603 20.75H16.074C16.9884 20.75 17.7487 20.046 17.8188 19.1342L18.6945 7.75H19.5C19.9142 7.75 20.25 7.41421 20.25 7C20.25 6.58579 19.9142 6.25 19.5 6.25H16.75V6C16.75 4.48122 15.5188 3.25 14 3.25H10C8.48122 3.25 7.25 4.48122 7.25 6V6.25H4.5ZM10 4.75C9.30964 4.75 8.75 5.30964 8.75 6V6.25H15.25V6C15.25 5.30964 14.6904 4.75 14 4.75H10ZM6.80991 7.75L7.67677 19.0192C7.68679 19.1494 7.7954 19.25 7.92603 19.25H16.074C16.2046 19.25 16.3132 19.1494 16.3232 19.0192L17.1901 7.75H6.80991ZM10 9.75C10.4142 9.75 10.75 10.0858 10.75 10.5V16.5C10.75 16.9142 10.4142 17.25 10 17.25C9.58579 17.25 9.25 16.9142 9.25 16.5V10.5C9.25 10.0858 9.58579 9.75 10 9.75ZM14 9.75C14.4142 9.75 14.75 10.0858 14.75 10.5V16.5C14.75 16.9142 14.4142 17.25 14 17.25C13.5858 17.25 13.25 16.9142 13.25 16.5V10.5C13.25 10.0858 13.5858 9.75 14 9.75Z"
+                fill="currentColor"/>
+        </svg>
+        </button>
+    `;
+
+    addRow.querySelector(".add-btn")
+        .addEventListener(
+            "click",
+            async () => {
+
+                const repo =
+                    prompt(
+                        "Repository name (owner/repo)"
+                    );
+
+                if (!repo) {
+                    return;
+                }
+
+                ignoredRepositories.push(
+                    repo.trim()
+                );
+
+                await saveIgnoredRepositories();
+
+                renderIgnoredRepositories();
+            }
+        );
+
+    container.appendChild(addRow);
 }
 
 initTargets();

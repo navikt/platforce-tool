@@ -87,3 +87,37 @@ fun ResultRow.toRepositoryNote() =
         createdAt = this[RepositoryNotesTable.createdAt],
         updatedAt = this[RepositoryNotesTable.updatedAt],
     )
+
+const val IGNORED_REPOSITORIES = "ignored_repositories"
+
+object IgnoredRepositoriesTable : Table(IGNORED_REPOSITORIES) {
+    val userId = varchar("user_id", 100)
+    val team = varchar("team", 100).nullable()
+    val repository = varchar("repository", 500)
+
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey =
+        PrimaryKey(
+            userId,
+            repository,
+        )
+}
+
+data class IgnoredRepository(
+    val userId: String,
+    val team: String?,
+    val repository: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+)
+
+fun ResultRow.toIgnoredRepository() =
+    IgnoredRepository(
+        userId = this[IgnoredRepositoriesTable.userId],
+        team = this[IgnoredRepositoriesTable.team],
+        repository = this[IgnoredRepositoriesTable.repository],
+        createdAt = this[IgnoredRepositoriesTable.createdAt],
+        updatedAt = this[IgnoredRepositoriesTable.updatedAt],
+    )

@@ -3,6 +3,7 @@ package no.nav.sf.keytool.db
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import mu.KotlinLogging
+import no.nav.platforce.tool.db.IgnoredRepositoriesTable
 import no.nav.platforce.tool.db.REPOSITORY_NOTES
 import no.nav.platforce.tool.db.RepositoryNotesTable
 import no.nav.platforce.tool.db.TARGET_VERSIONS
@@ -152,6 +153,39 @@ object PostgresDatabase {
             RepositoryNotesTable.deleteWhere {
                 (RepositoryNotesTable.userId eq userId) and
                     (RepositoryNotesTable.repository eq repository)
+            }
+        }
+    }
+
+    fun getIgnoredRepositories(userId: String): List<String> =
+        transaction(database) {
+            IgnoredRepositoriesTable
+                .selectAll()
+                .where {
+                    IgnoredRepositoriesTable.userId eq userId
+                }.map {
+                    it[IgnoredRepositoriesTable.repository]
+                }
+        }
+
+    fun replaceIgnoredRepositories(
+        userId: String,
+        team: String?,
+        repositories: List<String>,
+    ) {
+        transaction(database) {
+            IgnoredRepositoriesTable.deleteWhere {
+                IgnoredRepositoriesTable.userId eq userId
+            }
+
+            repositories.forEach { repo ->
+                IgnoredRepositoriesTable.insert {
+                    it[IgnoredRepositoriesTable.userId] = userId
+                    it[IgnoredRepositoriesTable.team] = team
+                    it[IgnoredRepositoriesTable.repository] = repo
+                    it[createdAt] = Instant.now()
+                    it[updatedAt] = Instant.now()
+                }
             }
         }
     }
