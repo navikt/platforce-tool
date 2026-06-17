@@ -633,3 +633,26 @@ button:hover {
     color: #888;
 }
 
+.badge.missing {
+    background: #e7e7e7;
+    color: #666;
+}
+
+.badge.pending {
+    background: #f2f2f2;
+    color: #777;
+}
+
+.pr-button.install-button {
+    background: #2d6cdf;
+    color: white;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.pr-button.install-button:hover {
+    background: #2459b8;
+}
+
