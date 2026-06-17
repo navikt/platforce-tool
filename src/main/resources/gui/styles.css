@@ -610,11 +610,12 @@ button:hover {
 }
 
 .repo.not-scanned {
-    opacity: 0.5;
+    color: #eef5f4;
 }
 
 .repo.missing {
-    opacity: 0.35;
+    background: #eeeeee;
+    opacity: 0.9;
 }
 
 .repo.not-scanned .repo-header {
@@ -644,6 +645,7 @@ button:hover {
 
 .badge.pending {
     max-width: 200px;
+    width: 92px;
     background: #f2f2f2;
     color: #777;
 }
