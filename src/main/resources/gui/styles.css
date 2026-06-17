@@ -234,14 +234,14 @@ button:hover {
 }
 
 .repo-name-link {
-    display: inline;
-    width: auto;
+    display: block;              /* important */
+    white-space: nowrap;         /* required */
+    overflow: hidden;            /* required */
+    text-overflow: ellipsis;
 
     color: #1f2a44;
     text-decoration: none;
     font-weight: 600;
-
-    text-overflow: ellipsis;
 }
 
 .repo-name-link:hover {
