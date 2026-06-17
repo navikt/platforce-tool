@@ -6,6 +6,7 @@ import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
 import no.nav.platforce.tool.dependencies.DependencyScanner
+import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.TargetVersionsStore
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
 import no.nav.platforce.tool.dependencies.targetVersionsRoutes
@@ -177,6 +178,41 @@ class Application {
                 Response(OK)
                     .header("Content-Type", "application/json")
                     .body(gson.toJson(repos))
+            },
+            "/internal/repos/view" bind Method.GET to { request ->
+
+                val auth =
+                    request.header("Authorization")
+                        ?: return@to Response(Status.UNAUTHORIZED)
+
+                val email = extractPreferredUsername(auth)
+
+                val nais = getRepositoriesForUser(email)
+
+                val naisRepoMap =
+                    nais.teams
+                        .flatMap { team ->
+                            team.repositories.map { repo ->
+                                repo to team.team
+                            }
+                        }.toMap()
+
+                val installed = githubClient.listRepositories().toSet()
+                val scanned: Map<String, RepositoryDependencyScan> =
+                    dependencyScanCache
+                        .get()
+                        .associateBy { it.repository }
+
+                val result =
+                    buildRepoView(
+                        naisRepoMap,
+                        installed,
+                        scanned,
+                    )
+
+                Response(OK)
+                    .header("Content-Type", "application/json")
+                    .body(gson.toJson(result))
             },
         )
 
@@ -623,4 +659,42 @@ class Application {
             )
         }
     }
+
+    enum class RepoState {
+        NOT_IN_GITHUB, // exists in Nais, but not installed
+        NOT_SCANNED, // installed but no scan yet
+        SCANNED, // has scan data
+    }
+
+    data class RepoView(
+        val name: String,
+        val team: String,
+        val state: RepoState,
+        val scan: RepositoryDependencyScan? = null,
+    )
+
+    fun buildRepoView(
+        naisRepos: Map<String, String>,
+        installed: Set<String>,
+        scanned: Map<String, RepositoryDependencyScan>,
+    ): List<RepoView> =
+        naisRepos
+            .map { (repo, team) ->
+
+                val scan = scanned[repo]
+
+                val state =
+                    when {
+                        repo !in installed -> RepoState.NOT_IN_GITHUB
+                        scan == null -> RepoState.NOT_SCANNED
+                        else -> RepoState.SCANNED
+                    }
+
+                RepoView(
+                    name = repo,
+                    team = team,
+                    state = state,
+                    scan = scan,
+                )
+            }.sortedWith(compareBy({ it.team }, { it.name }))
 }
