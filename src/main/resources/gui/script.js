@@ -206,9 +206,7 @@ function render({ repos, scans }) {
                 }).join("")}
                     </div>
                     `
-                : `<div class="repo-placeholder">
-                        ${isMissing ? "Not in GitHub" : "Not scanned yet"}
-                       </div>`
+                : ``
         }
         `;
 
