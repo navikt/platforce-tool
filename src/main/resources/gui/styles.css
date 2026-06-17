@@ -240,6 +240,8 @@ button:hover {
     color: #1f2a44;
     text-decoration: none;
     font-weight: 600;
+
+    text-overflow: ellipsis;
 }
 
 .repo-name-link:hover {
@@ -635,12 +637,22 @@ button:hover {
 }
 
 .badge.missing {
+    max-width: 200px;
     background: #e7e7e7;
     color: #666;
 }
 
 .badge.pending {
+    max-width: 200px;
     background: #f2f2f2;
     color: #777;
+}
+
+.repo-header > div:first-child > * {
+    min-width: 0;
+}
+.repo-namecell {
+    overflow: hidden;
+    min-width: 0;
 }
 
