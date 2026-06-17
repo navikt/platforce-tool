@@ -104,6 +104,7 @@ button:hover {
     align-items: center;
     font-variant-numeric: tabular-nums; /* stable number width */
     border: 1px dotted currentColor;
+    white-space: nowrap;
 }
 
 /* summary badges */
@@ -641,18 +642,5 @@ button:hover {
 .badge.pending {
     background: #f2f2f2;
     color: #777;
-}
-
-.pr-button.install-button {
-    background: #2d6cdf;
-    color: white;
-    border: none;
-    padding: 6px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-}
-
-.pr-button.install-button:hover {
-    background: #2459b8;
 }
 
