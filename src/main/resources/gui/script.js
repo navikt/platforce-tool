@@ -24,6 +24,11 @@ let refreshEpoch = 0;
 
 let lastLoadedData = [];
 
+async function fetchRepoView() {
+    const res = await fetch("/internal/repos/view");
+    return await res.json();
+}
+
 async function fetchProgress() {
     const res = await fetch("/internal/api/dependency-scan/progress");
     return await res.json();
@@ -49,198 +54,181 @@ function groupByRepo(data) {
     return map;
 }
 
-function render(data) {
+function render({ repos, scans }) {
 
-    console.log("📦 RAW API DATA RECEIVED:", data);
+    console.log("📦 RAW API DATA RECEIVED:", { repos, scans });
 
     container.innerHTML = "";
 
-    if (!data) {
-        console.warn("⚠️ render() called with null/undefined data");
+    if (!Array.isArray(repos)) {
+        console.error("❌ Expected repos array but got:", repos);
         return;
     }
 
-    if (!Array.isArray(data)) {
-        console.error("❌ Expected array but got:", typeof data, data);
-        return;
-    }
+    // Build lookup map for scans (IMPORTANT)
+    const scanMap = (scans || []).reduce((acc, scan) => {
+        if (scan?.repository) {
+            acc[scan.repository] = scan;
+        }
+        return acc;
+    }, {});
 
-    console.log(`📊 Rendering ${data.length} repository scans`);
+    console.log(`📊 Rendering ${repos.length} repos`);
 
-    data.forEach((repoScan, index) => {
+    repos.forEach((repoView, index) => {
 
-        console.log(`\n🔎 Repo [${index}] raw object:`, repoScan);
-
-        const repo = repoScan?.repository;
-        const repoUrl = `https://github.com/${repo}`;
-        const [owner, repoName] = (repo || "unknown/unknown").split("/");
-        const findingsRaw = repoScan?.findings;
+        const repo = repoView?.name;
+        const state = repoView?.state;
+        const team = repoView?.team;
 
         if (!repo) {
-            console.warn("⚠️ Missing repository field:", repoScan);
+            console.warn("⚠️ Missing repo name:", repoView);
+            return;
         }
 
-        if (!Array.isArray(findingsRaw)) {
-            console.error("❌ findings is not array for repo:", repo, findingsRaw);
-        }
+        const repoUrl = `https://github.com/${repo}`;
+        const [owner, repoName] = repo.split("/");
 
-        const findings = (findingsRaw || []).filter(f => {
-            const valid = f && f.kind && f.status;
+        const scan = scanMap[repo];
+        const findingsRaw = scan?.findings || [];
 
-            if (!valid) {
-                console.warn("⚠️ Dropping invalid finding:", f);
-            }
-
-            return valid;
-        });
-
-        const actionableFindings = findings.filter(f =>
-            f.status === "UPDATE" || f.status === "AHEAD"
-        );
-
-        const hasActionable = actionableFindings.length > 0;
-
-        const branchName = `dependency-update-${repoName}`;
-
-        console.log(`📁 ${repo}: ${findings.length}/${findingsRaw?.length ?? 0} valid findings`);
+        const findings = findingsRaw.filter(f => f && f.kind && f.status);
 
         const ok = findings.filter(f => f.status === "OK").length;
         const update = findings.filter(f => f.status === "UPDATE").length;
         const ahead = findings.filter(f => f.status === "AHEAD").length;
 
-        console.log(`📈 ${repo} stats -> OK:${ok}, UPDATE:${update}, AHEAD:${ahead}`);
-
-        const noteExists =
-            notes[repo] &&
-            notes[repo].trim().length > 0;
-
-        const el = document.createElement("div");
-        el.className = "repo";
+        const hasActionable = findings.some(f =>
+            f.status === "UPDATE" || f.status === "AHEAD"
+        );
 
         const noteText = notes?.[repo]?.trim() || "";
+        const noteExists = noteText.length > 0;
+
+        const isScanned = state === "SCANNED";
+        const isMissing = state === "NOT_IN_GITHUB";
+        const isNotScanned = state === "NOT_SCANNED";
+
+        const el = document.createElement("div");
+        el.className =
+            "repo " +
+            (isNotScanned ? "not-scanned" : "") +
+            (isMissing ? "missing" : "");
 
         el.innerHTML = `
             <div class="repo-header">
                 <div>
                     <div class="repo-namecell">
-                        <a class="repo-name-link" href="${repoUrl}">${repo || "UNKNOWN"}</a>
+                        <a class="repo-name-link" href="${repoUrl}">
+                            ${repo}
+                        </a>
                     </div>
+
                     <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                     <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                     <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
-                    <span class="note-icon" data-repo="${repo}" data-has-note="${noteExists}">${noteExists ? EDIT_NOTE_SVG : CREATE_NOTE_SVG}</span>
+
+                    ${
+            noteExists
+                ? `<span class="note-icon" data-repo="${repo}">
+                                    ${EDIT_NOTE_SVG}
+                               </span>`
+                : `<span class="note-icon" data-repo="${repo}">
+                                    ${CREATE_NOTE_SVG}
+                               </span>`
+        }
                 </div>
+
                 <div class="repo-actions">
                     ${
-                        hasActionable
-                ? `<button
-                        class="pr-button"
-                        data-repo="${repo}"
-                        onclick="event.stopPropagation(); createPr('${repo}')"
-                    >
-                        Create PR
-                    </button>`
-                : `<span class="pr-button disabled">Create PR</span>`
-                     }
+            isMissing
+                ? `<button class="install-button">Install App</button>`
+                : hasActionable
+                    ? `<button class="pr-button"
+                                           onclick="event.stopPropagation(); createPr('${repo}')">
+                                        Create PR
+                                   </button>`
+                    : `<span class="pr-button disabled">Create PR</span>`
+        }
 
                     <div class="repo-toggle">▼</div>
                 </div>
             </div>
-            
-            ${noteText ? `
-                <div class="repo-note-view">${noteText}</div>
-                ` : ""}
+
+            ${
+            noteText
+                ? `<div class="repo-note-view">${noteText}</div>`
+                : ""
+        }
 
             <div class="repo-note-editor hidden">
-                <textarea>${notes[repo] || ""}</textarea>
-            
-                <button class="save-note-btn">
-                    Save
-                </button>
+                <textarea>${noteText}</textarea>
+                <button class="save-note-btn">Save</button>
             </div>
 
-            <div class="table">
-                ${findings.map(f => {
-
-            const kind = (f.kind || "UNKNOWN").toLowerCase();
-            const status = (f.status || "UNKNOWN");
-
-            const rowClass =
-                kind === "plugin"
-                    ? "plugin-row"
-                    : "dependency-row";
-
-            return `
-    <div class="row ${rowClass}">
-        <div class="pill ${kind}">
-            ${f.kind || "UNKNOWN"}
-        </div>
-
-        <div>
-            ${f.key || "-"}
-        </div>
-
-        <div class="version-cell">
-            <span class="current-version">${f.currentVersion || "-"}</span>
             ${
-                (f.status === "UPDATE" || f.status === "AHEAD") && f.targetVersion
-                    ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
-                    : ""
-            }
-        </div>
+            isScanned
+                ? `
+                    <div class="table">
+                        ${findings.map(f => {
+                    const kind = (f.kind || "UNKNOWN").toLowerCase();
+                    const status = (f.status || "UNKNOWN");
 
-        <div>
-            <span class="status-pill status-${status.toLowerCase()}">
-                ${status}
-            </span>
-        </div>
-    </div>
-`;
-        }).join("")}
-            </div>
+                    return `
+                                <div class="row ${kind}-row">
+                                    <div class="pill">${f.kind}</div>
+                                    <div>${f.key || "-"}</div>
+
+                                    <div class="version-cell">
+                                        <span class="current-version">
+                                            ${f.currentVersion || "-"}
+                                        </span>
+
+                                        ${
+                        (status === "UPDATE" || status === "AHEAD") && f.targetVersion
+                            ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
+                            : ""
+                    }
+                                    </div>
+
+                                    <div>
+                                        <span class="status-pill status-${status.toLowerCase()}">
+                                            ${status}
+                                        </span>
+                                    </div>
+                                </div>
+                            `;
+                }).join("")}
+                    </div>
+                    `
+                : `<div class="repo-placeholder">
+                        ${isMissing ? "Not in GitHub" : "Not scanned yet"}
+                       </div>`
+        }
         `;
 
-        const noteIcon =
-            el.querySelector(".note-icon");
+        // interactions unchanged
+        const noteIcon = el.querySelector(".note-icon");
 
         noteIcon.addEventListener("click", e => {
-
             e.stopPropagation();
-
             el.classList.add("open");
-
-            const editor =
-                el.querySelector(".repo-note-editor");
-
-            editor.classList.toggle("hidden");
+            el.querySelector(".repo-note-editor").classList.toggle("hidden");
         });
 
-        el.querySelector(".save-note-btn")
-            .addEventListener("click", async () => {
+        el.querySelector(".save-note-btn")?.addEventListener("click", async () => {
+            const note = el.querySelector("textarea").value;
 
-                const note =
-                    el.querySelector("textarea").value;
+            await saveNote(repo, note);
 
-                await saveNote(
-                    repo,
-                    note
-                );
+            notes[repo] = note;
 
-                notes[repo] = note;
-
-                render(lastLoadedData);
-            });
-
-        const header = el.querySelector(".repo-header");
-
-        header.addEventListener("click", () => {
-            el.classList.toggle("open");
+            render(lastLoadedData);
         });
 
-        el.querySelector(".repo-name-link")
-            ?.addEventListener("click", event => {
-                event.stopPropagation();
-            });
+        el.querySelector(".repo-header").addEventListener("click", () => {
+            if (isScanned) el.classList.toggle("open");
+        });
 
         container.appendChild(el);
     });
@@ -274,7 +262,7 @@ async function refresh() {
 
 async function loadData() {
 
-    const [scanData, noteData] =
+    const [repoViewData, scanData, noteData] =
         await Promise.all([
             fetchData(),
             fetchNotes()
@@ -282,9 +270,12 @@ async function loadData() {
 
     notes = noteData || {};
 
-    lastLoadedData = scanData || [];
+    lastLoadedData = {
+        repos: repoViewData || [],
+        scans: scanData || []
+    };
 
-    render(scanData);
+    render(lastLoadedData);
 }
 
 async function pollProgress() {

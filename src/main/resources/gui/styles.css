@@ -606,3 +606,30 @@ button:hover {
     font-weight: 600;
 }
 
+.repo.not-scanned {
+    opacity: 0.5;
+}
+
+.repo.missing {
+    opacity: 0.35;
+}
+
+.repo.not-scanned .repo-header {
+    cursor: default;
+}
+
+.repo.missing .repo-header {
+    cursor: default;
+}
+
+.repo-placeholder {
+    padding: 10px;
+    color: #777;
+    font-style: italic;
+}
+
+.disabled-link {
+    pointer-events: none;
+    color: #888;
+}
+
