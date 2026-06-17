@@ -264,6 +264,7 @@ async function loadData() {
 
     const [repoViewData, scanData, noteData] =
         await Promise.all([
+            fetchRepoView(),
             fetchData(),
             fetchNotes()
         ]);
