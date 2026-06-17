@@ -1,0 +1,23 @@
+query TeamMembershipsForUser($email: String!) {
+  user(email: $email) {
+    name
+    email
+
+    teams {
+      nodes {
+        role
+
+        team {
+          slug
+          slackChannel
+
+          repositories {
+            nodes {
+              name
+            }
+          }
+        }
+      }
+    }
+  }
+}

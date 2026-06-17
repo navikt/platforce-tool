@@ -30,6 +30,7 @@ import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.core.Status.Companion.OK
+import org.http4k.core.Status.Companion.UNAUTHORIZED
 import org.http4k.routing.ResourceLoader
 import org.http4k.routing.bind
 import org.http4k.routing.routes
@@ -162,6 +163,20 @@ class Application {
                 Response(OK)
                     .header("Content-Type", "application/json")
                     .body(gson.toJson(result))
+            },
+            "/internal/my-repos" bind Method.GET to { request ->
+
+                val authHeader =
+                    request.header("Authorization")
+                        ?: return@to Response(UNAUTHORIZED)
+
+                val email = extractPreferredUsername(authHeader)
+
+                val repos = getRepositoriesForUser(email)
+
+                Response(OK)
+                    .header("Content-Type", "application/json")
+                    .body(gson.toJson(repos))
             },
         )
 
@@ -517,6 +532,95 @@ class Application {
                 val name = obj["name"]?.takeIf { !it.isJsonNull }?.asString
                 name?.let { AppInfo(it) }
             }
+        }
+    }
+
+    data class TeamRepositories(
+        val team: String,
+        val role: String,
+        val repositories: List<String>,
+    )
+
+    data class UserRepositoriesResponse(
+        val email: String,
+        val teams: List<TeamRepositories>,
+    )
+
+    fun getRepositoriesForUser(email: String): UserRepositoriesResponse {
+        val token = readServiceToken()
+
+        val payload =
+            GraphQLRequest(
+                query = loadGraphQL("/graphql/my-repositories.graphql"),
+                variables =
+                    mapOf(
+                        "email" to email,
+                    ),
+            )
+
+        val requestBody = gson.toJson(payload)
+
+        val request =
+            Request
+                .Builder()
+                .url("https://console.nav.cloud.nais.io/graphql")
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", mediaTypeJson.toString())
+                .post(requestBody.toRequestBody(mediaTypeJson))
+                .build()
+
+        httpClient.newCall(request).execute().use { response ->
+
+            val root =
+                JsonParser
+                    .parseString(
+                        response.body?.string() ?: "{}",
+                    ).asJsonObject
+
+            val user =
+                root
+                    .getAsJsonObject("data")
+                    ?.getAsJsonObject("user")
+                    ?: throw IllegalStateException("No user returned")
+
+            val teams =
+                user
+                    .getAsJsonObject("teams")
+                    .getAsJsonArray("nodes")
+
+            val result =
+                teams
+                    .map { node ->
+
+                        val nodeObj = node.asJsonObject
+
+                        val role = nodeObj["role"].asString
+
+                        val teamObj =
+                            nodeObj
+                                .getAsJsonObject("team")
+
+                        val teamSlug = teamObj["slug"].asString
+
+                        val repositories =
+                            teamObj
+                                .getAsJsonObject("repositories")
+                                .getAsJsonArray("nodes")
+                                .map {
+                                    it.asJsonObject["name"].asString
+                                }.sorted()
+
+                        TeamRepositories(
+                            team = teamSlug,
+                            role = role,
+                            repositories = repositories,
+                        )
+                    }.sortedBy { it.team }
+
+            return UserRepositoriesResponse(
+                email = email,
+                teams = result,
+            )
         }
     }
 }

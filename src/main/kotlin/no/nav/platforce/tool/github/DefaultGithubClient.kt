@@ -58,7 +58,7 @@ class DefaultGithubClient(
         val request = authenticatedRequest("https://api.github.com/repos/$owner/$repo")
 
         httpClient.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: error("Missing body")
+            val body = response.body.string()
 
             if (!response.isSuccessful) {
                 error("Failed to get repo info: $body")
@@ -82,7 +82,7 @@ class DefaultGithubClient(
             )
 
         httpClient.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: error("Missing body")
+            val body = response.body.string()
 
             if (!response.isSuccessful) {
                 error("Failed to get file sha: $body")
