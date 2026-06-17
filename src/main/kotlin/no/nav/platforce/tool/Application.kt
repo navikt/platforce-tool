@@ -16,6 +16,8 @@ import no.nav.platforce.tool.entra.MockTokenValidator
 import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
 import no.nav.platforce.tool.github.DefaultGithubClient
 import no.nav.platforce.tool.github.GithubAppAuthenticator
+import no.nav.platforce.tool.ignore.IgnoredRepositoriesStore
+import no.nav.platforce.tool.ignore.ignoredRepositoriesRoutes
 import no.nav.platforce.tool.notes.RepositoryNotesStore
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.sf.keytool.db.PostgresDatabase
@@ -88,6 +90,8 @@ class Application {
 
     val repositoryNotesStore = RepositoryNotesStore()
 
+    val ignoredRepositoriesStore = IgnoredRepositoriesStore()
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -115,6 +119,7 @@ class Application {
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
             *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
             *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
+            *ignoredRepositoriesRoutes(ignoredRepositoriesStore).toTypedArray(),
             "/internal/all-teams" bind Method.GET to { _ ->
                 val teams = getAllTeams()
 
