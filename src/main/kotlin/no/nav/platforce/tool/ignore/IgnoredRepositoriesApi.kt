@@ -15,4 +15,21 @@ fun ignoredRepositoriesRoutes(store: IgnoredRepositoriesStore) =
                 .header("Content-Type", "application/json")
                 .body(Gson().toJson(store.get()))
         },
+        "/internal/api/ignored-repositories/update" bind Method.POST to { req ->
+
+            val body = req.bodyString()
+
+            val parsed =
+                Gson().fromJson(
+                    body,
+                    IgnoredRepositoriesState::class.java,
+                )
+
+            store.replace(
+                team = null,
+                repositories = parsed.repositories,
+            )
+
+            Response(Status.OK).body("updated")
+        },
     )
