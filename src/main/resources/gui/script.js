@@ -710,7 +710,7 @@ function renderIgnoredRepositories() {
 
     console.log("about to append addRow");
     container.appendChild(addRow);
-    onsole.log("addRow appended");
+    console.log("addRow appended");
 }
 
 document
