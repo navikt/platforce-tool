@@ -246,12 +246,14 @@ class Application {
     private val clearDbHandler: HttpHandler = {
         PostgresDatabase.createTargetVersionsTable(true)
         PostgresDatabase.createRepositoryNotesTable(true)
+        PostgresDatabase.createIgnoredRepositoriesTable(true)
         Response(OK).body("Tables recreated")
     }
 
     private val initDbHandler: HttpHandler = {
         // PostgresDatabase.createTargetVersionsTable(false)
-        PostgresDatabase.createRepositoryNotesTable(false)
+        // PostgresDatabase.createRepositoryNotesTable(false)
+        PostgresDatabase.createIgnoredRepositoriesTable(false)
         Response(OK).body("Tables created")
     }
 
