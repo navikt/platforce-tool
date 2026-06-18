@@ -77,14 +77,20 @@ function render({ repos, scans }) {
 
     console.log("📦 RAW API DATA RECEIVED:", { repos, scans });
 
+
+
+    //continue here Step 2: render with team headers
+
     container.innerHTML = "";
 
     const ignoredSet = new Set(ignoredRepositories);
 
-    if (!Array.isArray(repos)) {
-        console.error("❌ Expected repos array but got:", repos);
-        return;
-    }
+    const visibleRepos =
+        repos.filter(repo =>
+            !ignoredSet.has(repo.name)
+        );
+
+    const grouped = groupRepos(visibleRepos);
 
     // Build lookup map for scans (IMPORTANT)
     const scanMap = (scans || []).reduce((acc, scan) => {
@@ -96,49 +102,79 @@ function render({ repos, scans }) {
 
     console.log(`📊 Rendering ${repos.length} repos`);
 
-    repos.filter(repoView =>
-        !ignoredSet.has(repoView.name)
-    ).forEach(repoView => {
+    container.innerHTML = "";
 
-        const repo = repoView?.name;
-        const state = repoView?.state;
-        const team = repoView?.team;
+    Object.keys(grouped)
+        .sort() // team alphabetical
+        .forEach(team => {
 
-        if (!repo) {
-            console.warn("⚠️ Missing repo name:", repoView);
-            return;
-        }
+            // TEAM HEADER (pill)
+            const header = document.createElement("div");
+            header.className = "team-header";
 
-        const repoUrl = `https://github.com/${repo}`;
-        const [owner, repoName] = repo.split("/");
+            header.innerHTML = `
+            <span class="team-pill">${team}</span>
+        `;
 
-        const scan = scanMap[repo];
-        const findingsRaw = scan?.findings || [];
+            container.appendChild(header);
 
-        const findings = findingsRaw.filter(f => f && f.kind && f.status);
+            // repos
+            grouped[team].forEach(repoView => {
+                renderRepo(repoView, scanMap, container);
+            });
+        });
 
-        const ok = findings.filter(f => f.status === "OK").length;
-        const update = findings.filter(f => f.status === "UPDATE").length;
-        const ahead = findings.filter(f => f.status === "AHEAD").length;
+    // repos.filter(repoView =>
+    //     !ignoredSet.has(repoView.name)
+    // ).forEach(repoView => {
+    //
+    //     //Old
+    // });
 
-        const hasActionable = findings.some(f =>
-            f.status === "UPDATE" || f.status === "AHEAD"
-        );
+    console.log("✅ Render complete");
+}
 
-        const noteText = notes?.[repo]?.trim() || "";
-        const noteExists = noteText.length > 0;
+function renderRepo(repoView, scanMap, container) {
+    // your existing per-repo code unchanged
+    const repo = repoView?.name;
+    const state = repoView?.state;
+    const team = repoView?.team;
 
-        const isScanned = state === "SCANNED";
-        const isMissing = state === "NOT_IN_GITHUB";
-        const isNotScanned = state === "NOT_SCANNED";
+    if (!repo) {
+        console.warn("⚠️ Missing repo name:", repoView);
+        return;
+    }
 
-        const el = document.createElement("div");
-        el.className =
-            "repo " +
-            (isNotScanned ? "not-scanned" : "") +
-            (isMissing ? "missing" : "");
+    const repoUrl = `https://github.com/${repo}`;
+    const [owner, repoName] = repo.split("/");
 
-        el.innerHTML = `
+    const scan = scanMap[repo];
+    const findingsRaw = scan?.findings || [];
+
+    const findings = findingsRaw.filter(f => f && f.kind && f.status);
+
+    const ok = findings.filter(f => f.status === "OK").length;
+    const update = findings.filter(f => f.status === "UPDATE").length;
+    const ahead = findings.filter(f => f.status === "AHEAD").length;
+
+    const hasActionable = findings.some(f =>
+        f.status === "UPDATE" || f.status === "AHEAD"
+    );
+
+    const noteText = notes?.[repo]?.trim() || "";
+    const noteExists = noteText.length > 0;
+
+    const isScanned = state === "SCANNED";
+    const isMissing = state === "NOT_IN_GITHUB";
+    const isNotScanned = state === "NOT_SCANNED";
+
+    const el = document.createElement("div");
+    el.className =
+        "repo " +
+        (isNotScanned ? "not-scanned" : "") +
+        (isMissing ? "missing" : "");
+
+    el.innerHTML = `
             <div class="repo-header">
                 <div>
                     <div class="repo-namecell">
@@ -148,47 +184,47 @@ function render({ repos, scans }) {
                     </div>
 
                     ${
-                        isScanned ? `
+        isScanned ? `
                             <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                             <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                             <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>`
-                        : isMissing
-                            ? `<span class="badge missing">NOT INSTALLED</span>`
-                            : `<span class="badge pending">NOT SCANNED</span>`
-                    }
+            : isMissing
+                ? `<span class="badge missing">NOT INSTALLED</span>`
+                : `<span class="badge pending">NOT SCANNED</span>`
+    }
                     ${
-            noteExists
-                ? `<span class="note-icon" data-repo="${repo}">
+        noteExists
+            ? `<span class="note-icon" data-repo="${repo}">
                                     ${EDIT_NOTE_SVG}
                                </span>`
-                : `<span class="note-icon" data-repo="${repo}">
+            : `<span class="note-icon" data-repo="${repo}">
                                     ${CREATE_NOTE_SVG}
                                </span>`
-        }
+    }
                 </div>
 
                 <div class="repo-actions">
                     ${
-            isMissing
-                ? `<button class="pr-button ignore-button" onclick="event.stopPropagation(); ignoreRepository('${repo}')">Ignore</button>
+        isMissing
+            ? `<button class="pr-button ignore-button" onclick="event.stopPropagation(); ignoreRepository('${repo}')">Ignore</button>
                 <button class="pr-button install-button">Install App</button>`
-                : hasActionable
-                    ? `<button class="pr-button"
+            : hasActionable
+                ? `<button class="pr-button"
                                            onclick="event.stopPropagation(); createPr('${repo}')">
                                         Create PR
                                    </button>`
-                    : `<span class="pr-button disabled">Create PR</span>`
-        }
+                : `<span class="pr-button disabled">Create PR</span>`
+    }
 
                     ${isScanned ? `<div class="repo-toggle">▼</div>` : ``}
                 </div>
             </div>
 
             ${
-            noteText
-                ? `<div class="repo-note-view">${noteText}</div>`
-                : ""
-        }
+        noteText
+            ? `<div class="repo-note-view">${noteText}</div>`
+            : ""
+    }
 
             <div class="repo-note-editor hidden">
                 <textarea>${noteText}</textarea>
@@ -196,14 +232,14 @@ function render({ repos, scans }) {
             </div>
 
             ${
-            isScanned
-                ? `
+        isScanned
+            ? `
                     <div class="table">
                         ${findings.map(f => {
-                    const kind = (f.kind || "UNKNOWN").toLowerCase();
-                    const status = (f.status || "UNKNOWN");
+                const kind = (f.kind || "UNKNOWN").toLowerCase();
+                const status = (f.status || "UNKNOWN");
 
-                    return `
+                return `
                                 <div class="row ${kind}-row">
                                     <div class="pill">${f.kind}</div>
                                     <div>${f.key || "-"}</div>
@@ -214,10 +250,10 @@ function render({ repos, scans }) {
                                         </span>
 
                                         ${
-                        (status === "UPDATE" || status === "AHEAD") && f.targetVersion
-                            ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
-                            : ""
-                    }
+                    (status === "UPDATE" || status === "AHEAD") && f.targetVersion
+                        ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
+                        : ""
+                }
                                     </div>
 
                                     <div>
@@ -227,40 +263,37 @@ function render({ repos, scans }) {
                                     </div>
                                 </div>
                             `;
-                }).join("")}
+            }).join("")}
                     </div>
                     `
-                : ``
-        }
+            : ``
+    }
         `;
 
-        // interactions unchanged
-        const noteIcon = el.querySelector(".note-icon");
+    // interactions unchanged
+    const noteIcon = el.querySelector(".note-icon");
 
-        noteIcon.addEventListener("click", e => {
-            e.stopPropagation();
-            el.classList.add("open");
-            el.querySelector(".repo-note-editor").classList.toggle("hidden");
-        });
-
-        el.querySelector(".save-note-btn")?.addEventListener("click", async () => {
-            const note = el.querySelector("textarea").value;
-
-            await saveNote(repo, note);
-
-            notes[repo] = note;
-
-            render(lastLoadedData);
-        });
-
-        el.querySelector(".repo-header").addEventListener("click", () => {
-            if (isScanned) el.classList.toggle("open");
-        });
-
-        container.appendChild(el);
+    noteIcon.addEventListener("click", e => {
+        e.stopPropagation();
+        el.classList.add("open");
+        el.querySelector(".repo-note-editor").classList.toggle("hidden");
     });
 
-    console.log("✅ Render complete");
+    el.querySelector(".save-note-btn")?.addEventListener("click", async () => {
+        const note = el.querySelector("textarea").value;
+
+        await saveNote(repo, note);
+
+        notes[repo] = note;
+
+        render(lastLoadedData);
+    });
+
+    el.querySelector(".repo-header").addEventListener("click", () => {
+        if (isScanned) el.classList.toggle("open");
+    });
+
+    container.appendChild(el);
 }
 
 async function refresh() {
@@ -616,6 +649,8 @@ async function ignoreRepository(repo) {
 
 async function saveIgnoredRepositories() {
 
+    console.log("Ignored repositories list persisted to db")
+
     await fetch(
         "/internal/api/ignored-repositories/update",
         {
@@ -718,9 +753,7 @@ function renderIgnoredRepositories() {
         if (e.key === "Enter") add();
     });
 
-    console.log("about to append addRow");
     container.appendChild(addRow);
-    console.log("addRow appended");
 }
 
 document
@@ -731,6 +764,43 @@ document
 
         await loadData(); // ensures scanner refresh + backend truth
     });
+
+function groupRepos(data) {
+    const stateRank = (state) => {
+        switch (state) {
+            case "SCANNED": return 0;
+            case "NOT_SCANNED": return 1;
+            case "NOT_IN_GITHUB": return 2;
+            default: return 3;
+        }
+    };
+
+    const grouped = {};
+
+    for (const repo of data) {
+        const team = repo.team || "unknown";
+
+        if (!grouped[team]) {
+            grouped[team] = [];
+        }
+
+        grouped[team].push(repo);
+    }
+
+    // sort inside groups
+    for (const team of Object.keys(grouped)) {
+        grouped[team].sort((a, b) => {
+            const stateDiff =
+                stateRank(a.state) - stateRank(b.state);
+
+            if (stateDiff !== 0) return stateDiff;
+
+            return a.name.localeCompare(b.name);
+        });
+    }
+
+    return grouped;
+}
 
 initTargets();
 loadData();
