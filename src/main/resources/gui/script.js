@@ -708,7 +708,9 @@ function renderIgnoredRepositories() {
         if (e.key === "Enter") add();
     });
 
+    console.log("about to append addRow");
     container.appendChild(addRow);
+    onsole.log("addRow appended");
 }
 
 document
