@@ -638,6 +638,7 @@ button:hover {
 }
 
 .badge.missing {
+    width: 96px;
     max-width: 200px;
     background: #e7e7e7;
     color: #666;
