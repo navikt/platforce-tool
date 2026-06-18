@@ -321,6 +321,10 @@ button:hover {
     padding: 16px;
 }
 
+.ignore-content {
+    padding: 16px;
+}
+
 #targetVersionsCard.open .target-content {
     display: block;
 }
@@ -667,8 +671,4 @@ button:hover {
 
 .new-ignore-input {
     width: 100%;
-}
-
-.add-row {
-    grid-template-columns: 1fr 40px !important;
 }
