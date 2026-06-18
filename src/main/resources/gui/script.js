@@ -560,9 +560,9 @@ document
                     : "none";
 
             document
-                .getElementById("targetsTab")
+                .getElementById("ignoredTab")
                 .style.display =
-                selected === "targets"
+                selected === "ignored"
                     ? "block"
                     : "none";
         });
