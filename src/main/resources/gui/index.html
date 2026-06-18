@@ -83,18 +83,26 @@
     </div>
 </div>
 
-<div id="ignoredTab" class="tab-content">
-
-    <div class="target-card">
-
-        <div class="section-pill">
-            Ignored Repositories
+<div id="ignoredTab" style="display:none">
+    <div id="ignoredCard" class="repo open">
+        <div class="target-content">
+            <div class="target-grid">
+                <div class="target-section ignored">
+                    <div class="target-section-header">
+                        <span class="section-pill dependency-pill">
+                            Ignored Repositories
+                        </span>
+                    </div>
+                    <div id="ignoredReposTable"></div>
+                </div>
+            </div>
+            <div class="target-actions">
+                <button id="saveIgnored" class="btn-primary">
+                    Save Ignored Repositories
+                </button>
+            </div>
         </div>
-
-        <div id="ignoredReposTable"></div>
-
     </div>
-
 </div>
 
 <script src="/internal/gui/script.js"></script>

@@ -22,6 +22,8 @@ const TRASH_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                 fill="currentColor"/>
         </svg>`
 
+const ADD_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.75 5.5C12.75 5.08579 12.4142 4.75 12 4.75C11.5858 4.75 11.25 5.08579 11.25 5.5V11.25H5.5C5.08579 11.25 4.75 11.5858 4.75 12C4.75 12.4142 5.08579 12.75 5.5 12.75H11.25V18.5C11.25 18.9142 11.5858 19.25 12 19.25C12.4142 19.25 12.75 18.9142 12.75 18.5V12.75H18.5C18.9142 12.75 19.25 12.4142 19.25 12C19.25 11.5858 18.9142 11.25 18.5 11.25H12.75V5.5Z" fill="currentColor"/></svg>`
+
 let progressInterval = null;
 let isRefreshing = false;
 let hasActiveScan = false;
@@ -622,9 +624,7 @@ async function saveIgnoredRepositories() {
 function renderIgnoredRepositories() {
 
     const container =
-        document.getElementById(
-            "ignoredReposTable"
-        );
+        document.getElementById("ignoredReposTable");
 
     container.innerHTML = "";
 
@@ -639,10 +639,7 @@ function renderIgnoredRepositories() {
                 "target-row";
 
             row.innerHTML = `
-                <input
-                    class="key"
-                    value="${repo}"
-                />
+                <input class="key" value="${repo}"/>
 
                 <button class="icon-btn remove">
                     ${TRASH_SVG}
@@ -650,9 +647,7 @@ function renderIgnoredRepositories() {
             `;
 
             row.querySelector(".remove")
-                .addEventListener(
-                    "click",
-                    async () => {
+                .addEventListener("click", async () => {
 
                         ignoredRepositories =
                             ignoredRepositories
@@ -663,6 +658,8 @@ function renderIgnoredRepositories() {
                         await saveIgnoredRepositories();
 
                         renderIgnoredRepositories();
+
+                        render(lastLoadedData)
                     }
                 );
 
@@ -672,43 +669,51 @@ function renderIgnoredRepositories() {
     const addRow =
         document.createElement("div");
 
-    addRow.className =
-        "add-row";
+    addRow.className = "add-row";
 
     addRow.innerHTML = `
         <button class="icon-btn add-btn">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12.75 5.5C12.75 5.08579 12.4142 4.75 12 4.75C11.5858 4.75 11.25 5.08579 11.25 5.5V11.25H5.5C5.08579 11.25 4.75 11.5858 4.75 12C4.75 12.4142 5.08579 12.75 5.5 12.75H11.25V18.5C11.25 18.9142 11.5858 19.25 12 19.25C12.4142 19.25 12.75 18.9142 12.75 18.5V12.75H18.5C18.9142 12.75 19.25 12.4142 19.25 12C19.25 11.5858 18.9142 11.25 18.5 11.25H12.75V5.5Z" fill="currentColor"/>
-        </svg>
+            ${ADD_SVG}
         </button>
     `;
 
-    addRow.querySelector(".add-btn")
-        .addEventListener(
-            "click",
-            async () => {
+    const input = addRow.querySelector(".new-ignore-input");
+    const btn = addRow.querySelector(".add-btn");
 
-                const repo =
-                    prompt(
-                        "Repository name (owner/repo)"
-                    );
+    const add = async () => {
+        const repo = input.value.trim();
+        if (!repo) return;
 
-                if (!repo) {
-                    return;
-                }
+        if (!ignoredRepositories.includes(repo)) {
+            ignoredRepositories.push(repo);
+        }
 
-                ignoredRepositories.push(
-                    repo.trim()
-                );
+        input.value = "";
 
-                await saveIgnoredRepositories();
+        await saveIgnoredRepositories();
+        renderIgnoredRepositories();
 
-                renderIgnoredRepositories();
-            }
-        );
+        // IMPORTANT: update scanner view immediately
+        render(lastLoadedData);
+    };
+
+    btn.addEventListener("click", add);
+
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter") add();
+    });
 
     container.appendChild(addRow);
 }
+
+document
+    .getElementById("saveIgnored")
+    .addEventListener("click", async () => {
+
+        await saveIgnoredRepositories();
+
+        await loadData(); // ensures scanner refresh + backend truth
+    });
 
 initTargets();
 loadData();
