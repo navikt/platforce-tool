@@ -3,6 +3,7 @@ package no.nav.sf.keytool.db
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import mu.KotlinLogging
+import no.nav.platforce.tool.db.IGNORED_REPOSITORIES
 import no.nav.platforce.tool.db.IgnoredRepositoriesTable
 import no.nav.platforce.tool.db.REPOSITORY_NOTES
 import no.nav.platforce.tool.db.RepositoryNotesTable
@@ -75,6 +76,21 @@ object PostgresDatabase {
 
             log.info { "Creating table $REPOSITORY_NOTES" }
             SchemaUtils.create(RepositoryNotesTable)
+        }
+    }
+
+    fun createIgnoredRepositoriesTable(dropFirst: Boolean = false) {
+        transaction {
+            if (dropFirst) {
+                log.info { "Dropping table $IGNORED_REPOSITORIES" }
+                val dropStatement =
+                    TransactionManager.current().connection.prepareStatement("DROP TABLE $IGNORED_REPOSITORIES", false)
+                dropStatement.executeUpdate()
+                log.info { "Drop performed" }
+            }
+
+            log.info { "Creating table $IGNORED_REPOSITORIES" }
+            SchemaUtils.create(IgnoredRepositoriesTable)
         }
     }
 
