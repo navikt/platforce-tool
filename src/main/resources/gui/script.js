@@ -672,10 +672,15 @@ function renderIgnoredRepositories() {
     addRow.className = "add-row";
 
     addRow.innerHTML = `
-        <button class="icon-btn add-btn">
-            ${ADD_SVG}
-        </button>
-    `;
+    <input
+        class="key new-ignore-input"
+        placeholder="owner/repo"
+    />
+
+    <button class="icon-btn add-btn">
+        ${ADD_SVG}
+    </button>
+`;
 
     const input = addRow.querySelector(".new-ignore-input");
     const btn = addRow.querySelector(".add-btn");
