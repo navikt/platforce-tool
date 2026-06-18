@@ -591,6 +591,16 @@ async function initTargets() {
 
 async function ignoreRepository(repo) {
 
+    const btn = event.currentTarget;
+
+    const original = btn.innerHTML;
+
+    btn.disabled = true;
+    btn.innerHTML = `
+        <span class="spinner"></span>
+        Ignoring...
+    `;
+
     if (
         ignoredRepositories.includes(repo)
     ) {

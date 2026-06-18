@@ -287,13 +287,16 @@ button:hover {
     padding: 1px 5px;
 }
 
-.target-row input {
+.target-row input,
+.add-row input {{
     padding: 6px;
     border: 1px solid #ccc;
     border-radius: 6px;
 }
 
-.target-row input[type="text"] {
+.target-row input[type="text"],
+.add-row input[type="text"]
+{
     width: 100%;
     box-sizing: border-box;
 }
