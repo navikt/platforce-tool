@@ -542,8 +542,8 @@ function renderTable(containerId, entries, type) {
         newRow.className = "target-row";
 
         newRow.innerHTML = `
-            <input class="key" placeholder="group:name or plugin.id" />
-            <input class="version" placeholder="version"/>
+            <input class="key" value="${k}" />
+            <input class="version" value="${v}" />
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>
@@ -552,6 +552,8 @@ function renderTable(containerId, entries, type) {
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
 
         container.insertBefore(newRow, addRow);
+        addRow.value = ""
+        addRow.version = ""
     };
 
     container.appendChild(addRow);
