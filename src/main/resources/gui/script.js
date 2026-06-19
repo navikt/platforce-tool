@@ -538,8 +538,11 @@ function renderTable(containerId, entries, type) {
     `;
 
     addRow.querySelector(".add-btn").onclick = () => {
-        const k = addRow.querySelector(".key").value;
-        const v = addRow.querySelector(".version").value;
+        const kInput = addRow.querySelector(".key");
+        const vInput = addRow.querySelector(".version");
+
+        const k = kInput.value.trim();
+        const v = vInput.value.trim();
 
         if (!k || !v) return;
 
@@ -557,8 +560,9 @@ function renderTable(containerId, entries, type) {
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
 
         container.insertBefore(newRow, addRow);
-        addRow.value = ""
-        addRow.version = ""
+
+        kInput.value = "";
+        vInput.value = "";
     };
 
     container.appendChild(addRow);
