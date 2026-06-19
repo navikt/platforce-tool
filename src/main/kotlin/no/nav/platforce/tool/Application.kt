@@ -238,61 +238,97 @@ class Application {
             },
             "/internal/github/diagnostics/{owner}/{repo}" bind Method.GET to { request ->
 
-                val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
-                val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
+                val owner =
+                    request.path("owner")
+                        ?: return@to Response(Status.BAD_REQUEST)
 
-                val fullRepo = "$owner/$repo"
+                val repo =
+                    request.path("repo")
+                        ?: return@to Response(Status.BAD_REQUEST)
 
-                fun call(url: String) = httpClient.newCall(githubClient.authenticatedRequest(url)).execute().use { it }
+                fun call(url: String): Map<String, Any?> =
+                    httpClient
+                        .newCall(
+                            githubClient.authenticatedRequest(url),
+                        ).execute()
+                        .use { response ->
+
+                            val body =
+                                response.body
+                                    ?.string()
+
+                            mapOf(
+                                "status" to response.code,
+                                "ok" to response.isSuccessful,
+                                "body" to body,
+                            )
+                        }
 
                 val result = mutableMapOf<String, Any>()
 
                 // 1. Basic repo access check
-                val repoResponse = call("https://api.github.com/repos/$owner/$repo")
+                val repoResponse =
+                    call("https://api.github.com/repos/$owner/$repo")
+
                 result["repo_access"] =
                     mapOf(
-                        "status" to repoResponse.code,
-                        "ok" to repoResponse.isSuccessful,
-                        "body_preview" to repoResponse.body?.string()?.take(200),
+                        "status" to repoResponse["status"],
+                        "ok" to repoResponse["ok"],
+                        "body_preview" to
+                            (repoResponse["body"] as? String)
+                                ?.take(200),
                     )
 
                 // 2. Dependabot alerts check
-                val dependabotUrl =
-                    "https://api.github.com/repos/$owner/$repo/dependabot/alerts"
-
-                val dependabotResponse = call(dependabotUrl)
-
-                val dependabotBody = dependabotResponse.body?.string()
+                val dependabotResponse =
+                    call(
+                        "https://api.github.com/repos/$owner/$repo/dependabot/alerts",
+                    )
 
                 result["dependabot"] =
                     mapOf(
-                        "status" to dependabotResponse.code,
-                        "ok" to dependabotResponse.isSuccessful,
-                        "body_preview" to dependabotBody?.take(500),
+                        "status" to dependabotResponse["status"],
+                        "ok" to dependabotResponse["ok"],
+                        "body_preview" to
+                            (dependabotResponse["body"] as? String)
+                                ?.take(500),
                     )
 
-                // 3. Interpret likely root cause
+                // 3. Interpretation
+                val dependabotStatus =
+                    dependabotResponse["status"] as Int
+
                 val interpretation =
-                    when (dependabotResponse.code) {
-                        200 -> "OK - Dependabot alerts accessible"
-                        404 -> "NOT FOUND - usually missing repo access OR Dependabot not enabled OR no alerts AND GitHub hides reason"
-                        403 -> "FORBIDDEN - missing GitHub App permission (Dependabot alerts read)"
-                        else -> "UNKNOWN - unexpected response"
+                    when (dependabotStatus) {
+                        200 ->
+                            "OK - Dependabot alerts accessible"
+
+                        404 ->
+                            "NOT FOUND - app lacks access, Dependabot disabled, or GitHub is hiding the reason"
+
+                        403 ->
+                            "FORBIDDEN - missing GitHub App permission"
+
+                        else ->
+                            "UNKNOWN - unexpected response"
                     }
 
                 result["interpretation"] = interpretation
 
-                // 4. Installation sanity hint
+                // 4. Hint
+                val repoOk =
+                    repoResponse["ok"] as Boolean
+
                 val hint =
-                    if (!repoResponse.isSuccessful && dependabotResponse.code == 404) {
-                        "Likely: App not installed on repo OR repo not included in installation OR token missing repo scope"
+                    if (!repoOk && dependabotStatus == 404) {
+                        "Likely: app not installed on repo or repo not included in installation"
                     } else {
-                        "Check repo + dependabot responses"
+                        "Check repo_access and dependabot responses"
                     }
 
                 result["hint"] = hint
 
-                Response(Status.OK)
+                Response(OK)
                     .header("Content-Type", "application/json")
                     .body(Gson().toJson(result))
             },
