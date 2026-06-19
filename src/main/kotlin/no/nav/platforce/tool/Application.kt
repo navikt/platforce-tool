@@ -194,13 +194,13 @@ class Application {
 
                 val nais = getRepositoriesForUser(email)
 
-                val naisRepoMap =
+                val naisRepos =
                     nais.teams
                         .flatMap { team ->
                             team.repositories.map { repo ->
                                 repo to team.team
                             }
-                        }.toMap()
+                        }
 
                 val installed = githubClient.listRepositories().toSet()
                 val scanned: Map<String, RepositoryDependencyScan> =
@@ -210,7 +210,7 @@ class Application {
 
                 val result =
                     buildRepoView(
-                        naisRepoMap,
+                        naisRepos,
                         installed,
                         scanned,
                     )
@@ -681,7 +681,7 @@ class Application {
     )
 
     fun buildRepoView(
-        naisRepos: Map<String, String>,
+        naisRepos: List<Pair<String, String>>,
         installed: Set<String>,
         scanned: Map<String, RepositoryDependencyScan>,
     ): List<RepoView> =
