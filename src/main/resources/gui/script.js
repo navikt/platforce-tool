@@ -72,16 +72,11 @@ function groupByRepo(data) {
 
     return map;
 }
+let selectedTeam = null;
 
 function render({ repos, scans }) {
 
     console.log("📦 RAW API DATA RECEIVED:", { repos, scans });
-
-
-
-    //continue here Step 2: render with team headers
-
-    container.innerHTML = "";
 
     const ignoredSet = new Set(ignoredRepositories);
 
@@ -92,7 +87,6 @@ function render({ repos, scans }) {
 
     const grouped = groupRepos(visibleRepos);
 
-    // Build lookup map for scans (IMPORTANT)
     const scanMap = (scans || []).reduce((acc, scan) => {
         if (scan?.repository) {
             acc[scan.repository] = scan;
@@ -100,38 +94,64 @@ function render({ repos, scans }) {
         return acc;
     }, {});
 
-    console.log(`📊 Rendering ${repos.length} repos`);
+    const teams =
+        Object.keys(grouped)
+            .sort();
+
+    // first render
+    if (!selectedTeam || !grouped[selectedTeam]) {
+        selectedTeam = teams[0];
+    }
+
+    renderTeamTabs(teams);
 
     container.innerHTML = "";
 
-    Object.keys(grouped)
-        .sort() // team alphabetical
-        .forEach(team => {
-
-            // TEAM HEADER (pill)
-            const header = document.createElement("div");
-            header.className = "team-header";
-
-            header.innerHTML = `
-            <span class="team-pill">${team}</span>
-        `;
-
-            container.appendChild(header);
-
-            // repos
-            grouped[team].forEach(repoView => {
-                renderRepo(repoView, scanMap, container);
-            });
+    (grouped[selectedTeam] || [])
+        .forEach(repoView => {
+            renderRepo(
+                repoView,
+                scanMap,
+                container
+            );
         });
 
-    // repos.filter(repoView =>
-    //     !ignoredSet.has(repoView.name)
-    // ).forEach(repoView => {
-    //
-    //     //Old
-    // });
+    console.log(
+        `📊 Rendering team ${selectedTeam} (${grouped[selectedTeam]?.length || 0} repos)`
+    );
 
     console.log("✅ Render complete");
+}
+
+function renderTeamTabs(teams) {
+
+    const tabs =
+        document.getElementById("teamTabs");
+
+    tabs.innerHTML = "";
+
+    teams.forEach(team => {
+
+        const tab =
+            document.createElement("button");
+
+        tab.className =
+            "team-pill" +
+            (team === selectedTeam
+                ? " active"
+                : "");
+
+        tab.textContent = team;
+
+        tab.addEventListener("click", () => {
+
+            selectedTeam = team;
+
+            render(lastLoadedData);
+        });
+
+        tabs.appendChild(tab);
+    });
 }
 
 function renderRepo(repoView, scanMap, container) {

@@ -679,9 +679,14 @@ button:hover {
 }
 
 .add-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 300px 110px 70px;
     gap: 8px;
     align-items: center;
+    padding: 1px 5px;
+/*    display: flex;
+    gap: 8px;
+    align-items: center;*/
 }
 
 .new-ignore-input {
@@ -700,4 +705,25 @@ button:hover {
     font-size: 12px;
     font-weight: 600;
     color: #2a3550;
+}
+
+.team-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.team-pill {
+    border: 1px solid #d0d7de;
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.team-pill.active {
+    background: #1f2a44;
+    color: white;
 }
