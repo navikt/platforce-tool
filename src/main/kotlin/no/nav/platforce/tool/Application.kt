@@ -36,6 +36,7 @@ import org.http4k.core.Status.Companion.OK
 import org.http4k.core.Status.Companion.UNAUTHORIZED
 import org.http4k.routing.ResourceLoader
 import org.http4k.routing.bind
+import org.http4k.routing.path
 import org.http4k.routing.routes
 import org.http4k.routing.static
 import org.http4k.server.Http4kServer
@@ -218,6 +219,22 @@ class Application {
                 Response(OK)
                     .header("Content-Type", "application/json")
                     .body(gson.toJson(result))
+            },
+            "/internal/github/dependabot/{owner}/{repo}" bind Method.GET to { request ->
+
+                val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
+                val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
+
+                try {
+                    val alerts = githubClient.getDependabotAlerts(owner, repo)
+
+                    Response(OK)
+                        .header("Content-Type", "application/json")
+                        .body(Gson().toJson(alerts))
+                } catch (e: Exception) {
+                    Response(Status.INTERNAL_SERVER_ERROR)
+                        .body("Failed to fetch Dependabot alerts: ${e.message}")
+                }
             },
         )
 
