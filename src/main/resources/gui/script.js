@@ -227,7 +227,12 @@ function renderRepo(repoView, scanMap, container) {
                     ${
         isMissing
             ? `<button class="pr-button ignore-button" onclick="event.stopPropagation(); ignoreRepository('${repo}')">Ignore</button>
-                <button class="pr-button install-button">Install App</button>`
+                <button
+    class="pr-button install-button"
+    onclick="event.stopPropagation(); window.open('https://github.com/apps/platforce-tooling', '_blank')"
+>
+    Grant App Access
+</button>`
             : hasActionable
                 ? `<button class="pr-button"
                                            onclick="event.stopPropagation(); createPr('${repo}')">
