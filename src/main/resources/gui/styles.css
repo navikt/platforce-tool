@@ -246,7 +246,9 @@ button:hover {
 }
 
 .repo-name-link {
-    display: block; /* important */
+    display: inline-block; /* important */
+    max-width: 100%;
+
     white-space: nowrap; /* required */
     overflow: hidden; /* required */
     text-overflow: ellipsis;
@@ -684,13 +686,6 @@ button:hover {
     gap: 8px;
     align-items: center;
     padding: 1px 5px;
-/*    display: flex;
-    gap: 8px;
-    align-items: center;*/
-}
-
-.new-ignore-input {
-    width: 100%;
 }
 
 .team-header {
@@ -724,6 +719,6 @@ button:hover {
 }
 
 .team-pill.active {
-    background: #1f2a44;
+    background: #3498db;
     color: white;
 }
