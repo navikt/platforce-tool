@@ -254,6 +254,27 @@ class DefaultGithubClient(
         }
     }
 
+    fun getDependabotAlerts(
+        owner: String,
+        repo: String,
+    ): String {
+        val url =
+            "https://api.github.com/repos/$owner/$repo/dependabot/alerts"
+
+        val request =
+            authenticatedRequest(url)
+
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw RuntimeException(
+                    "GitHub API failed: ${response.code} ${response.body.string()}",
+                )
+            }
+
+            return response.body.string()
+        }
+    }
+
     private fun authenticatedRequest(url: String): Request =
         Request
             .Builder()
