@@ -275,7 +275,7 @@ class DefaultGithubClient(
         }
     }
 
-    private fun authenticatedRequest(url: String): Request =
+    fun authenticatedRequest(url: String): Request =
         Request
             .Builder()
             .url(url)

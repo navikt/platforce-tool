@@ -236,6 +236,63 @@ class Application {
                         .body("Failed to fetch Dependabot alerts: ${e.message}")
                 }
             },
+            "/internal/github/diagnostics/{owner}/{repo}" bind Method.GET to { request ->
+
+                val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
+                val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
+
+                val fullRepo = "$owner/$repo"
+
+                fun call(url: String) =
+                    httpClient.newCall(githubClient.authenticatedRequest(url)).execute().use { it }
+
+                val result = mutableMapOf<String, Any>()
+
+                // 1. Basic repo access check
+                val repoResponse = call("https://api.github.com/repos/$owner/$repo")
+                result["repo_access"] = mapOf(
+                    "status" to repoResponse.code,
+                    "ok" to repoResponse.isSuccessful,
+                    "body_preview" to repoResponse.body?.string()?.take(200)
+                )
+
+                // 2. Dependabot alerts check
+                val dependabotUrl =
+                    "https://api.github.com/repos/$owner/$repo/dependabot/alerts"
+
+                val dependabotResponse = call(dependabotUrl)
+
+                val dependabotBody = dependabotResponse.body?.string()
+
+                result["dependabot"] = mapOf(
+                    "status" to dependabotResponse.code,
+                    "ok" to dependabotResponse.isSuccessful,
+                    "body_preview" to dependabotBody?.take(500)
+                )
+
+                // 3. Interpret likely root cause
+                val interpretation =
+                    when (dependabotResponse.code) {
+                        200 -> "OK - Dependabot alerts accessible"
+                        404 -> "NOT FOUND - usually missing repo access OR Dependabot not enabled OR no alerts AND GitHub hides reason"
+                        403 -> "FORBIDDEN - missing GitHub App permission (Dependabot alerts read)"
+                        else -> "UNKNOWN - unexpected response"
+                    }
+
+                result["interpretation"] = interpretation
+
+                // 4. Installation sanity hint
+                val hint =
+                    if (!repoResponse.isSuccessful && dependabotResponse.code == 404)
+                        "Likely: App not installed on repo OR repo not included in installation OR token missing repo scope"
+                    else
+                        "Check repo + dependabot responses"
+
+                result["hint"] = hint
+
+                Response(Status.OK)
+                    .header("Content-Type", "application/json")
+                    .body(Gson().toJson(result))
         )
 
     /**
