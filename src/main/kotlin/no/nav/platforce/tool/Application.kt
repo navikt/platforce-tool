@@ -236,97 +236,121 @@ class Application {
                         .body("Failed to fetch Dependabot alerts: ${e.message}")
                 }
             },
-            "/internal/github/diagnostics/{owner}/{repo}" bind Method.GET to { request ->
+            "/internal/github/dependabot/upgrade-plan/{owner}/{repo}" bind Method.GET to { request ->
 
-                val owner =
-                    request.path("owner")
-                        ?: return@to Response(Status.BAD_REQUEST)
+                val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
+                val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
 
-                val repo =
-                    request.path("repo")
-                        ?: return@to Response(Status.BAD_REQUEST)
+                fun call(url: String) = httpClient.newCall(githubClient.authenticatedRequest(url)).execute()
 
-                fun call(url: String): Map<String, Any?> =
-                    httpClient
-                        .newCall(
-                            githubClient.authenticatedRequest(url),
-                        ).execute()
-                        .use { response ->
+                val dependabotUrl =
+                    "https://api.github.com/repos/$owner/$repo/dependabot/alerts"
 
-                            val body =
-                                response.body
-                                    ?.string()
+                val response = call(dependabotUrl)
 
-                            mapOf(
-                                "status" to response.code,
-                                "ok" to response.isSuccessful,
-                                "body" to body,
-                            )
-                        }
+                val body = response.body.string()
 
-                val result = mutableMapOf<String, Any>()
+                if (!response.isSuccessful) {
+                    return@to Response(Status(response.code, response.message))
+                        .body(body)
+                }
 
-                // 1. Basic repo access check
-                val repoResponse =
-                    call("https://api.github.com/repos/$owner/$repo")
+                data class UpgradeRow(
+                    val packageName: String,
+                    val current: String?,
+                    val fixed: String?,
+                    val severity: String?,
+                    val alertNumbers: List<Int>,
+                )
 
-                result["repo_access"] =
-                    mapOf(
-                        "status" to repoResponse["status"],
-                        "ok" to repoResponse["ok"],
-                        "body_preview" to
-                            (repoResponse["body"] as? String)
-                                ?.take(200),
-                    )
+                val direct = mutableListOf<UpgradeRow>()
+                val transitive = mutableListOf<UpgradeRow>()
 
-                // 2. Dependabot alerts check
-                val dependabotResponse =
-                    call(
-                        "https://api.github.com/repos/$owner/$repo/dependabot/alerts",
-                    )
+                val alerts = JsonParser.parseString(body).asJsonArray
 
-                result["dependabot"] =
-                    mapOf(
-                        "status" to dependabotResponse["status"],
-                        "ok" to dependabotResponse["ok"],
-                        "body_preview" to
-                            (dependabotResponse["body"] as? String)
-                                ?.take(500),
-                    )
+                alerts.forEach { alertElement ->
 
-                // 3. Interpretation
-                val dependabotStatus =
-                    dependabotResponse["status"] as Int
+                    val alert = alertElement.asJsonObject
 
-                val interpretation =
-                    when (dependabotStatus) {
-                        200 ->
-                            "OK - Dependabot alerts accessible"
+                    val number =
+                        alert.get("number")?.asInt
 
-                        404 ->
-                            "NOT FOUND - app lacks access, Dependabot disabled, or GitHub is hiding the reason"
+                    val dependency =
+                        alert.getAsJsonObject("dependency")
 
-                        403 ->
-                            "FORBIDDEN - missing GitHub App permission"
+                    val relationship =
+                        dependency
+                            ?.get("relationship")
+                            ?.asString
+                            ?: "direct"
 
-                        else ->
-                            "UNKNOWN - unexpected response"
-                    }
+                    val packageName =
+                        dependency
+                            ?.getAsJsonObject("package")
+                            ?.get("name")
+                            ?.asString
+                            ?: return@forEach
 
-                result["interpretation"] = interpretation
+                    val vulnerability =
+                        alert.getAsJsonObject("security_vulnerability")
 
-                // 4. Hint
-                val repoOk =
-                    repoResponse["ok"] as Boolean
+                    val fixedVersion =
+                        vulnerability
+                            ?.getAsJsonObject("first_patched_version")
+                            ?.get("identifier")
+                            ?.asString
 
-                val hint =
-                    if (!repoOk && dependabotStatus == 404) {
-                        "Likely: app not installed on repo or repo not included in installation"
+                    val vulnerableRange =
+                        vulnerability
+                            ?.get("vulnerable_version_range")
+                            ?.asString
+
+                    val severity =
+                        alert
+                            .getAsJsonObject("security_advisory")
+                            ?.get("severity")
+                            ?.asString
+
+                    val row =
+                        UpgradeRow(
+                            packageName = packageName,
+                            current = vulnerableRange,
+                            fixed = fixedVersion,
+                            severity = severity,
+                            alertNumbers = listOfNotNull(number),
+                        )
+
+                    if (relationship == "transitive") {
+                        transitive += row
                     } else {
-                        "Check repo_access and dependabot responses"
+                        direct += row
                     }
+                }
 
-                result["hint"] = hint
+                val result =
+                    mapOf(
+                        "repo" to "$owner/$repo",
+                        "direct_dependencies" to
+                            direct
+                                .groupBy { it.packageName }
+                                .values
+                                .map { rows ->
+                                    rows.first().copy(
+                                        alertNumbers =
+                                            rows.flatMap { it.alertNumbers }.distinct(),
+                                    )
+                                },
+                        "transitive_dependencies" to
+                            transitive
+                                .groupBy { it.packageName }
+                                .values
+                                .map { rows ->
+                                    rows.first().copy(
+                                        alertNumbers =
+                                            rows.flatMap { it.alertNumbers }.distinct(),
+                                    )
+                                },
+                    )
 
                 Response(OK)
                     .header("Content-Type", "application/json")
