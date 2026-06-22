@@ -21,6 +21,9 @@ import no.nav.platforce.tool.ignore.IgnoredRepositoriesStore
 import no.nav.platforce.tool.ignore.ignoredRepositoriesRoutes
 import no.nav.platforce.tool.notes.RepositoryNotesStore
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
+import no.nav.platforce.tool.sbom.SbomCache
+import no.nav.platforce.tool.sbom.SbomCache.buildSbomGraph
+import no.nav.platforce.tool.sbom.SbomGraph
 import no.nav.sf.keytool.db.PostgresDatabase
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -243,9 +246,10 @@ class Application {
                 }
             },
             "/internal/github/dependabot/upgrade-plan/{owner}/{repo}" bind Method.GET to { request ->
-
                 val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
                 val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
+
+                val sbom = loadSbom("$owner/$repo", owner)
 
                 fun call(url: String) = httpClient.newCall(githubClient.authenticatedRequest(url)).execute()
 
@@ -267,6 +271,7 @@ class Application {
                     val fixed: String?,
                     val severity: String?,
                     val alertNumbers: List<Int>,
+                    val introducedVia: List<String>? = null,
                 )
 
                 val direct = mutableListOf<UpgradeRow>()
@@ -327,7 +332,19 @@ class Application {
                         )
 
                     if (relationship == "transitive") {
-                        transitive += row
+                        val parents =
+                            sbom.childToParents[packageName]
+                                ?.mapNotNull { spdxId ->
+                                    sbom.packages.values
+                                        .find { it.spdxId == spdxId }
+                                        ?.name
+                                }?.distinct()
+                                ?: emptyList()
+
+                        transitive +=
+                            row.copy(
+                                introducedVia = parents,
+                            )
                     } else {
                         direct += row
                     }
@@ -1021,4 +1038,32 @@ class Application {
                     scan = scan,
                 )
             }.sortedWith(compareBy({ it.team }, { it.name }))
+
+    fun loadSbom(
+        repo: String,
+        owner: String,
+    ): SbomGraph {
+        SbomCache.get(repo)?.let { return it }
+
+        val url = "https://api.github.com/repos/$owner/$repo/dependency-graph/sbom"
+
+        val response =
+            OkHttpClient()
+                .newCall(
+                    githubClient.authenticatedRequest(url),
+                ).execute()
+
+        if (!response.isSuccessful) {
+            throw RuntimeException("SBOM fetch failed: ${response.code}")
+        }
+
+        val body = response.body.string()
+
+        val json = JsonParser.parseString(body).asJsonObject
+        val graph = buildSbomGraph("$owner/$repo", json["sbom"].asJsonObject)
+
+        SbomCache.put("$owner/$repo", graph)
+
+        return graph
+    }
 }
