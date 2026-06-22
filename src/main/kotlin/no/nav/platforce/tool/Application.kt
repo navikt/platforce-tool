@@ -378,7 +378,7 @@ class Application {
 
                 val response = call(url)
 
-                val body = response.body?.string().orEmpty()
+                val body = response.body.string()
 
                 if (!response.isSuccessful) {
                     return@to Response(Status(response.code, response.message))
@@ -416,6 +416,76 @@ class Application {
                 Response(OK)
                     .header("Content-Type", "application/json")
                     .body(Gson().toJson(result))
+            },
+            "/internal/github/dependabot/root-cause/{owner}/{repo}/{number}" bind Method.GET to { request ->
+
+                val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
+                val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
+                val number = request.path("number") ?: return@to Response(Status.BAD_REQUEST)
+
+                fun fetchHtml(): String {
+                    val url = "https://github.com/$owner/$repo/security/dependabot/$number"
+                    val req =
+                        okhttp3.Request
+                            .Builder()
+                            .url(url)
+                            .header("Accept", "text/html")
+                            .build()
+
+                    return httpClient.newCall(req).execute().use { it.body.string() ?: "" }
+                }
+
+                fun extractRootCause(html: String): Map<String, Any?> {
+                    // 1. locate transitive dependency block
+                    val marker = "Transitive dependency"
+                    val idx = html.indexOf(marker)
+
+                    if (idx == -1) {
+                        return mapOf(
+                            "found" to false,
+                            "reason" to "No transitive dependency section found",
+                        )
+                    }
+
+                    val slice = html.substring(idx, minOf(idx + 5000, html.length))
+
+                    // 2. extract vulnerable package line
+                    val vulnerableRegex =
+                        Regex("""Transitive dependency\\s+<strong>([^<]+)</strong>""")
+
+                    val vulnerable = vulnerableRegex.find(slice)?.groupValues?.get(1)
+
+                    // 3. extract parent dependency line (heuristic: first <li>)
+                    val parentRegex =
+                        Regex("""<li>\\s*([^<]+?)\\s*<svg""")
+
+                    val parent =
+                        parentRegex
+                            .find(slice)
+                            ?.groupValues
+                            ?.get(1)
+                            ?.replace(Regex("\\s+"), " ")
+                            ?.trim()
+
+                    return mapOf(
+                        "found" to true,
+                        "vulnerable_dependency" to vulnerable,
+                        "introduced_via" to parent,
+                        "raw_hint" to "parsed from GitHub Dependabot HTML (unstable)",
+                    )
+                }
+
+                try {
+                    val html = fetchHtml()
+                    val parsed = extractRootCause(html)
+
+                    Response(OK)
+                        .header("Content-Type", "application/json")
+                        .body(Gson().toJson(parsed))
+                } catch (e: Exception) {
+                    Response(Status.INTERNAL_SERVER_ERROR)
+                        .body("failed to parse GitHub HTML: ${e.message}")
+                }
             },
         )
 
