@@ -302,11 +302,13 @@ function renderRepo(repoView, scanMap, container) {
     // interactions unchanged
     const noteIcon = el.querySelector(".note-icon");
 
-    noteIcon.addEventListener("click", e => {
-        e.stopPropagation();
-        el.classList.add("open");
-        el.querySelector(".repo-note-editor").classList.toggle("hidden");
-    });
+    if (noteIcon) {
+        noteIcon.addEventListener("click", e => {
+            e.stopPropagation();
+            el.classList.add("open");
+            el.querySelector(".repo-note-editor").classList.toggle("hidden");
+        });
+    }
 
     el.querySelector(".save-note-btn")?.addEventListener("click", async () => {
         const note = el.querySelector("textarea").value;
