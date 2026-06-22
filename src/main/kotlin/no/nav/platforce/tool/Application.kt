@@ -435,13 +435,13 @@ class Application {
                     return httpClient.newCall(req).execute().use { it.body.string() ?: "" }
                 }
 
-                fun extractRootCause(html: String): Map<String, Any?> {
+                fun extractRootCause(html: String): MutableMap<String, Any?> {
                     // 1. locate transitive dependency block
                     val marker = "Transitive dependency"
                     val idx = html.indexOf(marker)
 
                     if (idx == -1) {
-                        return mapOf(
+                        return mutableMapOf(
                             "found" to false,
                             "reason" to "No transitive dependency section found",
                         )
@@ -467,7 +467,7 @@ class Application {
                             ?.replace(Regex("\\s+"), " ")
                             ?.trim()
 
-                    return mapOf(
+                    return mutableMapOf(
                         "found" to true,
                         "vulnerable_dependency" to vulnerable,
                         "introduced_via" to parent,
@@ -478,6 +478,10 @@ class Application {
                 try {
                     val html = fetchHtml()
                     val parsed = extractRootCause(html)
+
+                    if (!(parsed["found"] as Boolean)) {
+                        parsed["html"] = html
+                    }
 
                     Response(OK)
                         .header("Content-Type", "application/json")
