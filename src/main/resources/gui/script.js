@@ -213,13 +213,17 @@ function renderRepo(repoView, scanMap, container) {
                 : `<span class="badge pending">NOT SCANNED</span>`
     }
                     ${
-        noteExists
-            ? `<span class="note-icon" data-has-note="true" data-repo="${repo}">
-                                    ${EDIT_NOTE_SVG}
-                               </span>`
-            : `<span class="note-icon" data-repo="${repo}">
-                                    ${CREATE_NOTE_SVG}
-                               </span>`
+        isScanned
+            ? (
+                noteExists
+                    ? `<span class="note-icon" data-has-note="true" data-repo="${repo}">
+                        ${EDIT_NOTE_SVG}
+                   </span>`
+                    : `<span class="note-icon" data-repo="${repo}">
+                        ${CREATE_NOTE_SVG}
+                   </span>`
+            )
+            : ''
     }
                 </div>
 
