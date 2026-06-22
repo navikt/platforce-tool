@@ -491,6 +491,51 @@ class Application {
                         .body("failed to parse GitHub HTML: ${e.message}")
                 }
             },
+            "/internal/github/sbom/{owner}/{repo}" bind Method.GET to { request ->
+
+                val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
+                val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
+
+                val url = "https://api.github.com/repos/$owner/$repo/dependency-graph/sbom"
+
+                val ghRequest = githubClient.authenticatedRequest(url)
+
+                try {
+                    val response = httpClient.newCall(ghRequest).execute()
+
+                    val body = response.body.string()
+
+                    if (!response.isSuccessful) {
+                        return@to Response(Status(response.code, "GitHub API error"))
+                            .header("Content-Type", "application/json")
+                            .body(
+                                """
+                                {
+                                  "error": "GitHub SBOM request failed",
+                                  "status": ${response.code},
+                                  "message": "${response.message}",
+                                  "body": $body
+                                }
+                                """.trimIndent(),
+                            )
+                    }
+
+                    return@to Response(OK)
+                        .header("Content-Type", "application/json")
+                        .body(body)
+                } catch (e: Exception) {
+                    return@to Response(Status.INTERNAL_SERVER_ERROR)
+                        .header("Content-Type", "application/json")
+                        .body(
+                            """
+                            {
+                              "error": "Exception calling GitHub SBOM",
+                              "message": "${e.message}"
+                            }
+                            """.trimIndent(),
+                        )
+                }
+            },
         )
 
     /**
@@ -617,7 +662,7 @@ class Application {
         val bodyJson = gson.toJson(payload)
 
         val request =
-            okhttp3.Request
+            Request
                 .Builder()
                 .url("https://console.nav.cloud.nais.io/graphql")
                 .addHeader("Authorization", "Bearer $token")
