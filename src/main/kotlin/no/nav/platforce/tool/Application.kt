@@ -1,6 +1,7 @@
 package no.nav.platforce.tool
 
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
@@ -51,6 +52,11 @@ class Application {
     private val log = KotlinLogging.logger { }
 
     val gson = Gson()
+
+    val gsonNoEscaping =
+        GsonBuilder()
+            .disableHtmlEscaping()
+            .create()
 
     val local: Boolean = System.getenv(env_NAIS_CLUSTER_NAME) == null
 
@@ -354,7 +360,7 @@ class Application {
 
                 Response(OK)
                     .header("Content-Type", "application/json")
-                    .body(Gson().toJson(result))
+                    .body(gsonNoEscaping.toJson(result))
             },
         )
 

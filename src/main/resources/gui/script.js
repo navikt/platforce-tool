@@ -214,7 +214,7 @@ function renderRepo(repoView, scanMap, container) {
     }
                     ${
         noteExists
-            ? `<span class="note-icon" data-repo="${repo}">
+            ? `<span class="note-icon" data-has-note="true" data-repo="${repo}">
                                     ${EDIT_NOTE_SVG}
                                </span>`
             : `<span class="note-icon" data-repo="${repo}">
