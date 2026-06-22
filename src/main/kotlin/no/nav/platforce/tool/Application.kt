@@ -362,6 +362,61 @@ class Application {
                     .header("Content-Type", "application/json")
                     .body(gsonNoEscaping.toJson(result))
             },
+            "/internal/github/dependabot/alert/{owner}/{repo}/{number}" bind Method.GET to { request ->
+                val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
+                val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
+                val number = request.path("number") ?: return@to Response(Status.BAD_REQUEST)
+
+                fun call(url: String) =
+                    httpClient
+                        .newCall(
+                            githubClient.authenticatedRequest(url),
+                        ).execute()
+
+                val url =
+                    "https://api.github.com/repos/$owner/$repo/dependabot/alerts/$number"
+
+                val response = call(url)
+
+                val body = response.body?.string().orEmpty()
+
+                if (!response.isSuccessful) {
+                    return@to Response(Status(response.code, response.message))
+                        .header("Content-Type", "application/json")
+                        .body(body)
+                }
+
+                val json = JsonParser.parseString(body).asJsonObject
+
+                val dependency = json.getAsJsonObject("dependency")
+                val pkg = dependency?.getAsJsonObject("package")
+
+                val vuln = json.getAsJsonObject("security_vulnerability")
+                val advisory = json.getAsJsonObject("security_advisory")
+
+                val result =
+                    mapOf(
+                        "raw" to json,
+                        "summary" to
+                            mapOf(
+                                "number" to json.get("number")?.asInt,
+                                "state" to json.get("state")?.asString,
+                                "package" to pkg?.get("name")?.asString,
+                                "relationship" to dependency?.get("relationship")?.asString,
+                                "manifest_path" to dependency?.get("manifest_path")?.asString,
+                                "severity" to advisory?.get("severity")?.asString,
+                                "fixed_version" to
+                                    vuln
+                                        ?.getAsJsonObject("first_patched_version")
+                                        ?.get("identifier")
+                                        ?.asString,
+                            ),
+                    )
+
+                Response(OK)
+                    .header("Content-Type", "application/json")
+                    .body(Gson().toJson(result))
+            },
         )
 
     /**
