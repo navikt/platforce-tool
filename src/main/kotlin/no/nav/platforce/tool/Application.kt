@@ -333,17 +333,25 @@ class Application {
 
                     if (relationship == "transitive") {
                         val parents =
-                            sbom.childToParents[packageName]
-                                ?.mapNotNull { spdxId ->
-                                    sbom.packages.values
-                                        .find { it.spdxId == spdxId }
-                                        ?.name
-                                }?.distinct()
-                                ?: emptyList()
+                            SbomCache.findDirectParents(
+                                sbom,
+                                packageName,
+                            )
+
+                        val rootPaths =
+                            SbomCache.findRootPaths(
+                                sbom,
+                                packageName,
+                            )
 
                         transitive +=
                             row.copy(
-                                introducedVia = parents,
+                                introducedVia =
+                                    if (rootPaths.isNotEmpty()) {
+                                        rootPaths.map { it.joinToString(" -> ") }
+                                    } else {
+                                        parents
+                                    },
                             )
                     } else {
                         direct += row
@@ -1043,26 +1051,41 @@ class Application {
         owner: String,
         repo: String,
     ): SbomGraph {
-        SbomCache.get("$owner/$repo")?.let { return it }
+        val key = "$owner/$repo"
 
-        val url = "https://api.github.com/repos/$owner/$repo/dependency-graph/sbom"
+        SbomCache.get(key)?.let {
+            return it
+        }
+
+        val url =
+            "https://api.github.com/repos/$owner/$repo/dependency-graph/sbom"
 
         val response =
-            OkHttpClient()
+            httpClient
                 .newCall(
                     githubClient.authenticatedRequest(url),
                 ).execute()
 
         if (!response.isSuccessful) {
-            throw RuntimeException("SBOM fetch failed: ${response.code}")
+            throw RuntimeException(
+                "SBOM fetch failed: ${response.code}",
+            )
         }
 
         val body = response.body.string()
 
-        val json = JsonParser.parseString(body).asJsonObject
-        val graph = buildSbomGraph("$owner/$repo", json["sbom"].asJsonObject)
+        val json =
+            JsonParser
+                .parseString(body)
+                .asJsonObject
 
-        SbomCache.put("$owner/$repo", graph)
+        val graph =
+            SbomCache.buildSbomGraph(
+                key,
+                json["sbom"].asJsonObject,
+            )
+
+        SbomCache.put(key, graph)
 
         return graph
     }

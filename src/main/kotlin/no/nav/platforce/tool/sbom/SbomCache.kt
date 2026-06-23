@@ -4,7 +4,8 @@ import com.google.gson.JsonObject
 
 data class SbomGraph(
     val repo: String,
-    val packages: Map<String, SbomNode>,
+    val packagesBySpdxId: Map<String, SbomNode>,
+    val packageNameToSpdxIds: Map<String, MutableList<String>>,
     val parentToChildren: Map<String, MutableList<String>>,
     val childToParents: Map<String, MutableList<String>>,
 )
@@ -31,62 +32,130 @@ object SbomCache {
         repo: String,
         sbomJson: JsonObject,
     ): SbomGraph {
-        val packagesObj = sbomJson["packages"].asJsonArray
-        val relationships = sbomJson["relationships"].asJsonArray
+        val packagesArray = sbomJson["packages"].asJsonArray
+        val relationshipsArray = sbomJson["relationships"].asJsonArray
 
-        val packages = mutableMapOf<String, SbomNode>()
+        val packagesBySpdxId = mutableMapOf<String, SbomNode>()
+        val packageNameToSpdxIds = mutableMapOf<String, MutableList<String>>()
+
         val parentToChildren = mutableMapOf<String, MutableList<String>>()
         val childToParents = mutableMapOf<String, MutableList<String>>()
 
-        // 1. Nodes
-        for (p in packagesObj) {
-            val obj = p.asJsonObject
+        packagesArray.forEach { packageElement ->
+
+            val obj = packageElement.asJsonObject
+
             val name = obj["name"].asString
-            val version = obj["versionInfo"]?.asString
+            val version =
+                obj
+                    .get("versionInfo")
+                    ?.takeIf { !it.isJsonNull }
+                    ?.asString
+
             val spdxId = obj["SPDXID"].asString
 
-            packages[name] = SbomNode(name, version, spdxId)
+            val node =
+                SbomNode(
+                    name = name,
+                    version = version,
+                    spdxId = spdxId,
+                )
+
+            packagesBySpdxId[spdxId] = node
+
+            packageNameToSpdxIds
+                .getOrPut(name) { mutableListOf() }
+                .add(spdxId)
         }
 
-        // 2. Edges
-        for (r in relationships) {
-            val obj = r.asJsonObject
+        relationshipsArray.forEach { relationshipElement ->
 
-            val from = obj["spdxElementId"].asString
-            val to = obj["relatedSpdxElement"].asString
+            val obj = relationshipElement.asJsonObject
 
-            parentToChildren.getOrPut(from) { mutableListOf() }.add(to)
-            childToParents.getOrPut(to) { mutableListOf() }.add(from)
+            val parent = obj["spdxElementId"].asString
+            val child = obj["relatedSpdxElement"].asString
+
+            parentToChildren
+                .getOrPut(parent) { mutableListOf() }
+                .add(child)
+
+            childToParents
+                .getOrPut(child) { mutableListOf() }
+                .add(parent)
         }
 
         return SbomGraph(
             repo = repo,
-            packages = packages,
+            packagesBySpdxId = packagesBySpdxId,
+            packageNameToSpdxIds = packageNameToSpdxIds,
             parentToChildren = parentToChildren,
             childToParents = childToParents,
         )
     }
 
-    fun findParents(
+    fun findDirectParents(
         graph: SbomGraph,
         packageName: String,
-    ): List<String> = graph.childToParents[packageName] ?: emptyList()
+    ): List<String> {
+        val spdxIds =
+            graph.packageNameToSpdxIds[packageName]
+                ?: return emptyList()
+
+        return spdxIds
+            .flatMap { spdxId ->
+                graph.childToParents[spdxId].orEmpty()
+            }.mapNotNull { parentId ->
+                graph.packagesBySpdxId[parentId]?.name
+            }.distinct()
+    }
 
     fun findRootPaths(
         graph: SbomGraph,
         packageName: String,
-        visited: MutableSet<String> = mutableSetOf(),
     ): List<List<String>> {
-        if (!visited.add(packageName)) return emptyList()
+        val spdxIds =
+            graph.packageNameToSpdxIds[packageName]
+                ?: return emptyList()
 
-        val parents = graph.childToParents[packageName] ?: return listOf(listOf(packageName))
+        return spdxIds.flatMap {
+            findRootPathsBySpdx(
+                graph,
+                it,
+                mutableSetOf(),
+            )
+        }
+    }
+
+    private fun findRootPathsBySpdx(
+        graph: SbomGraph,
+        spdxId: String,
+        visited: MutableSet<String>,
+    ): List<List<String>> {
+        if (!visited.add(spdxId)) {
+            return emptyList()
+        }
+
+        val node =
+            graph.packagesBySpdxId[spdxId]
+                ?: return emptyList()
+
+        val parents =
+            graph.childToParents[spdxId]
+                ?: return listOf(listOf(node.name))
 
         val results = mutableListOf<List<String>>()
 
-        for (parent in parents) {
-            val subPaths = findRootPaths(graph, parent, visited.toMutableSet())
-            for (path in subPaths) {
-                results += path + packageName
+        parents.forEach { parentId ->
+
+            val paths =
+                findRootPathsBySpdx(
+                    graph,
+                    parentId,
+                    visited.toMutableSet(),
+                )
+
+            paths.forEach {
+                results += it + node.name
             }
         }
 
