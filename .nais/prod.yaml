@@ -51,6 +51,7 @@ spec:
     outbound:
       external:
         - host: console.nav.cloud.nais.io
+        - host: api.deps.dev
   #    sidecar:
   #      enabled: false
   #  accessPolicy:
