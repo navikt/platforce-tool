@@ -2,6 +2,8 @@ package no.nav.platforce.tool
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
@@ -559,6 +561,93 @@ class Application {
                             }
                             """.trimIndent(),
                         )
+                }
+            },
+            "/internal/vulnerabilities/package" bind Method.GET to { request ->
+
+                val group =
+                    request.query("group")
+                        ?: return@to Response(Status.BAD_REQUEST).body("Missing query param: group")
+
+                val artifact =
+                    request.query("artifact")
+                        ?: return@to Response(Status.BAD_REQUEST).body("Missing query param: artifact")
+
+                val version =
+                    request.query("version")
+                        ?: return@to Response(Status.BAD_REQUEST).body("Missing query param: version")
+
+                val packageName = "$group:$artifact"
+
+                val url =
+                    "https://api.deps.dev/v3alpha/systems/maven/packages/$group%3A$artifact/versions/$version"
+
+                try {
+                    val response =
+                        httpClient
+                            .newCall(
+                                Request
+                                    .Builder()
+                                    .url(url)
+                                    .get()
+                                    .build(),
+                            ).execute()
+
+                    val body = response.body?.string().orEmpty()
+
+                    if (!response.isSuccessful) {
+                        return@to Response(Status(response.code, response.message))
+                            .body(body)
+                    }
+
+                    val json = JsonParser.parseString(body).asJsonObject
+
+                    // lightweight extraction for inspection
+                    val versionInfo = json.getAsJsonObject("version") ?: JsonObject()
+
+                    val incomingEdges =
+                        json.getAsJsonArray("incomingEdges") ?: JsonArray()
+
+                    val outgoingEdges =
+                        json.getAsJsonArray("outgoingEdges") ?: JsonArray()
+
+                    val result =
+                        mapOf(
+                            "package" to packageName,
+                            "version" to version,
+                            "raw" to json,
+                            "summary" to
+                                mapOf(
+                                    "incomingEdgesCount" to incomingEdges.size(),
+                                    "outgoingEdgesCount" to outgoingEdges.size(),
+                                    "isDefaultVersion" to versionInfo.get("isDefault")?.asBoolean,
+                                ),
+                            "incomingEdges" to
+                                incomingEdges.mapNotNull { edge ->
+                                    val obj = edge.asJsonObject
+                                    mapOf(
+                                        "from" to obj["fromNode"]?.asString,
+                                        "to" to obj["toNode"]?.asString,
+                                        "relation" to obj["relation"]?.asString,
+                                    )
+                                },
+                            "outgoingEdges" to
+                                outgoingEdges.mapNotNull { edge ->
+                                    val obj = edge.asJsonObject
+                                    mapOf(
+                                        "from" to obj["fromNode"]?.asString,
+                                        "to" to obj["toNode"]?.asString,
+                                        "relation" to obj["relation"]?.asString,
+                                    )
+                                },
+                        )
+
+                    Response(Status.OK)
+                        .header("Content-Type", "application/json")
+                        .body(gsonNoEscaping.toJson(result))
+                } catch (e: Exception) {
+                    Response(Status.INTERNAL_SERVER_ERROR)
+                        .body("deps.dev fetch failed: ${e.message}")
                 }
             },
         )
