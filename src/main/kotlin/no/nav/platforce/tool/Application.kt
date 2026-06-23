@@ -249,7 +249,7 @@ class Application {
                 val owner = request.path("owner") ?: return@to Response(Status.BAD_REQUEST)
                 val repo = request.path("repo") ?: return@to Response(Status.BAD_REQUEST)
 
-                val sbom = loadSbom("$owner/$repo", owner)
+                val sbom = loadSbom(owner, repo)
 
                 fun call(url: String) = httpClient.newCall(githubClient.authenticatedRequest(url)).execute()
 
@@ -1040,10 +1040,10 @@ class Application {
             }.sortedWith(compareBy({ it.team }, { it.name }))
 
     fun loadSbom(
-        repo: String,
         owner: String,
+        repo: String,
     ): SbomGraph {
-        SbomCache.get(repo)?.let { return it }
+        SbomCache.get("$owner/$repo")?.let { return it }
 
         val url = "https://api.github.com/repos/$owner/$repo/dependency-graph/sbom"
 
