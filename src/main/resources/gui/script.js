@@ -238,7 +238,7 @@ function renderRepo(repoView, scanMap, container) {
     Grant App Access
 </button>`
             : hasActionable
-                ? `<button class="pr-button"
+                ? `<button data-repo="${repo}" class="pr-button"
                                            onclick="event.stopPropagation(); createPr('${repo}')">
                                         Create PR
                                    </button>`
