@@ -116,15 +116,6 @@ function render({ repos, scans }) {
             );
         });
 
-    document.querySelectorAll(".untracked-toggle").forEach(toggle => {
-        toggle.addEventListener("click", (e) => {
-            e.stopPropagation(); // don't trigger repo expand/collapse
-
-            const section = toggle.closest(".untracked-section");
-            section.classList.toggle("open");
-        });
-    });
-
     console.log("✅ Render complete");
 }
 
@@ -311,7 +302,7 @@ function renderRepo(repoView, scanMap, container) {
                             </div>
                         
                             <div class="untracked-content">
-                                <div class="table compact-table">
+                                <div class="compact-table">
                                     ${untrackedPlugins.map(plugin => `
                                     <div class="row untracked-row plugin-row">
                                         <div class="pill">PLUGIN</div>
@@ -359,6 +350,8 @@ function renderRepo(repoView, scanMap, container) {
             : ``
     }
         `;
+
+
 
     // interactions unchanged
     const noteIcon = el.querySelector(".note-icon");
@@ -896,6 +889,18 @@ function groupRepos(data) {
 
     return grouped;
 }
+
+document.addEventListener("click", (e) => {
+    const toggle = e.target.closest(".untracked-toggle");
+    if (!toggle) return;
+
+    e.stopPropagation();
+
+    const section = toggle.closest(".untracked-section");
+    if (!section) return;
+
+    section.classList.toggle("open");
+});
 
 initTargets();
 loadData();

@@ -742,18 +742,14 @@ button:hover {
     background: #fafafa;
 }
 
-.untracked-table {
+.untracked-content {
     display: none;
 }
 
-.untracked-section.open .untracked-table {
+.repo.open .untracked-section.open .untracked-content {
     display: block;
 }
 
-.repo .untracked-table {
-    display: none;
-}
-
-.repo.open .untracked-section.open .untracked-table {
-    display: block;
+.compact-table {
+    padding: 10px;
 }
