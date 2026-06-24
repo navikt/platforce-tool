@@ -116,9 +116,14 @@ function render({ repos, scans }) {
             );
         });
 
-    console.log(
-        `📊 Rendering team ${selectedTeam} (${grouped[selectedTeam]?.length || 0} repos)`
-    );
+    document.querySelectorAll(".untracked-toggle").forEach(toggle => {
+        toggle.addEventListener("click", (e) => {
+            e.stopPropagation(); // don't trigger repo expand/collapse
+
+            const section = toggle.closest(".untracked-section");
+            section.classList.toggle("open");
+        });
+    });
 
     console.log("✅ Render complete");
 }
@@ -300,14 +305,32 @@ function renderRepo(repoView, scanMap, container) {
             ${
                 (untrackedDependencies.length || untrackedPlugins.length)
                     ? `
-                    <div class="untracked-toggle" onclick="this.nextElementSibling.classList.toggle('hidden')">
-                        Untracked dependencies (${untrackedDependencies.length}),
-                        plugins (${untrackedPlugins.length})
-                    </div>
-                       
+                        <div class="untracked-section">
+                            <div class="untracked-toggle">
+                                Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length})
+                            </div>
+                        
+                            <div class="untracked-content">
+                                <div class="table compact-table">
+                                    ${untrackedPlugins.map(plugin => `
+                                    <div class="row untracked-row plugin-row">
+                                        <div class="pill">PLUGIN</div>
+                                        <div>${plugin.key}</div>
 
-                            <div class="hidden table compact-table">
+                                        <div class="version-cell">
+                                            <span class="current-version">
+                                                ${plugin.version || "-"}
+                                            </span>
+                                        </div>
 
+                                        <div>
+                                            <span class="status-pill status-unknown">
+                                                UNTRACKED
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join("")}
+                                
                                 ${untrackedDependencies.map(dep => `
                                     <div class="row untracked-row dependency-row">
                                         <div class="pill">DEPENDENCY</div>
@@ -326,28 +349,9 @@ function renderRepo(repoView, scanMap, container) {
                                         </div>
                                     </div>
                                 `).join("")}
-
-                                ${untrackedPlugins.map(plugin => `
-                                    <div class="row untracked-row plugin-row">
-                                        <div class="pill">PLUGIN</div>
-                                        <div>${plugin.key}</div>
-
-                                        <div class="version-cell">
-                                            <span class="current-version">
-                                                ${plugin.version || "-"}
-                                            </span>
-                                        </div>
-
-                                        <div>
-                                            <span class="status-pill status-unknown">
-                                                UNTRACKED
-                                            </span>
-                                        </div>
-                                    </div>
-                                `).join("")}
+                                </div>
                             </div>
-
-                       
+                        </div>
                     `
                     : ""
             }

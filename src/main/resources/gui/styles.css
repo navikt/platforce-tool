@@ -724,7 +724,7 @@ button:hover {
 }
 
 .untracked-toggle {
-    margin-top: 8px;
+    margin-left: 12px;
     font-size: 12px;
     color: #888;
     cursor: pointer;
@@ -740,4 +740,20 @@ button:hover {
 
 .compact-table .untracked-row:nth-child(odd) {
     background: #fafafa;
+}
+
+.untracked-table {
+    display: none;
+}
+
+.untracked-section.open .untracked-table {
+    display: block;
+}
+
+.repo .untracked-table {
+    display: none;
+}
+
+.repo.open .untracked-section.open .untracked-table {
+    display: block;
 }
