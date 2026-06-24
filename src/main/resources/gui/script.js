@@ -155,7 +155,6 @@ function renderTeamTabs(teams) {
 }
 
 function renderRepo(repoView, scanMap, container) {
-    // your existing per-repo code unchanged
     const repo = repoView?.name;
     const state = repoView?.state;
     const team = repoView?.team;
@@ -293,7 +292,61 @@ function renderRepo(repoView, scanMap, container) {
                                 </div>
                             `;
             }).join("")}
+            ${
+                untrackedDependencies.length || untrackedPlugins.length
+                    ? `
+                        <details class="untracked-section">
+                            <summary>
+                                Untracked dependencies (${untrackedDependencies.length}),
+                                plugins (${untrackedPlugins.length})
+                            </summary>
+
+                            ${
+                        untrackedDependencies.length
+                            ? `
+                                        <div class="table compact-table">
+                                            <div class="row header-row">
+                                                <div>Dependency</div>
+                                                <div>Version</div>
+                                            </div>
+
+                                            ${untrackedDependencies.map(dep => `
+                                                <div class="row dependency-row">
+                                                    <div>${dep.key}</div>
+                                                    <div>${dep.version}</div>
+                                                </div>
+                                            `).join("")}
+                                        </div>
+                                    `
+                            : ""
+                    }
+
+                            ${
+                        untrackedPlugins.length
+                            ? `
+                                        <div class="table compact-table">
+                                            <div class="row header-row">
+                                                <div>Plugin</div>
+                                                <div>Version</div>
+                                            </div>
+
+                                            ${untrackedPlugins.map(plugin => `
+                                                <div class="row plugin-row">
+                                                    <div>${plugin.key}</div>
+                                                    <div>${plugin.version}</div>
+                                                </div>
+                                            `).join("")}
+                                        </div>
+                                    `
+                            : ""
+                    }
+                        </details>
+                    `
+                    : ""
+            }
                     </div>
+                    
+                    
                     `
             : ``
     }

@@ -642,7 +642,7 @@ class Application {
                                 },
                         )
 
-                    Response(Status.OK)
+                    Response(OK)
                         .header("Content-Type", "application/json")
                         .body(gsonNoEscaping.toJson(result))
                 } catch (e: Exception) {
