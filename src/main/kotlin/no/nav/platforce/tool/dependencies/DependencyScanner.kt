@@ -61,6 +61,27 @@ class DependencyScanner(
 
         val parsed = parser.parse(buildFile)
 
+        DependencyInventoryCache.put(
+            RepositoryDependencyInventory(
+                repository = repository,
+                scannedAt = Instant.now().toString(),
+                plugins =
+                    parsed.plugins.map {
+                        ConfiguredDependency(
+                            key = it.key,
+                            version = it.value,
+                        )
+                    },
+                dependencies =
+                    parsed.dependencies.map {
+                        ConfiguredDependency(
+                            key = it.key,
+                            version = it.value,
+                        )
+                    },
+            ),
+        )
+
         val findings = mutableListOf<DependencyFinding>()
 
         val store = targetVersionStore.get()
@@ -111,10 +132,35 @@ class DependencyScanner(
                 )
         }
 
+        val trackedDependencies = store.dependencies.keys
+        val trackedPlugins = store.plugins.keys
+
+        val untrackedDependencies =
+            parsed.dependencies
+                .filterKeys { it !in trackedDependencies }
+                .map { (key, version) ->
+                    UntrackedDependency(
+                        key = key,
+                        version = version,
+                    )
+                }
+
+        val untrackedPlugins =
+            parsed.plugins
+                .filterKeys { it !in trackedPlugins }
+                .map { (key, version) ->
+                    UntrackedPlugin(
+                        key = key,
+                        version = version,
+                    )
+                }
+
         return RepositoryDependencyScan(
             repository = repository,
             scannedAt = Instant.now().toString(),
             findings = findings,
+            untrackedDependencies = untrackedDependencies,
+            untrackedPlugins = untrackedPlugins,
         )
     }
 

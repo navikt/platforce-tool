@@ -1,11 +1,11 @@
 package no.nav.platforce.tool.dependencies
 
-import java.time.Instant
-
 data class RepositoryDependencyScan(
     val repository: String,
     val scannedAt: String,
     val findings: List<DependencyFinding>,
+    val untrackedDependencies: List<UntrackedDependency> = emptyList(),
+    val untrackedPlugins: List<UntrackedPlugin> = emptyList(),
 )
 
 data class DependencyFinding(
@@ -26,3 +26,13 @@ enum class DependencyStatus {
     UPDATE,
     AHEAD,
 }
+
+data class UntrackedDependency(
+    val key: String,
+    val version: String,
+)
+
+data class UntrackedPlugin(
+    val key: String,
+    val version: String,
+)
