@@ -265,38 +265,93 @@ function renderRepo(repoView, scanMap, container) {
             ${
         isScanned
             ? `
-                    <div class="table">
-                        ${findings.map(f => {
+            <div class="table">
+                ${findings.map(f => {
                 const kind = (f.kind || "UNKNOWN").toLowerCase();
                 const status = (f.status || "UNKNOWN");
 
                 return `
-                                <div class="row ${kind}-row">
-                                    <div class="pill">${f.kind}</div>
-                                    <div>${f.key || "-"}</div>
+                        <div class="row ${kind}-row">
+                            <div class="pill">${f.kind}</div>
+                            <div>${f.key || "-"}</div>
 
-                                    <div class="version-cell">
-                                        <span class="current-version">
-                                            ${f.currentVersion || "-"}
-                                        </span>
+                            <div class="version-cell">
+                                <span class="current-version">
+                                    ${f.currentVersion || "-"}
+                                </span>
 
-                                        ${
+                                ${
                     (status === "UPDATE" || status === "AHEAD") && f.targetVersion
                         ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
                         : ""
                 }
-                                    </div>
+                            </div>
 
-                                    <div>
-                                        <span class="status-pill status-${status.toLowerCase()}">
-                                            ${status}
-                                        </span>
-                                    </div>
-                                </div>
-                            `;
+                            <div>
+                                <span class="status-pill status-${status.toLowerCase()}">
+                                    ${status}
+                                </span>
+                            </div>
+                        </div>
+                    `;
             }).join("")}
+            </div>
+
+            ${
+                (untrackedDependencies.length || untrackedPlugins.length)
+                    ? `
+                    <div class="untracked-toggle" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                        Untracked dependencies (${untrackedDependencies.length}),
+                        plugins (${untrackedPlugins.length})
                     </div>
+                       
+
+                            <div class="hidden table compact-table">
+
+                                ${untrackedDependencies.map(dep => `
+                                    <div class="row untracked-row dependency-row">
+                                        <div class="pill">DEPENDENCY</div>
+                                        <div>${dep.key}</div>
+
+                                        <div class="version-cell">
+                                            <span class="current-version">
+                                                ${dep.version || "-"}
+                                            </span>
+                                        </div>
+
+                                        <div>
+                                            <span class="status-pill status-unknown">
+                                                UNTRACKED
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join("")}
+
+                                ${untrackedPlugins.map(plugin => `
+                                    <div class="row untracked-row plugin-row">
+                                        <div class="pill">PLUGIN</div>
+                                        <div>${plugin.key}</div>
+
+                                        <div class="version-cell">
+                                            <span class="current-version">
+                                                ${plugin.version || "-"}
+                                            </span>
+                                        </div>
+
+                                        <div>
+                                            <span class="status-pill status-unknown">
+                                                UNTRACKED
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join("")}
+                            </div>
+
+                       
                     `
+                    : ""
+            }
+        `
             : ``
     }
         `;
