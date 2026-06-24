@@ -753,3 +753,11 @@ button:hover {
 .compact-table {
     padding: 10px;
 }
+
+.repo .untracked-section {
+    display: none;
+}
+
+.repo.open .untracked-section {
+    display: block;
+}
