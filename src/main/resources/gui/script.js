@@ -169,8 +169,10 @@ function renderRepo(repoView, scanMap, container) {
 
     const scan = scanMap[repo];
     const findingsRaw = scan?.findings || [];
-
     const findings = findingsRaw.filter(f => f && f.kind && f.status);
+
+    const untrackedDependencies = scan?.untrackedDependencies || [];
+    const untrackedPlugins = scan?.untrackedPlugins || [];
 
     const ok = findings.filter(f => f.status === "OK").length;
     const update = findings.filter(f => f.status === "UPDATE").length;
