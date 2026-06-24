@@ -722,3 +722,22 @@ button:hover {
     background: #3498db;
     color: white;
 }
+
+.untracked-toggle {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #888;
+    cursor: pointer;
+}
+
+.untracked-row {
+    color: #777;
+}
+
+.compact-table .untracked-row:nth-child(even) {
+    background: #f5f5f5;
+}
+
+.compact-table .untracked-row:nth-child(odd) {
+    background: #fafafa;
+}
