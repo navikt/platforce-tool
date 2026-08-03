@@ -143,6 +143,8 @@ function renderTeamTabs(teams) {
 
             selectedTeam = team;
 
+            saveSelectedTeam(team);
+
             render(lastLoadedData);
         });
 
@@ -902,6 +904,36 @@ document.addEventListener("click", (e) => {
     section.classList.toggle("open");
 });
 
+async function loadSelectedTeam() {
+    const response = await fetch("/internal/selectedTeam");
+
+    if (!response.ok) {
+        console.warn("Failed to load selected team");
+        return null;
+    }
+
+    const data = await response.json();
+
+    return data.selectedTeam;
+}
+
+async function saveSelectedTeam(team) {
+    const response = await fetch("/internal/selectedTeam", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            selectedTeam: team,
+        }),
+    });
+
+    if (!response.ok) {
+        console.warn("Failed to save selected team");
+    }
+}
+
+selectedTeam = loadSelectedTeam()
 initTargets();
 loadData();
 startProgressPolling();

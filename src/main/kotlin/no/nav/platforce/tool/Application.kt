@@ -53,6 +53,7 @@ import java.io.File
 import java.io.StringReader
 import java.security.interfaces.RSAPrivateKey
 import java.util.Base64
+import kotlin.collections.mapOf
 
 class Application {
     private val log = KotlinLogging.logger { }
@@ -121,6 +122,25 @@ class Application {
                 Response(OK).header("Content-Type", "text/plain").body(file)
             },
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
+            "/internal/selectedTeam" bind Method.GET to { request ->
+                val context = request.userContext()
+                Response(OK)
+                    .header("Content-Type", "application/json")
+                    .body(
+                        gson.toJson(
+                            mapOf(
+                                "selectedTeam" to context.selectedTeam,
+                            ),
+                        ),
+                    )
+            },
+            "/internal/selectedTeam" bind Method.POST to { request ->
+                val context = request.userContext()
+                val body = JsonParser.parseString(request.bodyString()).asJsonObject
+                val team = body["selectedTeam"]?.takeIf { !it.isJsonNull }?.asString
+                context.selectedTeam = team
+                Response(OK)
+            },
             "/internal/clearDb" bind Method.GET to clearDbHandler,
             "/internal/initDb" bind Method.GET to initDbHandler,
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
