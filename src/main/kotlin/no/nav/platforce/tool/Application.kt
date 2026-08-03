@@ -26,6 +26,7 @@ import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.sbom.SbomCache
 import no.nav.platforce.tool.sbom.SbomCache.buildSbomGraph
 import no.nav.platforce.tool.sbom.SbomGraph
+import no.nav.platforce.tool.user.userContext
 import no.nav.sf.keytool.db.PostgresDatabase
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -94,15 +95,9 @@ class Application {
 
     private val dependencyScanCache = DependencyScanCache()
 
-    private val targetVersionsStore = TargetVersionsStore()
-
-    private val dependencyScanner = DependencyScanner(githubClient, targetVersionsStore)
+    private val dependencyScanner = DependencyScanner(githubClient)
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
-
-    val repositoryNotesStore = RepositoryNotesStore()
-
-    val ignoredRepositoriesStore = IgnoredRepositoriesStore()
 
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
@@ -129,9 +124,9 @@ class Application {
             "/internal/clearDb" bind Method.GET to clearDbHandler,
             "/internal/initDb" bind Method.GET to initDbHandler,
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService).toTypedArray(),
-            *targetVersionsRoutes(targetVersionsStore).toTypedArray(),
-            *repositoryNotesRoutes(repositoryNotesStore).toTypedArray(),
-            *ignoredRepositoriesRoutes(ignoredRepositoriesStore).toTypedArray(),
+            *targetVersionsRoutes().toTypedArray(),
+            *repositoryNotesRoutes().toTypedArray(),
+            *ignoredRepositoriesRoutes().toTypedArray(),
             "/internal/all-teams" bind Method.GET to { _ ->
                 val teams = getAllTeams()
 
@@ -140,32 +135,14 @@ class Application {
                     .body(gson.toJson(teams))
             },
             "/internal/my-teams" bind Method.GET to { request ->
-
-                val authHeader =
-                    request.header("Authorization")
-                        ?: return@to Response(Status.UNAUTHORIZED).body("Missing Authorization header")
-
-                val email =
-                    try {
-                        extractPreferredUsername(authHeader)
-                    } catch (e: Exception) {
-                        return@to Response(Status.UNAUTHORIZED).body("Invalid token: ${e.message}")
-                    }
-
-                val userTeams = getUserTeams(email)
+                val userTeams = getUserTeams(request.userContext().username)
 
                 Response(OK)
                     .header("Content-Type", "application/json")
                     .body(gson.toJson(userTeams))
             },
             "/internal/my-apps" bind Method.GET to { request ->
-                val authHeader =
-                    request.header("Authorization")
-                        ?: return@to Response(Status.UNAUTHORIZED).body("Missing Authorization")
-
-                val email = extractPreferredUsername(authHeader)
-
-                val userTeams = getUserTeams(email) // Set<String>
+                val userTeams = getUserTeams(request.userContext().username) // Set<String>
 
                 val result =
                     userTeams.map { teamSlug ->
@@ -183,28 +160,14 @@ class Application {
                     .body(gson.toJson(result))
             },
             "/internal/my-repos" bind Method.GET to { request ->
-
-                val authHeader =
-                    request.header("Authorization")
-                        ?: return@to Response(UNAUTHORIZED)
-
-                val email = extractPreferredUsername(authHeader)
-
-                val repos = getRepositoriesForUser(email)
+                val repos = getRepositoriesForUser(request.userContext().username)
 
                 Response(OK)
                     .header("Content-Type", "application/json")
                     .body(gson.toJson(repos))
             },
             "/internal/repos/view" bind Method.GET to { request ->
-
-                val auth =
-                    request.header("Authorization")
-                        ?: return@to Response(Status.UNAUTHORIZED)
-
-                val email = extractPreferredUsername(auth)
-
-                val nais = getRepositoriesForUser(email)
+                val nais = getRepositoriesForUser(request.userContext().username)
 
                 val naisRepos =
                     nais.teams
@@ -921,30 +884,6 @@ class Application {
                     it.asJsonObject["team"].asJsonObject["slug"].asString
                 }.toSet()
         }
-    }
-
-    fun extractPreferredUsername(authHeader: String?): String {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw RuntimeException("Missing Bearer token")
-        }
-
-        val token = authHeader.removePrefix("Bearer ").trim()
-
-        val parts = token.split(".")
-
-        if (parts.size < 2) {
-            throw RuntimeException("Invalid JWT token")
-        }
-
-        val payloadJson =
-            String(
-                Base64.getUrlDecoder().decode(parts[1]),
-            )
-
-        val payload = JsonParser.parseString(payloadJson).asJsonObject
-
-        return payload["preferred_username"]?.asString
-            ?: throw RuntimeException("preferred_username not found in token")
     }
 
     data class AppInfo(

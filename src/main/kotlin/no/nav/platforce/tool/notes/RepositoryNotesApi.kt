@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.notes
 
 import com.google.gson.Gson
+import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Response.Companion.invoke
@@ -13,22 +14,23 @@ data class SaveRepositoryNoteRequest(
     val note: String,
 )
 
-fun repositoryNotesRoutes(store: RepositoryNotesStore) =
+fun repositoryNotesRoutes() =
     listOf(
-        "/internal/api/repository-notes" bind Method.GET to {
+        "/internal/api/repository-notes" bind Method.GET to { request ->
+            val context = request.userContext()
             Response(Status.OK)
                 .header("Content-Type", "application/json")
-                .body(Gson().toJson(store.get()))
+                .body(Gson().toJson(context.repositoryNotesStore.get()))
         },
-        "/internal/api/repository-notes" bind Method.POST to { req ->
-
+        "/internal/api/repository-notes" bind Method.POST to { request ->
+            val context = request.userContext()
             val body =
                 Gson().fromJson(
-                    req.bodyString(),
+                    request.bodyString(),
                     SaveRepositoryNoteRequest::class.java,
                 )
 
-            store.save(
+            context.repositoryNotesStore.save(
                 repository = body.repository,
                 note = body.note,
             )

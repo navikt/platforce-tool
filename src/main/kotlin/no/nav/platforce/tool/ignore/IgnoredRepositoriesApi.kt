@@ -3,21 +3,24 @@ package no.nav.platforce.tool.ignore
 import com.google.gson.Gson
 import no.nav.platforce.tool.notes.RepositoryNotesStore
 import no.nav.platforce.tool.notes.SaveRepositoryNoteRequest
+import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.routing.bind
 
-fun ignoredRepositoriesRoutes(store: IgnoredRepositoriesStore) =
+fun ignoredRepositoriesRoutes() =
     listOf(
-        "/internal/api/ignored-repositories" bind Method.GET to {
+        "/internal/api/ignored-repositories" bind Method.GET to { request ->
+            val context = request.userContext()
             Response(Status.OK)
                 .header("Content-Type", "application/json")
-                .body(Gson().toJson(store.get()))
+                .body(Gson().toJson(context.ignoredRepositoriesStore.get()))
         },
-        "/internal/api/ignored-repositories/update" bind Method.POST to { req ->
+        "/internal/api/ignored-repositories/update" bind Method.POST to { request ->
+            val context = request.userContext()
 
-            val body = req.bodyString()
+            val body = request.bodyString()
 
             val parsed =
                 Gson().fromJson(
@@ -25,7 +28,7 @@ fun ignoredRepositoriesRoutes(store: IgnoredRepositoriesStore) =
                     IgnoredRepositoriesState::class.java,
                 )
 
-            store.replace(
+            context.ignoredRepositoriesStore.replace(
                 team = null,
                 repositories = parsed.repositories,
             )

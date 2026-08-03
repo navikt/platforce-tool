@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.dependencies
 
 import com.google.gson.Gson
+import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
@@ -17,8 +18,8 @@ fun dependencyScanRoutes(
             .header("Content-Type", "application/json")
             .body(Gson().toJson(cache.get()))
     },
-    "/internal/api/dependency-scan/refresh" bind Method.POST to {
-        val result = scanner.scanAllRepositoriesWithProgress(cache)
+    "/internal/api/dependency-scan/refresh" bind Method.POST to { request ->
+        val result = scanner.scanAllRepositoriesWithProgress(cache, request.userContext())
         cache.update(result)
         Response(Status.OK).body("Refreshed")
     },
@@ -28,7 +29,6 @@ fun dependencyScanRoutes(
             .body(Gson().toJson(cache.getProgress()))
     },
     "/internal/api/dependency-scan/pr/{owner}/{repo}" bind Method.POST to { req ->
-
         val owner = req.path("owner")!!
         val repo = req.path("repo")!!
 

@@ -1,15 +1,18 @@
 package no.nav.platforce.tool.dependencies
 
 import no.nav.platforce.tool.github.GithubClient
+import no.nav.platforce.tool.user.UserContext
 import java.time.Instant
 
 class DependencyScanner(
     private val githubClient: GithubClient,
-    private val targetVersionStore: TargetVersionsStore,
 ) {
     private val parser = GradleDependencyParser()
 
-    fun scanAllRepositoriesWithProgress(cache: DependencyScanCache): List<RepositoryDependencyScan> {
+    fun scanAllRepositoriesWithProgress(
+        cache: DependencyScanCache,
+        userContext: UserContext,
+    ): List<RepositoryDependencyScan> {
         cache.setProgress(
             ScanProgress(
                 total = 0,
@@ -31,7 +34,7 @@ class DependencyScanner(
         val results = mutableListOf<RepositoryDependencyScan>()
 
         repos.forEachIndexed { index, repo ->
-            scanRepository(repo)?.let {
+            scanRepository(repo, userContext)?.let {
                 results += it
             }
 
@@ -51,7 +54,10 @@ class DependencyScanner(
         return results
     }
 
-    private fun scanRepository(repository: String): RepositoryDependencyScan? {
+    private fun scanRepository(
+        repository: String,
+        userContext: UserContext,
+    ): RepositoryDependencyScan? {
         val owner = repository.substringBefore("/")
         val repo = repository.substringAfter("/")
 
@@ -84,7 +90,7 @@ class DependencyScanner(
 
         val findings = mutableListOf<DependencyFinding>()
 
-        val store = targetVersionStore.get()
+        val store = userContext.targetVersionsStore.get()
 
         store.plugins.forEach { (plugin, target) ->
             val current = parsed.plugins[plugin] ?: return@forEach
