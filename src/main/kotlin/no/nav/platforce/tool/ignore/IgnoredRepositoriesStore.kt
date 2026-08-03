@@ -14,6 +14,7 @@ class IgnoredRepositoriesStore(
             repositories =
                 PostgresDatabase
                     .getIgnoredRepositories(userId)
+                    .sorted()
                     .toMutableList(),
         )
 
