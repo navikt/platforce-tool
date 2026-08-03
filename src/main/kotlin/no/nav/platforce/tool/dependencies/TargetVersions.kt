@@ -50,11 +50,13 @@ class TargetVersionsStore(
             plugins =
                 versions
                     .filter { it.type == TargetVersionType.PLUGIN }
+                    .sortedBy { it.key }
                     .associate { it.key to it.version }
                     .toMutableMap(),
             dependencies =
                 versions
                     .filter { it.type == TargetVersionType.DEPENDENCY }
+                    .sortedBy { it.key }
                     .associate { it.key to it.version }
                     .toMutableMap(),
         )
