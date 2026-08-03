@@ -933,7 +933,12 @@ async function saveSelectedTeam(team) {
     }
 }
 
-selectedTeam = loadSelectedTeam()
-initTargets();
-loadData();
-startProgressPolling();
+async function init() {
+    selectedTeam = await loadSelectedTeam();
+
+    initTargets();
+    await loadData();
+    startProgressPolling();
+}
+
+init();
