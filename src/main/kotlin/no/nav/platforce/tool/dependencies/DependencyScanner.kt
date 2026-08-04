@@ -7,7 +7,8 @@ import java.time.Instant
 class DependencyScanner(
     private val githubClient: GithubClient,
 ) {
-    private val parser = GradleDependencyParser()
+    private val gradleDependencyParser = GradleDependencyParser()
+    private val gradleWrapperParser = GradleWrapperParser()
 
     fun scanAllRepositoriesWithProgress(
         cache: DependencyScanCache,
@@ -61,39 +62,41 @@ class DependencyScanner(
         val owner = repository.substringBefore("/")
         val repo = repository.substringAfter("/")
 
-        val buildFile =
-            tryGetBuildFile(owner, repo)
-                ?: return null
+        val wrapperFile = tryGetWrapperFile(owner, repo)
 
-        val parsed = parser.parse(buildFile)
+        val parsedWrapper = gradleWrapperParser.parse(wrapperFile ?: "")
 
+        val buildFile = tryGetBuildFile(owner, repo) ?: return null
+
+        val parsedBuildFile = gradleDependencyParser.parse(buildFile)
+/*
         DependencyInventoryCache.put(
             RepositoryDependencyInventory(
                 repository = repository,
                 scannedAt = Instant.now().toString(),
                 plugins =
-                    parsed.plugins.map {
+                    parsedBuildFile.plugins.map {
                         ConfiguredDependency(
                             key = it.key,
                             version = it.value,
                         )
                     },
                 dependencies =
-                    parsed.dependencies.map {
+                    parsedBuildFile.dependencies.map {
                         ConfiguredDependency(
                             key = it.key,
                             version = it.value,
                         )
                     },
             ),
-        )
+        )*/
 
         val findings = mutableListOf<DependencyFinding>()
 
         val store = userContext.targetVersionsStore.get()
 
         store.plugins.forEach { (plugin, target) ->
-            val current = parsed.plugins[plugin] ?: return@forEach
+            val current = parsedBuildFile.plugins[plugin] ?: return@forEach
 
             findings +=
                 DependencyFinding(
@@ -116,7 +119,7 @@ class DependencyScanner(
         }
 
         store.dependencies.forEach { (dep, target) ->
-            val current = parsed.dependencies[dep] ?: return@forEach
+            val current = parsedBuildFile.dependencies[dep] ?: return@forEach
 
             findings +=
                 DependencyFinding(
@@ -138,11 +141,34 @@ class DependencyScanner(
                 )
         }
 
+        store.gradleVersion.let { target ->
+            val current = parsedWrapper ?: ""
+
+            findings +=
+                DependencyFinding(
+                    kind = DependencyKind.GRADLE,
+                    key = "gradle-wrapper",
+                    currentVersion = current,
+                    targetVersion = target,
+                    status =
+                        when {
+                            VersionComparator.compare(current, target) < 0 ->
+                                DependencyStatus.UPDATE
+
+                            VersionComparator.compare(current, target) > 0 ->
+                                DependencyStatus.AHEAD
+
+                            else ->
+                                DependencyStatus.OK
+                        },
+                )
+        }
+
         val trackedDependencies = store.dependencies.keys
         val trackedPlugins = store.plugins.keys
 
         val untrackedDependencies =
-            parsed.dependencies
+            parsedBuildFile.dependencies
                 .filterKeys { it !in trackedDependencies }
                 .map { (key, version) ->
                     UntrackedDependency(
@@ -152,7 +178,7 @@ class DependencyScanner(
                 }
 
         val untrackedPlugins =
-            parsed.plugins
+            parsedBuildFile.plugins
                 .filterKeys { it !in trackedPlugins }
                 .map { (key, version) ->
                     UntrackedPlugin(
@@ -180,4 +206,12 @@ class DependencyScanner(
             ?: runCatching {
                 githubClient.getFile(owner, repo, "build.gradle.kts")
             }.getOrNull()
+
+    private fun tryGetWrapperFile(
+        owner: String,
+        repo: String,
+    ): String? =
+        runCatching {
+            githubClient.getFile(owner, repo, "gradle/wrapper/gradle-wrapper.properties")
+        }.getOrNull()
 }

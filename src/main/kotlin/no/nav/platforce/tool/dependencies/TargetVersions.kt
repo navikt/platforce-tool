@@ -31,6 +31,7 @@ object TargetVersions {
 data class TargetVersionsState(
     val plugins: MutableMap<String, String>,
     val dependencies: MutableMap<String, String>,
+    val gradleVersion: String = "1.0.0", // TODO Placeholder
 )
 
 class TargetVersionsStore(

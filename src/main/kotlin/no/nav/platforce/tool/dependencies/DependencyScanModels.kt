@@ -19,6 +19,7 @@ data class DependencyFinding(
 enum class DependencyKind {
     PLUGIN,
     DEPENDENCY,
+    GRADLE,
 }
 
 enum class DependencyStatus {
