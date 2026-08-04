@@ -12,7 +12,7 @@ data class ConfiguredDependency(
     val version: String,
 )
 
-object DependencyInventoryCache {
+/*object DependencyInventoryCache {
     private val inventory =
         mutableMapOf<String, RepositoryDependencyInventory>()
 
@@ -20,7 +20,7 @@ object DependencyInventoryCache {
         inventory[item.repository] = item
     }
 
-    fun get(repo: String): RepositoryDependencyInventory? = inventory[repo]
+    // fun get(repo: String): RepositoryDependencyInventory? = inventory[repo]
 
     fun all(): List<RepositoryDependencyInventory> = inventory.values.toList()
-}
+}*/

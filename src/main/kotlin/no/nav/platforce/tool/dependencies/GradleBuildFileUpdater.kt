@@ -33,6 +33,9 @@ class GradleBuildFileUpdater {
                                 """$1$to$2""",
                             )
                         }
+                        DependencyKind.GRADLE -> {
+                            updated // TODO Do nothing for now
+                        }
                     }
             }
 
