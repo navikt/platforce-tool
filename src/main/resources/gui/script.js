@@ -557,6 +557,22 @@ function renderTargets(data) {
 
     renderTable("pluginsTable", plugins, "plugin");
     renderTable("depsTable", deps, "dependency");
+    renderGradleVersion("1.0.0-dummy")
+}
+
+function renderGradleVersion(version) {
+    const container = document.getElementById("gradleTable");
+    container.innerHTML = "";
+
+    const row = document.createElement("div");
+    row.className = "target-row";
+
+    row.innerHTML = `
+            <input class="key" value="gradle-wrapper" />
+            <input class="version" value="${version}" />
+        `;
+
+    container.appendChild(row);
 }
 
 function renderTable(containerId, entries, type) {
