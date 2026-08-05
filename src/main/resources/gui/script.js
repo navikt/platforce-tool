@@ -676,7 +676,7 @@ document.getElementById("saveTargets")
         const payload = {
             plugins: read("pluginsTable"),
             dependencies: read("depsTable"),
-            gradle: readSingleVersion("gradleTable")
+            gradleVersion: readSingleVersion("gradleTable")
         };
 
         await fetch("/internal/api/target-versions/update", {
