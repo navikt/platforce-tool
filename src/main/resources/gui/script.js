@@ -117,7 +117,7 @@ function render({ repos, scans }) {
         });
 
     document.addEventListener("click", e => {
-        const pill = e.target.closest(".untracked-pill");
+        const pill = e.target.closest(".target-draft-pill");
 
         if (!pill) {
             return;
@@ -130,9 +130,8 @@ function render({ repos, scans }) {
         addDraftTarget(kind, key, version);
 
         pill.textContent = "DRAFTED";
-        pill.classList.remove("status-unknown");
+        pill.classList.remove("status-unknown", "status-ahead");
         pill.classList.add("status-drafted");
-
         pill.classList.add("disabled");
     });
 
@@ -306,7 +305,10 @@ function renderRepo(repoView, scanMap, container) {
                             </div>
 
                             <div>
-                                <span class="status-pill status-${status.toLowerCase()}">
+                                <span class="status-pill status-${status.toLowerCase()}" ${status === "AHEAD" ? "target-draft-pill" : ""}
+                                    data-kind="${f.kind}"
+                                    data-key="${f.key}"
+                                    data-version="${f.currentVersion}">
                                     ${status}
                                 </span>
                             </div>
@@ -337,7 +339,7 @@ function renderRepo(repoView, scanMap, container) {
                                         </div>
 
                                         <div>
-                                            <span class="status-pill status-unknown untracked-pill"
+                                            <span class="status-pill status-unknown target-draft-pill"
                                                 data-kind="PLUGIN"
                                                 data-key="${plugin.key}"
                                                 data-version="${plugin.version}">
@@ -359,7 +361,7 @@ function renderRepo(repoView, scanMap, container) {
                                         </div>
 
                                         <div>
-                                            <span class="status-pill status-unknown untracked-pill"
+                                            <span class="status-pill status-unknown target-draft-pill"
                                                 data-kind="DEPENDENCY"
                                                 data-key="${dep.key}"
                                                 data-version="${dep.version}">
@@ -599,6 +601,12 @@ function addDraftTarget(kind, key, version) {
     if (kind === "DEPENDENCY") {
         targetState.dependencies[key] = version;
     }
+
+    console.log("Draft target:", {
+        kind,
+        key,
+        version
+    });
 
     renderTargetTables();
 }
