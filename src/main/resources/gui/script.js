@@ -305,7 +305,7 @@ function renderRepo(repoView, scanMap, container) {
                             </div>
 
                             <div>
-                                <span class="status-pill status-${status.toLowerCase()}" ${status === "AHEAD" ? "target-draft-pill" : ""}
+                                <span class="status-pill status-${status.toLowerCase()} ${status === "AHEAD" ? "target-draft-pill" : ""}"
                                     data-kind="${f.kind}"
                                     data-key="${f.key}"
                                     data-version="${f.currentVersion}">
