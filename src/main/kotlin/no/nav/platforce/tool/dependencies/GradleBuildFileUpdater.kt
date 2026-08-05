@@ -8,6 +8,7 @@ class GradleBuildFileUpdater {
         var updated = content
 
         findings
+            .filter { it.kind != DependencyKind.GRADLE }
             .filter { it.status != DependencyStatus.OK }
             .forEach { f ->
 
@@ -34,7 +35,7 @@ class GradleBuildFileUpdater {
                             )
                         }
                         DependencyKind.GRADLE -> {
-                            updated // TODO Do nothing for now
+                            updated // Should never reach, do nothing
                         }
                     }
             }
