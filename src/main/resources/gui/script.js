@@ -666,9 +666,17 @@ document.getElementById("saveTargets")
             return map;
         }
 
+        function readSingleVersion(containerId) {
+            const row = document.querySelector(`#${containerId} .target-row`);
+            if (!row) return "";
+
+            return row.querySelector(".version")?.value ?? "";
+        }
+
         const payload = {
             plugins: read("pluginsTable"),
-            dependencies: read("depsTable")
+            dependencies: read("depsTable"),
+            gradle: readSingleVersion("gradleTable")
         };
 
         await fetch("/internal/api/target-versions/update", {

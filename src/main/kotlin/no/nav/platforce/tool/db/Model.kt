@@ -36,6 +36,7 @@ data class TargetVersion(
 enum class TargetVersionType {
     PLUGIN,
     DEPENDENCY,
+    GRADLE,
 }
 
 fun ResultRow.toTargetVersion() =

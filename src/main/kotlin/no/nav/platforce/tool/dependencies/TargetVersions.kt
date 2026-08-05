@@ -88,7 +88,16 @@ class TargetVersionsStore(
                         createdAt = now,
                         updatedAt = now,
                     )
-                }
+                } +
+                TargetVersion(
+                    userId = userId,
+                    team = team,
+                    type = TargetVersionType.GRADLE,
+                    key = "gradle-wrapper",
+                    version = state.gradleVersion,
+                    createdAt = now,
+                    updatedAt = now,
+                )
 
         PostgresDatabase.replaceForUser(userId, team, versions)
     }
