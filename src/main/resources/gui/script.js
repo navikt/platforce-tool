@@ -116,6 +116,26 @@ function render({ repos, scans }) {
             );
         });
 
+    document.addEventListener("click", e => {
+        const pill = e.target.closest(".untracked-pill");
+
+        if (!pill) {
+            return;
+        }
+
+        const kind = pill.dataset.kind;
+        const key = pill.dataset.key;
+        const version = pill.dataset.version;
+
+        addDraftTarget(kind, key, version);
+
+        pill.textContent = "DRAFTED";
+        pill.classList.remove("status-unknown");
+        pill.classList.add("status-drafted");
+
+        pill.classList.add("disabled");
+    });
+
     console.log("✅ Render complete");
 }
 
@@ -317,7 +337,10 @@ function renderRepo(repoView, scanMap, container) {
                                         </div>
 
                                         <div>
-                                            <span class="status-pill status-unknown">
+                                            <span class="status-pill status-unknown untracked-pill"
+                                                data-kind="PLUGIN"
+                                                data-key="${plugin.key}"
+                                                data-version="${plugin.version}">
                                                 UNTRACKED
                                             </span>
                                         </div>
@@ -336,7 +359,10 @@ function renderRepo(repoView, scanMap, container) {
                                         </div>
 
                                         <div>
-                                            <span class="status-pill status-unknown">
+                                            <span class="status-pill status-unknown untracked-pill"
+                                                data-kind="DEPENDENCY"
+                                                data-key="${dep.key}"
+                                                data-version="${dep.version}">
                                                 UNTRACKED
                                             </span>
                                         </div>
@@ -547,18 +573,34 @@ async function saveNote(repository, note) {
     });
 }
 
-let targetState = null;
+let targetState = {
+    plugins: {},
+    dependencies: {},
+    gradleVersion: ""
+};
 
 function renderTargets(data) {
     targetState = data;
 
-    const plugins = Object.entries(data.plugins || {});
-    const deps = Object.entries(data.dependencies || {});
-    const gradleVersion = data.gradleVersion || "";
+    renderTargetTables()
+}
 
-    renderTable("pluginsTable", plugins, "plugin");
-    renderTable("depsTable", deps, "dependency");
-    renderGradleVersion(gradleVersion)
+function renderTargetTables() {
+    renderTable("pluginsTable", Object.entries(targetState.plugins), "plugin");
+    renderTable("depsTable", Object.entries(targetState.dependencies), "dependency");
+    renderGradleVersion(targetState.gradleVersion);
+}
+
+function addDraftTarget(kind, key, version) {
+    if (kind === "PLUGIN") {
+        targetState.plugins[key] = version;
+    }
+
+    if (kind === "DEPENDENCY") {
+        targetState.dependencies[key] = version;
+    }
+
+    renderTargetTables();
 }
 
 function renderGradleVersion(version) {
