@@ -243,6 +243,7 @@ button:hover {
 .status-unknown {
     color: #666;
     background-color: rgba(120, 120, 120, 0.06);
+    cursor: pointer;
 }
 
 .repo-name-link {
