@@ -26,12 +26,13 @@ object TargetVersions {
             "org.http4k:http4k-server-netty" to "6.39.0.0",
             "org.http4k:http4k-client-okhttp" to "6.39.0.0",
         )
+    val gradleVersion = "1.0.0-dummy"
 }
 
 data class TargetVersionsState(
     val plugins: MutableMap<String, String>,
     val dependencies: MutableMap<String, String>,
-    val gradleVersion: String = "1.0.0", // TODO Placeholder
+    val gradleVersion: String,
 )
 
 class TargetVersionsStore(
@@ -42,6 +43,7 @@ class TargetVersionsStore(
         TargetVersionsState(
             plugins = TargetVersions.plugins.toMutableMap(),
             dependencies = TargetVersions.dependencies.toMutableMap(),
+            gradleVersion = TargetVersions.gradleVersion,
         )
 
     fun get(): TargetVersionsState {
@@ -167,7 +169,16 @@ class TargetVersionsStore(
                                 createdAt = Instant.now(),
                                 updatedAt = Instant.now(),
                             )
-                        }
+                        } +
+                        TargetVersion(
+                            userId = userId,
+                            team = team,
+                            type = TargetVersionType.GRADLE,
+                            key = "gradle-wrapper",
+                            version = TargetVersions.gradleVersion,
+                            createdAt = Instant.now(),
+                            updatedAt = Instant.now(),
+                        )
 
                 PostgresDatabase.replaceForUser(userId, team, seed)
             }

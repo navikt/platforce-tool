@@ -554,10 +554,11 @@ function renderTargets(data) {
 
     const plugins = Object.entries(data.plugins || {});
     const deps = Object.entries(data.dependencies || {});
+    const gradleVersion = Object.entries(data.gradleVersion || {});
 
     renderTable("pluginsTable", plugins, "plugin");
     renderTable("depsTable", deps, "dependency");
-    renderGradleVersion("1.0.0-dummy")
+    renderGradleVersion(gradleVersion)
 }
 
 function renderGradleVersion(version) {
