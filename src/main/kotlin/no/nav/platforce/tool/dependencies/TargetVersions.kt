@@ -60,6 +60,10 @@ class TargetVersionsStore(
                     .sortedBy { it.key }
                     .associate { it.key to it.version }
                     .toMutableMap(),
+            gradleVersion =
+                versions
+                    .firstOrNull { it.type == TargetVersionType.GRADLE }
+                    ?.version ?: "1.0.0-missing",
         )
     }
 
