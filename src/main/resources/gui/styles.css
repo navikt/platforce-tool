@@ -361,6 +361,16 @@ button:hover {
     border: 1px solid #dce8df;
 }
 
+.target-section.plugins {
+    background: #f9fbfe;
+    border: 1px solid #dce8f7;
+}
+
+.target-section.gradle {
+    background: #fefcf9;
+    border: 1px solid #f7eadc;
+}
+
 .section-pill {
     display: inline-block;
 
@@ -391,8 +401,8 @@ button:hover {
 
 .gradle-pill {
     background: #eef5ff;
-    color: #a69524;
-    border: 1px solid #a69524;
+    color: #a66324;
+    border: 1px solid #a66324;
 }
 
 .target-section.plugins .target-row:nth-child(odd) {
@@ -409,6 +419,14 @@ button:hover {
 
 .target-section.dependencies .target-row:nth-child(even) {
     background: #f9fffa;
+}
+
+.target-section.gradle .target-row:nth-child(odd) {
+    background: #f4f1ea;
+}
+
+.target-section.gradle .target-row:nth-child(even) {
+    background: #fffcf9;
 }
 
 .target-actions {
