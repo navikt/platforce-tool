@@ -578,7 +578,8 @@ async function saveNote(repository, note) {
 let targetState = {
     plugins: {},
     dependencies: {},
-    gradleVersion: ""
+    gradleVersion: "",
+    drafted: new Set()
 };
 
 function renderTargets(data) {
@@ -601,6 +602,8 @@ function addDraftTarget(kind, key, version) {
     if (kind === "DEPENDENCY") {
         targetState.dependencies[key] = version;
     }
+
+    targetState.drafted.add(`${kind}:${key}`);
 
     console.log("Draft target:", {
         kind,
@@ -633,8 +636,11 @@ function renderTable(containerId, entries, type) {
 
     entries.forEach(([key, version]) => {
 
+        const drafted =
+            targetState.drafted?.has(`${type.toUpperCase()}:${key}`);
+
         const row = document.createElement("div");
-        row.className = "target-row";
+        row.className = `target-row${drafted ? " drafted" : ""}`;
 
         row.innerHTML = `
             <input class="key" value="${key}" />
@@ -646,6 +652,9 @@ function renderTable(containerId, entries, type) {
         `;
 
         row.querySelector(".remove-btn").onclick = () => {
+            if (drafted) {
+                targetState.drafted.delete(`${type.toUpperCase()}:${key}`);
+            }
             row.remove();
         };
 
@@ -739,6 +748,9 @@ document.getElementById("saveTargets")
         });
 
         alert("Target versions updated");
+
+        targetState.drafted.clear()
+        renderTargetTables()
     });
 
 document.getElementById("refreshBtn")

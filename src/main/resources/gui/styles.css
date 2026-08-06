@@ -786,3 +786,21 @@ button:hover {
 .repo.open .untracked-section {
     display: block;
 }
+
+.target-row.drafted input {
+    border: 2px solid #3b82f6;
+    background: #eef6ff;
+}
+
+.target-row.drafted {
+    animation: draftedPulse 1.2s ease-out;
+}
+
+@keyframes draftedPulse {
+    from {
+        background: #dbeafe;
+    }
+    to {
+        background: transparent;
+    }
+}
