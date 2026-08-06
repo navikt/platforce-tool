@@ -756,7 +756,13 @@ document.getElementById("saveTargets")
 
         alert("Target versions updated");
 
-        targetState.drafted.clear()
+        targetState = {
+            plugins: payload.plugins,
+            dependencies: payload.dependencies,
+            gradleVersion: payload.gradleVersion,
+            drafted: new Set()
+        };
+
         renderTargetTables()
     });
 
