@@ -583,6 +583,15 @@ let targetState = {
 };
 
 function renderTargets(data) {
+    const drafted = targetState?.drafted ?? new Set();
+
+    targetState = {
+        plugins: data.plugins || {},
+        dependencies: data.dependencies || {},
+        gradleVersion: data.gradleVersion || "",
+        drafted
+    };
+
     targetState = data;
 
     renderTargetTables()
