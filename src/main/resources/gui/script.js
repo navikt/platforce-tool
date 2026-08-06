@@ -592,8 +592,6 @@ function renderTargets(data) {
         drafted
     };
 
-    targetState = data;
-
     renderTargetTables()
 }
 
