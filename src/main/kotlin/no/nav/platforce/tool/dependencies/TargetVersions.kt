@@ -39,13 +39,6 @@ class TargetVersionsStore(
     private val userId: String = "default",
     private val team: String? = null,
 ) {
-    private val state =
-        TargetVersionsState(
-            plugins = TargetVersions.plugins.toMutableMap(),
-            dependencies = TargetVersions.dependencies.toMutableMap(),
-            gradleVersion = TargetVersions.gradleVersion,
-        )
-
     fun get(): TargetVersionsState {
         val versions = PostgresDatabase.getForUser(userId)
 
@@ -106,40 +99,6 @@ class TargetVersionsStore(
                 )
 
         PostgresDatabase.replaceForUser(userId, team, versions)
-    }
-
-    // old
-    fun updatePlugins(map: Map<String, String>) {
-        state.plugins.clear()
-        state.plugins.putAll(map)
-    }
-
-    // old
-    fun updateDependencies(map: Map<String, String>) {
-        state.dependencies.clear()
-        state.dependencies.putAll(map)
-    }
-
-    fun addPlugin(
-        key: String,
-        version: String,
-    ) {
-        state.plugins[key] = version
-    }
-
-    fun addDependency(
-        key: String,
-        version: String,
-    ) {
-        state.dependencies[key] = version
-    }
-
-    fun removePlugin(key: String) {
-        state.plugins.remove(key)
-    }
-
-    fun removeDependency(key: String) {
-        state.dependencies.remove(key)
     }
 
     init {
