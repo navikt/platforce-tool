@@ -47,6 +47,21 @@ jobs:
         with:
           cache-disabled: true
           dependency-graph: generate-and-submit
+          dependency-graph-report-dir: dependency-graph-reports
+      - name: Build
+        run: ./gradlew build
+      - name: Inspect dependency graph
+        run: |
+          echo "=== Directory ==="
+          ls -laR dependency-graph-reports || true
+
+          echo
+          echo "=== Contents ==="
+          find dependency-graph-reports -type f -exec sh -c '
+            echo "===== $1 ====="
+            cat "$1"
+            echo
+          ' _ {} \;
       - name: Build JAR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
