@@ -129,6 +129,12 @@ button:hover {
     font-weight: 400;
 }
 
+.badge.untracked {
+    background: #eeeeee;
+    color: #666;
+    border: 1px solid #d0d0d0;
+}
+
 /* pills */
 .pill {
     font-size: 11px;
