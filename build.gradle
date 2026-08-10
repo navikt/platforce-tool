@@ -43,6 +43,7 @@ dependencies {
     implementation "ch.qos.logback:logback-classic:1.5.34"
     implementation "net.logstash.logback:logstash-logback-encoder:9.0"
     implementation "tools.jackson.core:jackson-core:3.1.0" // Transitive to net.logstash.logback:logstash-logback-encoder
+    implementation "tools.jackson.core:jackson-databind:3.1.4" // Transitive to net.logstash.logback:logstash-logback-encoder
 
     implementation "io.prometheus:simpleclient_common:0.8.1"
     implementation "io.prometheus:simpleclient_hotspot:0.8.1"
