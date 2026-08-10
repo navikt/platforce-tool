@@ -207,6 +207,12 @@ function renderRepo(repoView, scanMap, container) {
     const isMissing = state === "NOT_IN_GITHUB";
     const isNotScanned = state === "NOT_SCANNED";
 
+    const untrackedCount = untrackedDependencies.length + untrackedPlugins.length;
+    const untrackedBadge =
+        untrackedCount > 0
+            ? `<span class="badge untracked">${untrackedCount} UNTRACKED</span>`
+            : "";
+
     const el = document.createElement("div");
     el.className =
         "repo " +
@@ -226,7 +232,9 @@ function renderRepo(repoView, scanMap, container) {
         isScanned ? `
                             <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                             <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
-                            <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>`
+                            <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
+                            ${untrackedBadge}
+                    `
             : isMissing
                 ? `<span class="badge missing">NOT INSTALLED</span>`
                 : `<span class="badge pending">NOT SCANNED</span>`
