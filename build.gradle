@@ -42,14 +42,15 @@ dependencies {
     implementation "io.github.microutils:kotlin-logging:3.0.5"
     implementation "ch.qos.logback:logback-classic:1.5.34"
     implementation "net.logstash.logback:logstash-logback-encoder:9.0"
+    implementation "tools.jackson.core:jackson-core:3.1.0" // Transitive to net.logstash.logback:logstash-logback-encoder
 
     implementation "io.prometheus:simpleclient_common:0.8.1"
     implementation "io.prometheus:simpleclient_hotspot:0.8.1"
 
-    implementation("com.auth0:java-jwt:4.6.0")
-    implementation("org.bouncycastle:bcpkix-jdk18on:1.85")
+    implementation "com.auth0:java-jwt:4.6.0"
+    implementation "org.bouncycastle:bcpkix-jdk18on:1.85"
 
-    implementation("org.postgresql:postgresql:42.7.3")
+    implementation "org.postgresql:postgresql:42.7.3"
 
     implementation 'org.jetbrains.exposed:exposed-core:0.46.0'
     implementation 'org.jetbrains.exposed:exposed-dao:0.46.0'
