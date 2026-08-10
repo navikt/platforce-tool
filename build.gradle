@@ -43,7 +43,7 @@ dependencies {
     implementation "ch.qos.logback:logback-classic:1.5.34"
     implementation "net.logstash.logback:logstash-logback-encoder:9.0"
     implementation "tools.jackson.core:jackson-core:3.1.0" // Transitive to net.logstash.logback:logstash-logback-encoder
-    implementation "tools.jackson.core:jackson-databind:3.1.4" // Transitive to net.logstash.logback:logstash-logback-encoder
+    implementation "tools.jackson.core:jackson-databind:3.1.5" // Transitive to net.logstash.logback:logstash-logback-encoder
     implementation "com.fasterxml.jackson.core:jackson-databind:2.22.1" // Transitive to tools.jackson.core:jackson-databind
 
     implementation "io.prometheus:simpleclient_common:0.8.1"
@@ -52,7 +52,7 @@ dependencies {
     implementation "com.auth0:java-jwt:4.6.0"
     implementation "org.bouncycastle:bcpkix-jdk18on:1.85"
 
-    implementation "org.postgresql:postgresql:42.7.3"
+    implementation "org.postgresql:postgresql:42.7.11"
 
     implementation "org.jetbrains.exposed:exposed-core:0.46.0"
     implementation "org.jetbrains.exposed:exposed-dao:0.46.0"
@@ -81,39 +81,39 @@ kotlin {
     jvmToolchain(21)
 }
 
-import groovy.json.JsonOutput
-
-tasks.register("dependencyGraph") {
-    doLast {
-        def configuration = configurations.findByName("runtimeClasspath")
-
-        if (configuration == null || !configuration.canBeResolved) {
-            throw new GradleException("runtimeClasspath is not resolvable")
-        }
-
-        def result = configuration.incoming.resolutionResult
-
-        def components = result.allComponents.collect { component ->
-            [
-                    id: component.id.displayName,
-                    dependencies: component.dependencies.collect { dependency ->
-                        [
-                                requested: dependency.requested.displayName,
-                                selected: dependency.selected.id.displayName
-                        ]
-                    }
-            ]
-        }
-
-        def output = file("gradle/dependency-graph.json")
-        output.parentFile.mkdirs()
-        output.text = JsonOutput.prettyPrint(
-                JsonOutput.toJson([
-                        configuration: configuration.name,
-                        components: components
-                ])
-        )
-
-        println "Dependency graph written to ${output}"
-    }
-}
+//import groovy.json.JsonOutput
+//
+//tasks.register("dependencyGraph") {
+//    doLast {
+//        def configuration = configurations.findByName("runtimeClasspath")
+//
+//        if (configuration == null || !configuration.canBeResolved) {
+//            throw new GradleException("runtimeClasspath is not resolvable")
+//        }
+//
+//        def result = configuration.incoming.resolutionResult
+//
+//        def components = result.allComponents.collect { component ->
+//            [
+//                    id: component.id.displayName,
+//                    dependencies: component.dependencies.collect { dependency ->
+//                        [
+//                                requested: dependency.requested.displayName,
+//                                selected: dependency.selected.id.displayName
+//                        ]
+//                    }
+//            ]
+//        }
+//
+//        def output = file("gradle/dependency-graph.json")
+//        output.parentFile.mkdirs()
+//        output.text = JsonOutput.prettyPrint(
+//                JsonOutput.toJson([
+//                        configuration: configuration.name,
+//                        components: components
+//                ])
+//        )
+//
+//        println "Dependency graph written to ${output}"
+//    }
+//}
