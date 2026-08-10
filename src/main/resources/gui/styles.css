@@ -80,8 +80,9 @@ button:hover {
         80px    /* OK */
         80px    /* UPDATE */
         80px    /* AHEAD */
+        100px   /* UNTRACKED (potential) */
         30px    /* note icon*/
-        100px; /* paddding */
+        100px;  /* padding */
     gap: 8px;
     align-items: center;
 }
@@ -94,7 +95,7 @@ button:hover {
 }
 
 .badge {
-    max-width: 64px; /* ensures 2-digit numbers fit */
+    max-width: 100px; /* ensures 2-digit numbers fit */
     text-align: center;
     justify-content: center;
     font-size: 12px;
