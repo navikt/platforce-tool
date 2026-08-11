@@ -636,10 +636,15 @@ function renderGradleVersion(version) {
     const row = document.createElement("div");
     row.className = "target-row";
 
-    row.innerHTML = `
-            <input class="key" value="gradle-wrapper" />
-            <input class="version" value="${version}" />
-        `;
+    const keyInput = document.createElement("input");
+    keyInput.className = "key";
+    keyInput.value = "gradle-wrapper";
+
+    const versionInput = document.createElement("input");
+    versionInput.className = "version";
+    versionInput.value = version;
+
+    row.replaceChildren(keyInput, versionInput);
 
     container.appendChild(row);
 }
