@@ -24,3 +24,5 @@ Scratch*
 *.vim
 TAGS
 tags
+
+src/main/resources/gradle/*.zip
