@@ -3,12 +3,15 @@ package no.nav.platforce.tool.dependencies
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import mu.KotlinLogging
-import java.net.HttpURLConnection
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.net.InetAddress
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.time.Duration
 import java.util.zip.ZipInputStream
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectories
@@ -31,18 +34,18 @@ data class ResolvedDependency(
 )
 
 class GradleTargetResolutionService(
+    private val httpClient: OkHttpClient =
+        OkHttpClient
+            .Builder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .readTimeout(Duration.ofMinutes(2))
+            .writeTimeout(Duration.ofMinutes(2))
+            .build(),
     private val gson: Gson = Gson(),
 ) {
-    private val log = KotlinLogging.logger {}
-
-    /**
-     * Everything used by this service lives below /tmp.
-     *
-     * The distribution cache survives individual resolution runs,
-     * but is lost when the pod/container is recreated.
-     */
+    private val log = KotlinLogging.logger { }
     private val distributionCacheDir: Path =
-        Path.of("/tmp/platforce-gradle-distributions")
+        Path.of("/tmp/platforce-gradle")
 
     @OptIn(ExperimentalPathApi::class)
     fun resolve(state: TargetVersionsState): TargetResolution {
@@ -53,82 +56,68 @@ class GradleTargetResolutionService(
         ) {
             "Invalid Gradle version: ${state.gradleVersion}"
         }
-
         require(state.dependencies.isNotEmpty()) {
             "No target dependencies configured"
         }
-
-        /*
-         * One completely isolated project per resolution.
-         *
-         * Example:
-         *
-         * /tmp/platforce-gradle-resolution-12345/
-         *   build.gradle
-         *   settings.gradle
-         *   resolution.json
-         *   gradle-user-home/
-         */
+        log.info {
+            "Starting Gradle target resolution for Gradle ${state.gradleVersion}"
+        }
+        log.info {
+            "Target dependencies: ${state.dependencies.size}"
+        }
+        state.dependencies
+            .toSortedMap()
+            .forEach { (key, version) ->
+                log.info {
+                    "Target dependency: $key:$version"
+                }
+            }
+        distributionCacheDir.createDirectories()
         val projectDir =
             Files.createTempDirectory(
                 Path.of("/tmp"),
                 "platforce-gradle-resolution-",
             )
-
-        val gradleUserHome =
-            projectDir.resolve("gradle-user-home")
-
-        gradleUserHome.createDirectories()
-
+        log.info {
+            "Created temporary Gradle project at $projectDir"
+        }
         try {
-            writeProject(
-                projectDir = projectDir,
-                state = state,
-            )
-
+            writeProject(projectDir, state)
+            log.info {
+                "Temporary Gradle project written to $projectDir"
+            }
             val gradleHome =
                 ensureGradleDistribution(
                     state.gradleVersion,
                 )
-
             log.info {
-                "Starting Gradle ${state.gradleVersion} dependency resolution"
+                "Using Gradle installation at $gradleHome"
             }
-
             runGradle(
                 gradleHome = gradleHome,
-                gradleUserHome = gradleUserHome,
                 projectDir = projectDir,
             )
-
             val resultFile =
                 projectDir.resolve("resolution.json")
-
             check(resultFile.exists()) {
                 "Gradle resolution completed without producing resolution.json"
             }
-
-            val json = resultFile.readText()
-
-            log.debug {
-                "Gradle resolution result: $json"
+            log.info {
+                "Reading resolution result from $resultFile"
             }
-
+            val json = resultFile.readText()
+            log.info {
+                "Resolution result size: ${json.length} characters"
+            }
             return parseResult(
                 json = json,
                 gradleVersion = state.gradleVersion,
             )
         } finally {
-            /*
-             * Remove the project AND its Gradle user home/cache.
-             */
-            runCatching {
-                projectDir.deleteRecursively()
-            }.onFailure {
-                log.warn(it) {
-                    "Failed to clean up temporary Gradle directory: $projectDir"
-                }
+            log.info {
+                "Deleting temporary Gradle project $projectDir"
             }
+            projectDir.deleteRecursively()
         }
     }
 
@@ -136,19 +125,14 @@ class GradleTargetResolutionService(
         projectDir: Path,
         state: TargetVersionsState,
     ) {
-        projectDir
-            .resolve("settings.gradle")
-            .writeText(
-                """
-                rootProject.name = "platforce-target-resolution"
-                """.trimIndent(),
-            )
-
-        projectDir
-            .resolve("build.gradle")
-            .writeText(
-                createBuildFile(state),
-            )
+        projectDir.resolve("settings.gradle").writeText(
+            """
+            rootProject.name = "platforce-target-resolution"
+            """.trimIndent(),
+        )
+        projectDir.resolve("build.gradle").writeText(
+            createBuildFile(state),
+        )
     }
 
     private fun createBuildFile(state: TargetVersionsState): String =
@@ -158,69 +142,49 @@ class GradleTargetResolutionService(
                 plugins {
                     id 'java'
                 }
-
                 repositories {
                     mavenCentral()
                 }
-
                 configurations {
                     targetResolution
                 }
-
                 dependencies {
                 """.trimIndent(),
             )
-
             state.dependencies
                 .toSortedMap()
                 .forEach { (key, version) ->
                     requireValidDependencyKey(key)
-
                     appendLine(
                         """    targetResolution "${escape(key)}:$version"""",
                     )
                 }
-
             appendLine(
                 """
                 }
-
                 import groovy.json.JsonOutput
-
                 tasks.register("platforceResolve") {
                     doLast {
                         def configuration = configurations.targetResolution
-
                         def resolutionResult =
                             configuration.incoming.resolutionResult
-
                         def buildNode
-
                         buildNode = { component, requested, path ->
-
                             def moduleVersion = component.moduleVersion
-
                             def node = [
                                 group: moduleVersion?.group,
                                 name: moduleVersion?.name ?: component.id.displayName,
                                 version: moduleVersion?.version,
-                                requestedVersion: requested?.version,
+                                requestedVersion: requested?.displayName,
                                 dependencies: []
                             ]
-
                             def componentId = component.id.displayName
-
-                            // Prevent cycles in the dependency graph.
                             if (path.contains(componentId)) {
                                 return node
                             }
-
                             def newPath = path + componentId
-
                             component.dependencies.each { dependency ->
-
                                 def selected = dependency.selected
-
                                 if (selected != null) {
                                     node.dependencies << buildNode(
                                         selected,
@@ -229,29 +193,19 @@ class GradleTargetResolutionService(
                                     )
                                 }
                             }
-
                             return node
                         }
-
                         def roots = []
-
                         resolutionResult.root.dependencies.each { dependency ->
-
-                            def selected = dependency.selected
-
-                            if (selected != null) {
-                                roots << buildNode(
-                                    selected,
-                                    dependency.requested,
-                                    []
-                                )
-                            }
+                            roots << buildNode(
+                                dependency.selected,
+                                dependency.requested,
+                                []
+                            )
                         }
-
                         def result = [
                             roots: roots
                         ]
-
                         file("${'$'}projectDir/resolution.json").text =
                             JsonOutput.prettyPrint(
                                 JsonOutput.toJson(result)
@@ -264,49 +218,45 @@ class GradleTargetResolutionService(
 
     private fun runGradle(
         gradleHome: Path,
-        gradleUserHome: Path,
         projectDir: Path,
     ) {
         val executable =
             gradleHome
                 .resolve("bin")
                 .resolve("gradle")
-
         check(executable.exists()) {
             "Gradle executable not found: $executable"
         }
-
         executable.toFile().setExecutable(true)
-
+        log.info {
+            "Starting Gradle process: $executable"
+        }
+        log.info {
+            "Gradle working directory: $projectDir"
+        }
         val process =
             ProcessBuilder(
-                executable.toAbsolutePath().toString(),
+                executable.toString(),
                 "--no-daemon",
                 "--console=plain",
                 "--stacktrace",
-                "--gradle-user-home",
-                gradleUserHome.toAbsolutePath().toString(),
                 "platforceResolve",
             ).directory(projectDir.toFile())
                 .redirectErrorStream(true)
                 .start()
-
-        val output = StringBuilder()
-
-        process.inputStream
-            .bufferedReader()
-            .useLines { lines ->
-                lines.forEach { line ->
-                    output.appendLine(line)
-
-                    log.info {
-                        "Gradle: $line"
-                    }
+        val output =
+            process.inputStream
+                .bufferedReader()
+                .use { reader ->
+                    reader.readText()
                 }
-            }
-
         val exitCode = process.waitFor()
-
+        log.info {
+            "Gradle process exited with code $exitCode"
+        }
+        log.info {
+            "Gradle output:\n$output"
+        }
         if (exitCode != 0) {
             throw IllegalStateException(
                 buildString {
@@ -322,167 +272,107 @@ class GradleTargetResolutionService(
     @OptIn(ExperimentalPathApi::class)
     private fun ensureGradleDistribution(version: String): Path {
         distributionCacheDir.createDirectories()
-        log.info { "Checking Gradle $version installation in $distributionCacheDir" }
-
         val installationDir =
             distributionCacheDir.resolve(
                 "gradle-$version",
             )
-
         val executable =
             installationDir
                 .resolve("bin")
                 .resolve("gradle")
-
         if (executable.exists()) {
-            log.info { "Gradle $version already installed at $installationDir" }
+            log.info {
+                "Gradle $version already installed at $installationDir"
+            }
             return installationDir
         }
-
         synchronized(distributionLock(version)) {
             if (executable.exists()) {
-                log.info { "Gradle $version was installed by another thread at $installationDir" }
+                log.info {
+                    "Gradle $version was installed by another thread"
+                }
                 return installationDir
             }
-
-            val startedAt = System.currentTimeMillis()
-
-            log.info { "Gradle $version is not installed. Starting download" }
-
+            log.info {
+                "Gradle $version is not installed"
+            }
             val zipFile =
                 distributionCacheDir.resolve(
                     "gradle-$version-bin.zip",
                 )
-
             val shaFile =
                 distributionCacheDir.resolve(
                     "gradle-$version-bin.zip.sha256",
                 )
-
             val distributionUrl =
                 "https://services.gradle.org/distributions/" +
                     "gradle-$version-bin.zip"
-
             val checksumUrl =
                 "$distributionUrl.sha256"
-
             log.info {
                 "Downloading Gradle $version distribution from $distributionUrl"
             }
-
-            val downloadStartedAt = System.currentTimeMillis()
-
             download(
                 url = distributionUrl,
                 destination = zipFile,
             )
-
-            log.info {
-                "Gradle $version distribution downloaded: " +
-                    "${Files.size(zipFile)} bytes in " +
-                    "${System.currentTimeMillis() - downloadStartedAt} ms"
-            }
-
             log.info {
                 "Downloading Gradle $version checksum from $checksumUrl"
             }
-
-            val checksumStartedAt = System.currentTimeMillis()
-
             download(
                 url = checksumUrl,
                 destination = shaFile,
             )
-
             log.info {
-                "Gradle $version checksum downloaded: " +
-                    "${Files.size(shaFile)} bytes in " +
-                    "${System.currentTimeMillis() - checksumStartedAt} ms"
+                "Verifying Gradle $version checksum"
             }
-
-            log.info {
-                "Verifying Gradle $version SHA-256 checksum"
-            }
-
-            val checksumVerificationStartedAt = System.currentTimeMillis()
-
             verifySha256(
                 file = zipFile,
                 checksumFile = shaFile,
             )
-
             log.info {
-                "Verified Gradle $version checksum in " +
-                    "${System.currentTimeMillis() - checksumVerificationStartedAt} ms"
+                "Verified Gradle $version checksum"
             }
-
             val temporaryInstall =
                 distributionCacheDir.resolve(
                     "gradle-$version-installing",
                 )
-
             temporaryInstall.deleteRecursively()
             temporaryInstall.createDirectories()
-
-            log.info {
-                "Extracting Gradle $version distribution to $temporaryInstall"
-            }
-
-            val unzipStartedAt = System.currentTimeMillis()
-
             try {
+                log.info {
+                    "Extracting Gradle $version to $temporaryInstall"
+                }
                 unzip(
                     zipFile = zipFile,
                     destination = temporaryInstall,
                 )
-
-                log.info {
-                    "Gradle $version distribution extracted in " +
-                        "${System.currentTimeMillis() - unzipStartedAt} ms"
-                }
-
                 val extracted =
                     temporaryInstall.resolve(
                         "gradle-$version",
                     )
-
                 check(extracted.exists()) {
                     "Gradle distribution did not contain expected directory " +
                         "gradle-$version"
                 }
-
                 log.info {
-                    "Moving Gradle $version installation from $extracted to $installationDir"
+                    "Moving Gradle $version installation to $installationDir"
                 }
-
                 installationDir.deleteRecursively()
-
                 Files.move(
                     extracted,
                     installationDir,
                     StandardCopyOption.ATOMIC_MOVE,
                 )
-
-                log.info {
-                    "Gradle $version installation moved to $installationDir"
-                }
             } finally {
-                log.info {
-                    "Cleaning up temporary Gradle $version installation directory"
-                }
-
                 temporaryInstall.deleteRecursively()
             }
-
             check(executable.exists()) {
                 "Gradle executable missing after installation: $executable"
             }
-
             log.info {
-                "Gradle $version installed successfully at $installationDir " +
-                    "in ${System.currentTimeMillis() - startedAt} ms total"
+                "Gradle $version installed at $installationDir"
             }
-
             return installationDir
         }
     }
@@ -491,114 +381,80 @@ class GradleTargetResolutionService(
         url: String,
         destination: Path,
     ) {
-        log.info { "Opening connection to $url" }
-
-        val connection =
-            URI(url)
-                .toURL()
-                .openConnection() as HttpURLConnection
-
-        connection.connectTimeout = 30_000
-        connection.readTimeout = 120_000
-        connection.requestMethod = "GET"
-
-        val startedAt = System.currentTimeMillis()
-
+        val host = URI(url).host
         log.info {
-            "Connecting to $url (connectTimeout=30s, readTimeout=120s)"
+            "Resolving DNS for $host"
         }
-
-        connection.connect()
-
+        val addresses =
+            InetAddress.getAllByName(host)
         log.info {
-            "Connected to $url, HTTP ${connection.responseCode}"
+            "DNS resolved $host to " +
+                addresses.joinToString { it.hostAddress }
         }
-
-        check(connection.responseCode in 200..299) {
-            "Failed to download $url: HTTP ${connection.responseCode}"
-        }
-
-        val contentLength = connection.contentLengthLong
-
+        val request =
+            Request
+                .Builder()
+                .url(url)
+                .get()
+                .build()
         log.info {
-            if (contentLength > 0) {
-                "Downloading $url ($contentLength bytes)"
-            } else {
-                "Downloading $url (content length unknown)"
+            "Opening HTTP connection to $url"
+        }
+        try {
+            log.info {
+                "Connecting to $url " +
+                    "(connectTimeout=30s, readTimeout=120s)"
             }
-        }
-
-        val temporary =
-            destination.resolveSibling(
-                "${destination.fileName}.download",
-            )
-
-        var totalBytes = 0L
-        var lastLoggedAt = startedAt
-
-        connection.inputStream.use { input ->
-            Files.newOutputStream(temporary).use { output ->
-                val buffer = ByteArray(1024 * 1024)
-
-                while (true) {
-                    val read = input.read(buffer)
-
-                    if (read < 0) {
-                        break
+            httpClient
+                .newCall(request)
+                .execute()
+                .use { response ->
+                    log.info {
+                        "Received HTTP ${response.code} from $url"
                     }
-
-                    output.write(buffer, 0, read)
-                    totalBytes += read
-
-                    val now = System.currentTimeMillis()
-
-                    if (now - lastLoggedAt >= 5_000) {
-                        val elapsedSeconds =
-                            (now - startedAt) / 1000.0
-
-                        val bytesPerSecond =
-                            if (elapsedSeconds > 0) {
-                                totalBytes / elapsedSeconds
-                            } else {
-                                0.0
+                    check(response.isSuccessful) {
+                        "Failed to download $url: HTTP ${response.code}"
+                    }
+                    val body =
+                        response.body
+                            ?: error(
+                                "Empty response body from $url",
+                            )
+                    val temporary =
+                        destination.resolveSibling(
+                            "${destination.fileName}.download",
+                        )
+                    log.info {
+                        "Writing download to $temporary"
+                    }
+                    body.byteStream().use { input ->
+                        Files
+                            .newOutputStream(
+                                temporary,
+                            ).use { output ->
+                                input.copyTo(output)
                             }
-
-                        val progress =
-                            if (contentLength > 0) {
-                                " (${totalBytes * 100 / contentLength}%)"
-                            } else {
-                                ""
-                            }
-
-                        log.info {
-                            "Download progress: $totalBytes bytes$progress, " +
-                                "speed=${"%.1f".format(bytesPerSecond / 1024 / 1024)} MB/s"
-                        }
-
-                        lastLoggedAt = now
+                    }
+                    log.info {
+                        "Download completed: $temporary " +
+                            "(${Files.size(temporary)} bytes)"
+                    }
+                    Files.move(
+                        temporary,
+                        destination,
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE,
+                    )
+                    log.info {
+                        "Moved download to $destination"
                     }
                 }
+        } catch (e: Exception) {
+            log.error(e) {
+                "Failed downloading $url: " +
+                    "${e.javaClass.simpleName}: ${e.message}"
             }
-        }
-
-        log.info {
-            "Download completed: $totalBytes bytes in " +
-                "${System.currentTimeMillis() - startedAt} ms"
-        }
-
-        log.info {
-            "Moving downloaded file into place: $temporary -> $destination"
-        }
-
-        Files.move(
-            temporary,
-            destination,
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE,
-        )
-
-        log.info {
-            "Downloaded file ready at $destination"
+            throw e
         }
     }
 
@@ -613,35 +469,27 @@ class GradleTargetResolutionService(
                 .split(Regex("\\s+"))
                 .first()
                 .lowercase()
-
         val digest =
             MessageDigest.getInstance("SHA-256")
-
         Files.newInputStream(file).use { input ->
             val buffer = ByteArray(1024 * 1024)
-
             while (true) {
                 val read = input.read(buffer)
-
                 if (read < 0) {
                     break
                 }
-
                 digest.update(buffer, 0, read)
             }
         }
-
         val actual =
             digest
                 .digest()
                 .joinToString("") {
                     "%02x".format(it)
                 }
-
         check(actual == expected) {
             """
             Gradle distribution checksum mismatch.
-
             File: $file
             Expected: $expected
             Actual:   $actual
@@ -656,15 +504,12 @@ class GradleTargetResolutionService(
         ZipInputStream(
             Files.newInputStream(zipFile).buffered(),
         ).use { zip ->
-
             while (true) {
                 val entry = zip.nextEntry ?: break
-
                 val target =
                     destination
                         .resolve(entry.name)
                         .normalize()
-
                 check(
                     target.startsWith(
                         destination.normalize(),
@@ -672,17 +517,14 @@ class GradleTargetResolutionService(
                 ) {
                     "Unsafe ZIP entry: ${entry.name}"
                 }
-
                 if (entry.isDirectory) {
                     target.createDirectories()
                 } else {
                     target.parent?.createDirectories()
-
                     Files.newOutputStream(target).use { output ->
                         zip.copyTo(output)
                     }
                 }
-
                 zip.closeEntry()
             }
         }
@@ -694,13 +536,11 @@ class GradleTargetResolutionService(
     ): TargetResolution {
         val type =
             object : TypeToken<ResolutionFile>() {}.type
-
         val file =
             gson.fromJson<ResolutionFile>(
                 json,
                 type,
             )
-
         return TargetResolution(
             gradleVersion = gradleVersion,
             roots = file.roots,
@@ -722,13 +562,7 @@ class GradleTargetResolutionService(
             .replace("\\", "\\\\")
             .replace("\"", "\\\"")
 
-    /**
-     * JVM intern gives us a process-local lock per Gradle version.
-     *
-     * This prevents two concurrent HTTP requests from trying to install
-     * the same Gradle distribution simultaneously.
-     */
-    private fun distributionLock(version: String): Any = "platforce-gradle-distribution-$version".intern()
+    private fun distributionLock(version: String): Any = version.intern()
 
     private data class ResolutionFile(
         val roots: List<ResolvedDependency>,
