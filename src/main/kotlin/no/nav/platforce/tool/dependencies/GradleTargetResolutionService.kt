@@ -322,6 +322,7 @@ class GradleTargetResolutionService(
     @OptIn(ExperimentalPathApi::class)
     private fun ensureGradleDistribution(version: String): Path {
         distributionCacheDir.createDirectories()
+        log.info { "Checking Gradle $version installation in $distributionCacheDir" }
 
         val installationDir =
             distributionCacheDir.resolve(
@@ -334,17 +335,19 @@ class GradleTargetResolutionService(
                 .resolve("gradle")
 
         if (executable.exists()) {
+            log.info { "Gradle $version already installed at $installationDir" }
             return installationDir
         }
 
         synchronized(distributionLock(version)) {
             if (executable.exists()) {
+                log.info { "Gradle $version was installed by another thread at $installationDir" }
                 return installationDir
             }
 
-            log.info {
-                "Downloading Gradle $version"
-            }
+            val startedAt = System.currentTimeMillis()
+
+            log.info { "Gradle $version is not installed. Starting download" }
 
             val zipFile =
                 distributionCacheDir.resolve(
@@ -363,20 +366,55 @@ class GradleTargetResolutionService(
             val checksumUrl =
                 "$distributionUrl.sha256"
 
+            log.info {
+                "Downloading Gradle $version distribution from $distributionUrl"
+            }
+
+            val downloadStartedAt = System.currentTimeMillis()
+
             download(
                 url = distributionUrl,
                 destination = zipFile,
             )
+
+            log.info {
+                "Gradle $version distribution downloaded: " +
+                    "${Files.size(zipFile)} bytes in " +
+                    "${System.currentTimeMillis() - downloadStartedAt} ms"
+            }
+
+            log.info {
+                "Downloading Gradle $version checksum from $checksumUrl"
+            }
+
+            val checksumStartedAt = System.currentTimeMillis()
 
             download(
                 url = checksumUrl,
                 destination = shaFile,
             )
 
+            log.info {
+                "Gradle $version checksum downloaded: " +
+                    "${Files.size(shaFile)} bytes in " +
+                    "${System.currentTimeMillis() - checksumStartedAt} ms"
+            }
+
+            log.info {
+                "Verifying Gradle $version SHA-256 checksum"
+            }
+
+            val checksumVerificationStartedAt = System.currentTimeMillis()
+
             verifySha256(
                 file = zipFile,
                 checksumFile = shaFile,
             )
+
+            log.info {
+                "Verified Gradle $version checksum in " +
+                    "${System.currentTimeMillis() - checksumVerificationStartedAt} ms"
+            }
 
             val temporaryInstall =
                 distributionCacheDir.resolve(
@@ -386,11 +424,22 @@ class GradleTargetResolutionService(
             temporaryInstall.deleteRecursively()
             temporaryInstall.createDirectories()
 
+            log.info {
+                "Extracting Gradle $version distribution to $temporaryInstall"
+            }
+
+            val unzipStartedAt = System.currentTimeMillis()
+
             try {
                 unzip(
                     zipFile = zipFile,
                     destination = temporaryInstall,
                 )
+
+                log.info {
+                    "Gradle $version distribution extracted in " +
+                        "${System.currentTimeMillis() - unzipStartedAt} ms"
+                }
 
                 val extracted =
                     temporaryInstall.resolve(
@@ -402,6 +451,10 @@ class GradleTargetResolutionService(
                         "gradle-$version"
                 }
 
+                log.info {
+                    "Moving Gradle $version installation from $extracted to $installationDir"
+                }
+
                 installationDir.deleteRecursively()
 
                 Files.move(
@@ -409,7 +462,15 @@ class GradleTargetResolutionService(
                     installationDir,
                     StandardCopyOption.ATOMIC_MOVE,
                 )
+
+                log.info {
+                    "Gradle $version installation moved to $installationDir"
+                }
             } finally {
+                log.info {
+                    "Cleaning up temporary Gradle $version installation directory"
+                }
+
                 temporaryInstall.deleteRecursively()
             }
 
@@ -418,7 +479,8 @@ class GradleTargetResolutionService(
             }
 
             log.info {
-                "Gradle $version installed at $installationDir"
+                "Gradle $version installed successfully at $installationDir " +
+                    "in ${System.currentTimeMillis() - startedAt} ms total"
             }
 
             return installationDir
@@ -429,47 +491,114 @@ class GradleTargetResolutionService(
         url: String,
         destination: Path,
     ) {
+        log.info { "Opening connection to $url" }
+
         val connection =
             URI(url)
                 .toURL()
                 .openConnection() as HttpURLConnection
 
-        try {
-            connection.connectTimeout = 30_000
-            connection.readTimeout = 120_000
-            connection.requestMethod = "GET"
+        connection.connectTimeout = 30_000
+        connection.readTimeout = 120_000
+        connection.requestMethod = "GET"
 
-            connection.connect()
+        val startedAt = System.currentTimeMillis()
 
-            check(connection.responseCode in 200..299) {
-                "Failed to download $url: HTTP ${connection.responseCode}"
+        log.info {
+            "Connecting to $url (connectTimeout=30s, readTimeout=120s)"
+        }
+
+        connection.connect()
+
+        log.info {
+            "Connected to $url, HTTP ${connection.responseCode}"
+        }
+
+        check(connection.responseCode in 200..299) {
+            "Failed to download $url: HTTP ${connection.responseCode}"
+        }
+
+        val contentLength = connection.contentLengthLong
+
+        log.info {
+            if (contentLength > 0) {
+                "Downloading $url ($contentLength bytes)"
+            } else {
+                "Downloading $url (content length unknown)"
             }
+        }
 
-            val temporary =
-                destination.resolveSibling(
-                    "${destination.fileName}.download",
-                )
+        val temporary =
+            destination.resolveSibling(
+                "${destination.fileName}.download",
+            )
 
-            try {
-                connection.inputStream.use { input ->
-                    Files.newOutputStream(temporary).use { output ->
-                        input.copyTo(output)
+        var totalBytes = 0L
+        var lastLoggedAt = startedAt
+
+        connection.inputStream.use { input ->
+            Files.newOutputStream(temporary).use { output ->
+                val buffer = ByteArray(1024 * 1024)
+
+                while (true) {
+                    val read = input.read(buffer)
+
+                    if (read < 0) {
+                        break
+                    }
+
+                    output.write(buffer, 0, read)
+                    totalBytes += read
+
+                    val now = System.currentTimeMillis()
+
+                    if (now - lastLoggedAt >= 5_000) {
+                        val elapsedSeconds =
+                            (now - startedAt) / 1000.0
+
+                        val bytesPerSecond =
+                            if (elapsedSeconds > 0) {
+                                totalBytes / elapsedSeconds
+                            } else {
+                                0.0
+                            }
+
+                        val progress =
+                            if (contentLength > 0) {
+                                " (${totalBytes * 100 / contentLength}%)"
+                            } else {
+                                ""
+                            }
+
+                        log.info {
+                            "Download progress: $totalBytes bytes$progress, " +
+                                "speed=${"%.1f".format(bytesPerSecond / 1024 / 1024)} MB/s"
+                        }
+
+                        lastLoggedAt = now
                     }
                 }
-
-                Files.move(
-                    temporary,
-                    destination,
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE,
-                )
-            } finally {
-                runCatching {
-                    Files.deleteIfExists(temporary)
-                }
             }
-        } finally {
-            connection.disconnect()
+        }
+
+        log.info {
+            "Download completed: $totalBytes bytes in " +
+                "${System.currentTimeMillis() - startedAt} ms"
+        }
+
+        log.info {
+            "Moving downloaded file into place: $temporary -> $destination"
+        }
+
+        Files.move(
+            temporary,
+            destination,
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE,
+        )
+
+        log.info {
+            "Downloaded file ready at $destination"
         }
     }
 
