@@ -291,10 +291,19 @@ class GradleTargetResolutionService(
                 .redirectErrorStream(true)
                 .start()
 
-        val output =
-            process.inputStream
-                .bufferedReader()
-                .use { it.readText() }
+        val output = StringBuilder()
+
+        process.inputStream
+            .bufferedReader()
+            .useLines { lines ->
+                lines.forEach { line ->
+                    output.appendLine(line)
+
+                    log.info {
+                        "Gradle: $line"
+                    }
+                }
+            }
 
         val exitCode = process.waitFor()
 

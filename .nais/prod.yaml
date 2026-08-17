@@ -52,6 +52,8 @@ spec:
       external:
         - host: console.nav.cloud.nais.io
         - host: api.deps.dev
+        - host: services.gradle.org
+        - host: repo.maven.apache.org
   #    sidecar:
   #      enabled: false
   #  accessPolicy:
