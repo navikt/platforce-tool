@@ -9,6 +9,7 @@ import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
 import no.nav.platforce.tool.dependencies.DependencyScanner
+import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
 import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.TargetVersionsStore
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
@@ -100,6 +101,8 @@ class Application {
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
 
+    private val gradleTargetResolutionService = GradleTargetResolutionService()
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -109,6 +112,18 @@ class Application {
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
+            "/internal/api/target-resolution" bind Method.GET to { request ->
+                val context = request.userContext()
+
+                val state = context.targetVersionsStore.get()
+
+                val result =
+                    gradleTargetResolutionService.resolve(state)
+
+                Response(Status.OK)
+                    .header("Content-Type", "application/json")
+                    .body(Gson().toJson(result))
+            },
             "/internal/repos" bind Method.GET to {
                 Response(OK).body(githubClient.listRepositories().joinToString("\n"))
             },
