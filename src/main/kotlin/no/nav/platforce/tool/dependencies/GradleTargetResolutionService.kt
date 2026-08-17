@@ -33,6 +33,10 @@ data class ResolvedDependency(
     val dependencies: List<ResolvedDependency>,
 )
 
+private const val BUNDLED_GRADLE_VERSION = "8.11.1"
+private const val BUNDLED_GRADLE_RESOURCE =
+    "/gradle/gradle-8.11.1-bin.zip"
+
 class GradleTargetResolutionService(
     private val httpClient: OkHttpClient =
         OkHttpClient
@@ -271,109 +275,104 @@ class GradleTargetResolutionService(
 
     @OptIn(ExperimentalPathApi::class)
     private fun ensureGradleDistribution(version: String): Path {
+        require(version == BUNDLED_GRADLE_VERSION) {
+            "Only bundled Gradle $BUNDLED_GRADLE_VERSION is currently supported"
+        }
+
         distributionCacheDir.createDirectories()
+
         val installationDir =
-            distributionCacheDir.resolve(
-                "gradle-$version",
-            )
+            distributionCacheDir.resolve("gradle-$version")
+
         val executable =
             installationDir
                 .resolve("bin")
                 .resolve("gradle")
+
         if (executable.exists()) {
             log.info {
-                "Gradle $version already installed at $installationDir"
+                "Using cached bundled Gradle $version at $installationDir"
             }
             return installationDir
         }
+
         synchronized(distributionLock(version)) {
             if (executable.exists()) {
-                log.info {
-                    "Gradle $version was installed by another thread"
-                }
                 return installationDir
             }
+
             log.info {
-                "Gradle $version is not installed"
+                "Installing bundled Gradle $version"
             }
-            val zipFile =
-                distributionCacheDir.resolve(
-                    "gradle-$version-bin.zip",
-                )
-            val shaFile =
-                distributionCacheDir.resolve(
-                    "gradle-$version-bin.zip.sha256",
-                )
-            val distributionUrl =
-                "https://services.gradle.org/distributions/" +
-                    "gradle-$version-bin.zip"
-            val checksumUrl =
-                "$distributionUrl.sha256"
-            log.info {
-                "Downloading Gradle $version distribution from $distributionUrl"
-            }
-            download(
-                url = distributionUrl,
-                destination = zipFile,
-            )
-            log.info {
-                "Downloading Gradle $version checksum from $checksumUrl"
-            }
-            download(
-                url = checksumUrl,
-                destination = shaFile,
-            )
-            log.info {
-                "Verifying Gradle $version checksum"
-            }
-            verifySha256(
-                file = zipFile,
-                checksumFile = shaFile,
-            )
-            log.info {
-                "Verified Gradle $version checksum"
-            }
+
             val temporaryInstall =
                 distributionCacheDir.resolve(
                     "gradle-$version-installing",
                 )
+
             temporaryInstall.deleteRecursively()
             temporaryInstall.createDirectories()
+
             try {
-                log.info {
-                    "Extracting Gradle $version to $temporaryInstall"
+                val resource =
+                    javaClass.getResourceAsStream(
+                        BUNDLED_GRADLE_RESOURCE,
+                    )
+                        ?: error(
+                            "Bundled Gradle distribution not found: " +
+                                BUNDLED_GRADLE_RESOURCE,
+                        )
+
+                val zipFile =
+                    distributionCacheDir.resolve(
+                        "gradle-$version-bin.zip",
+                    )
+
+                resource.use { input ->
+                    Files.newOutputStream(zipFile).use { output ->
+                        input.copyTo(output)
+                    }
                 }
+
+                log.info {
+                    "Extracting bundled Gradle $version"
+                }
+
                 unzip(
                     zipFile = zipFile,
                     destination = temporaryInstall,
                 )
+
                 val extracted =
                     temporaryInstall.resolve(
                         "gradle-$version",
                     )
+
                 check(extracted.exists()) {
-                    "Gradle distribution did not contain expected directory " +
+                    "Bundled Gradle distribution did not contain " +
                         "gradle-$version"
                 }
-                log.info {
-                    "Moving Gradle $version installation to $installationDir"
-                }
+
                 installationDir.deleteRecursively()
+
                 Files.move(
                     extracted,
                     installationDir,
                     StandardCopyOption.ATOMIC_MOVE,
                 )
+
+                check(executable.exists()) {
+                    "Gradle executable missing after installation: $executable"
+                }
+
+                log.info {
+                    "Bundled Gradle $version installed at $installationDir"
+                }
+
+                return installationDir
             } finally {
                 temporaryInstall.deleteRecursively()
             }
-            check(executable.exists()) {
-                "Gradle executable missing after installation: $executable"
-            }
-            log.info {
-                "Gradle $version installed at $installationDir"
-            }
-            return installationDir
         }
     }
 
