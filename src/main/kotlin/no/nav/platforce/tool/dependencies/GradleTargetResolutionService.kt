@@ -74,6 +74,26 @@ class GradleTargetResolutionService(
                 "Using Gradle ${state.gradleVersion} from $gradleHome"
             }
 
+            log.info {
+                "java.io.tmpdir=${System.getProperty("java.io.tmpdir")}"
+            }
+
+            log.info {
+                "user.home=${System.getProperty("user.home")}"
+            }
+
+            log.info {
+                "user.dir=${System.getProperty("user.dir")}"
+            }
+
+            log.info {
+                "TMPDIR=${System.getenv("TMPDIR")}"
+            }
+
+            log.info {
+                "GRADLE_USER_HOME=${System.getenv("GRADLE_USER_HOME")}"
+            }
+
             runGradle(
                 gradleHome = gradleHome,
                 projectDir = projectDir,
@@ -265,8 +285,28 @@ class GradleTargetResolutionService(
             "Gradle executable not found: $executable"
         }
 
+        val gradleTmpDir =
+            projectDir
+                .resolve("gradle-tmp")
+
+        gradleTmpDir.createDirectories()
+
+        executable.toFile().setExecutable(true)
+
         log.info {
-            "Starting Gradle dependency resolution using $executable"
+            "Running Gradle"
+        }
+
+        log.info {
+            "Executable: $executable"
+        }
+
+        log.info {
+            "Project: $projectDir"
+        }
+
+        log.info {
+            "Gradle temporary directory: $gradleTmpDir"
         }
 
         val process =
@@ -278,7 +318,18 @@ class GradleTargetResolutionService(
                 "platforceResolve",
             ).directory(projectDir.toFile())
                 .redirectErrorStream(true)
-                .start()
+                .apply {
+                    environment()["GRADLE_USER_HOME"] =
+                        projectDir
+                            .resolve("gradle-user-home")
+                            .toString()
+
+                    environment()["TMPDIR"] =
+                        gradleTmpDir.toString()
+
+                    environment()["JAVA_TOOL_OPTIONS"] =
+                        "-Djava.io.tmpdir=$gradleTmpDir"
+                }.start()
 
         val output =
             process.inputStream
@@ -288,24 +339,12 @@ class GradleTargetResolutionService(
         val exitCode = process.waitFor()
 
         if (exitCode != 0) {
-            log.error {
-                "Gradle dependency resolution failed with exit code $exitCode"
-            }
-
             throw IllegalStateException(
                 buildString {
-                    appendLine(
-                        "Gradle dependency resolution failed",
-                    )
-                    appendLine(
-                        "Gradle: $gradleHome",
-                    )
-                    appendLine(
-                        "Project: $projectDir",
-                    )
-                    appendLine(
-                        "Exit code: $exitCode",
-                    )
+                    appendLine("Gradle dependency resolution failed")
+                    appendLine("Gradle: $gradleHome")
+                    appendLine("Project: $projectDir")
+                    appendLine("Exit code: $exitCode")
                     appendLine()
                     appendLine(output)
                 },
@@ -313,13 +352,7 @@ class GradleTargetResolutionService(
         }
 
         log.info {
-            "Gradle dependency resolution completed successfully"
-        }
-
-        if (output.isNotBlank()) {
-            log.info {
-                "Gradle output:\n$output"
-            }
+            "Gradle resolution completed successfully"
         }
     }
 
