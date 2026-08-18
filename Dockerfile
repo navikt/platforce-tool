@@ -1,6 +1,6 @@
 FROM gradle:8.11.1-jdk21 AS gradle
 
-FROM gcr.io/distroless/java21
+FROM eclipse-temurin:21-jre
 
 COPY --from=gradle /opt/gradle /opt/gradle
 
