@@ -24,6 +24,23 @@ data class ResolvedDependency(
     val version: String,
     val requestedVersion: String?,
     val dependencies: List<ResolvedDependency>,
+) {
+    val key: String
+        get() = if (group != null) "$group:$name" else name
+}
+
+enum class ResolutionStatus {
+    IDLE,
+    RUNNING,
+    READY,
+    FAILED,
+}
+
+data class TargetResolutionSnapshot(
+    val status: ResolutionStatus,
+    val targetFingerprint: String?,
+    val result: TargetResolution?,
+    val error: String?,
 )
 
 class GradleTargetResolutionService(

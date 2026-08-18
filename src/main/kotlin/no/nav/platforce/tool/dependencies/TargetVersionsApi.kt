@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.dependencies
 
 import com.google.gson.Gson
+import no.nav.platforce.tool.application
 import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
 import org.http4k.core.Response
@@ -21,6 +22,8 @@ fun targetVersionsRoutes() =
             val parsed = Gson().fromJson(body, TargetVersionsState::class.java)
 
             context.targetVersionsStore.update(parsed)
+
+            application.gradleTargetResolutionScanner.invalidate()
 
             Response(Status.OK).body("updated")
         },

@@ -9,8 +9,10 @@ import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
 import no.nav.platforce.tool.dependencies.DependencyScanner
+import no.nav.platforce.tool.dependencies.GradleTargetResolutionScanner
 import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
 import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
+import no.nav.platforce.tool.dependencies.ResolutionStatus
 import no.nav.platforce.tool.dependencies.TargetVersionsStore
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
 import no.nav.platforce.tool.dependencies.targetVersionsRoutes
@@ -102,6 +104,8 @@ class Application {
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
 
     private val gradleTargetResolutionService = GradleTargetResolutionService()
+
+    val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService)
 
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
@@ -646,6 +650,64 @@ class Application {
                 } catch (e: Exception) {
                     Response(Status.INTERNAL_SERVER_ERROR)
                         .body("deps.dev fetch failed: ${e.message}")
+                }
+            },
+            "/internal/api/target-resolution/start" bind Method.GET to { request ->
+                val context = request.userContext()
+                val state = context.targetVersionsStore.get()
+
+                val snapshot =
+                    gradleTargetResolutionScanner.start(
+                        targetState = state,
+                    )
+
+                when (snapshot.status) {
+                    ResolutionStatus.RUNNING ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+
+                    ResolutionStatus.READY ->
+                        Response(Status.OK)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+
+                    ResolutionStatus.FAILED ->
+                        Response(Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+
+                    ResolutionStatus.IDLE ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                }
+            },
+            "/internal/api/target-resolution" bind Method.GET to { request ->
+                val context = request.userContext()
+                val state = context.targetVersionsStore.get()
+
+                val snapshot =
+                    gradleTargetResolutionScanner.get()
+
+                when (snapshot.status) {
+                    ResolutionStatus.READY ->
+                        Response(Status.OK)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+
+                    ResolutionStatus.RUNNING ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+
+                    ResolutionStatus.FAILED ->
+                        Response(Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+
+                    ResolutionStatus.IDLE ->
+                        Response(Status.NOT_FOUND)
                 }
             },
         )
