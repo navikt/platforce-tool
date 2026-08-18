@@ -230,36 +230,25 @@ class GradleTargetResolutionService(
         }
 
     private fun ensureGradleDistribution(version: String): Path {
-        val installationDir =
-            gradleBaseDir.resolve(
-                "gradle-$version",
-            )
-
-        val executable =
-            installationDir
-                .resolve("bin")
-                .resolve("gradle")
-
+        require(version == "8.11.1") {
+            "Only Gradle 8.11.1 is currently installed in the container, requested $version"
+        }
+        val installationDir = gradleBaseDir
+        val executable = installationDir.resolve("bin").resolve("gradle")
         log.info {
             "Looking for Gradle $version at $installationDir"
         }
-
         check(executable.exists()) {
             buildString {
-                appendLine(
-                    "Gradle $version is not installed in the container.",
-                )
-                appendLine(
-                    "Expected executable: $executable",
-                )
-                appendLine(
-                    "Configured Gradle base directory: $gradleBaseDir",
-                )
+                appendLine("Gradle $version is not installed in the container.")
+                appendLine("Expected executable: $executable")
+                appendLine("Configured Gradle base directory: $gradleBaseDir")
             }
         }
-
+        log.info {
+            "Found Gradle $version at $executable"
+        }
         executable.toFile().setExecutable(true)
-
         return installationDir
     }
 
