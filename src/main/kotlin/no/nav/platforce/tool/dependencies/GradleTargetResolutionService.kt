@@ -213,6 +213,7 @@ class GradleTargetResolutionService(
                                 group: moduleVersion?.group,
                                 name: moduleVersion?.name ?: component.id.displayName,
                                 version: moduleVersion?.version,
+                                requestedVersion: requested?.version,
                                 requested: requested?.displayName,
                                 dependencies: []
                             ]

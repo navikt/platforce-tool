@@ -79,7 +79,29 @@ class GradleTargetResolutionScanner(
         }
     }
 
-    fun get(): TargetResolutionSnapshot = snapshot.get()
+    fun get(targetState: TargetVersionsState): TargetResolutionSnapshot {
+        val fingerprint = fingerprint(targetState)
+
+        val current = snapshot.get()
+
+        if (current.targetFingerprint != fingerprint) {
+            return TargetResolutionSnapshot(
+                status = ResolutionStatus.IDLE,
+                targetFingerprint = fingerprint,
+                result = null,
+                error = null,
+            )
+        }
+
+        log.info {
+            "Returning cached target resolution: " +
+                "status=${current.status}, " +
+                "fingerprint=${current.targetFingerprint}, " +
+                "hasResult=${current.result != null}"
+        }
+
+        return current
+    }
 
     fun invalidate() {
         synchronized(this) {

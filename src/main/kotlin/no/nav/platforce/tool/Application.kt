@@ -11,9 +11,11 @@ import no.nav.platforce.tool.dependencies.DependencyScanCache
 import no.nav.platforce.tool.dependencies.DependencyScanner
 import no.nav.platforce.tool.dependencies.GradleTargetResolutionScanner
 import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
+import no.nav.platforce.tool.dependencies.OsvVulnerabilityService
 import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.ResolutionStatus
 import no.nav.platforce.tool.dependencies.TargetVersionsStore
+import no.nav.platforce.tool.dependencies.VulnerabilityService
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
 import no.nav.platforce.tool.dependencies.targetVersionsRoutes
 import no.nav.platforce.tool.entra.AuthRouteBuilder
@@ -107,6 +109,8 @@ class Application {
 
     val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService)
 
+    val vulnerabilityService = OsvVulnerabilityService(httpClient)
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -116,18 +120,44 @@ class Application {
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
-            "/internal/api/target-resolution" bind Method.GET to { request ->
+            "/internal/api/target-resolution/vulnerabilities" bind Method.GET to { request ->
                 val context = request.userContext()
+                val targetState = context.targetVersionsStore.get()
 
-                val state = context.targetVersionsStore.get()
+                val snapshot = gradleTargetResolutionScanner.get(targetState = targetState)
 
-                val result =
-                    gradleTargetResolutionService.resolve(state)
+                if (snapshot.status != ResolutionStatus.READY || snapshot.result == null) {
+                    Response(Status.NOT_FOUND)
+                        .body("No ready target resolution available")
+                } else {
+                    val vulnerabilities =
+                        vulnerabilityService.find(
+                            snapshot.result.roots,
+                        )
 
-                Response(Status.OK)
-                    .header("Content-Type", "application/json")
-                    .body(Gson().toJson(result))
+                    val vulnerableCount =
+                        vulnerabilities.count { it.value.isNotEmpty() }
+
+                    log.info {
+                        "Vulnerability scan completed: " +
+                            "dependencies=${vulnerabilities.size}, " +
+                            "vulnerable=$vulnerableCount"
+                    }
+
+                    Response(Status.OK)
+                        .header("Content-Type", "application/json")
+                        .body(Gson().toJson(vulnerabilities))
+                }
             },
+//            "/internal/api/target-resolution" bind Method.GET to { request ->
+//                val context = request.userContext()
+//                val state = context.targetVersionsStore.get()
+//                val result =
+//                    gradleTargetResolutionService.resolve(state)
+//                Response(OK)
+//                    .header("Content-Type", "application/json")
+//                    .body(Gson().toJson(result))
+//            },
             "/internal/repos" bind Method.GET to {
                 Response(OK).body(githubClient.listRepositories().joinToString("\n"))
             },
@@ -688,7 +718,9 @@ class Application {
                 val state = context.targetVersionsStore.get()
 
                 val snapshot =
-                    gradleTargetResolutionScanner.get()
+                    gradleTargetResolutionScanner.get(
+                        targetState = state,
+                    )
 
                 when (snapshot.status) {
                     ResolutionStatus.READY ->
@@ -1215,3 +1247,38 @@ class Application {
         return graph
     }
 }
+
+data class Vulnerability(
+    val id: String,
+    val summary: String?,
+    val aliases: List<String>,
+    val references: List<String>,
+)
+
+data class ResolvedDependencySecurity(
+    val group: String?,
+    val name: String,
+    val requestedVersion: String?,
+    val resolvedVersion: String,
+    val vulnerabilities: List<Vulnerability>,
+)
+
+enum class TargetSecurityStatus {
+    OK,
+    OK_OVERRIDDEN,
+    VULNERABLE,
+}
+
+data class TargetSecurityResult(
+    val key: String,
+    val targetVersion: String,
+    val status: TargetSecurityStatus,
+    val vulnerabilities: List<Vulnerability>,
+    val overriddenBy: List<OverrideReason>,
+)
+
+data class OverrideReason(
+    val dependency: String,
+    val targetVersion: String,
+    val resolvedVersion: String,
+)
