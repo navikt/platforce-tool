@@ -303,7 +303,8 @@ button:hover {
 
 .target-row {
     display: grid;
-    grid-template-columns: 300px 110px 70px;
+    /*grid-template-columns: 300px 110px 70px;*/
+    grid-template-columns: minmax(0, 1fr) 110px 90px 44px;
     gap: 8px;
     align-items: center;
     padding: 1px 5px;
@@ -474,10 +475,9 @@ button:hover {
 .target-grid {
     display: grid;
 
-    grid-template-columns:
-        minmax(400px, 488px)
-        minmax(400px, 488px);
+    /*grid-template-columns: minmax(400px, 488px) minmax(400px, 488px);*/
 
+    grid-template-columns: minmax(360px, 0.8fr) minmax(600px, 1.2fr);
     gap: 14px;
 
     align-items: start;
