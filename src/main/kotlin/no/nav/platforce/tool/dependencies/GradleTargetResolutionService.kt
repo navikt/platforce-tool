@@ -16,6 +16,7 @@ import kotlin.io.path.writeText
 data class TargetResolution(
     val gradleVersion: String,
     val roots: List<ResolvedDependency>,
+    val individual: Map<String, List<ResolvedDependency>>,
 )
 
 data class ResolvedDependency(
@@ -195,15 +196,40 @@ class GradleTargetResolutionService(
             appendLine(
                 """
                 }
+                """.trimIndent(),
+            )
 
+            state.dependencies
+                .toSortedMap()
+                .entries
+                .forEachIndexed { index, (key, version) ->
+                    requireValidDependencyKey(key)
+
+                    val configurationName =
+                        "targetResolution_$index"
+
+                    appendLine(
+                        """
+                        def $configurationName =
+                            configurations.create("$configurationName")
+
+                        $configurationName.ext.targetDependencyKey =
+                            "${escape(key)}"
+
+                        dependencies.add(
+                            "$configurationName",
+                            "${escape(key)}:$version"
+                        )
+                        """.trimIndent(),
+                    )
+                }
+
+            appendLine(
+                """
                 import groovy.json.JsonOutput
 
                 tasks.register("platforceResolve") {
                     doLast {
-                        def configuration = configurations.targetResolution
-                        def resolutionResult =
-                            configuration.incoming.resolutionResult
-
                         def buildNode
 
                         buildNode = { component, requested, path ->
@@ -241,20 +267,49 @@ class GradleTargetResolutionService(
                             return node
                         }
 
-                        def roots = []
+                        def resolveConfiguration = { configuration ->
+                            def resolutionResult =
+                                configuration.incoming.resolutionResult
 
-                        resolutionResult.root.dependencies.each { dependency ->
-                            if (dependency.selected != null) {
-                                roots << buildNode(
-                                    dependency.selected,
-                                    dependency.requested,
-                                    []
-                                )
+                            def roots = []
+
+                            resolutionResult.root.dependencies.each { dependency ->
+                                if (dependency.selected != null) {
+                                    roots << buildNode(
+                                        dependency.selected,
+                                        dependency.requested,
+                                        []
+                                    )
+                                }
                             }
+
+                            return roots
                         }
 
+                        def roots =
+                            resolveConfiguration(
+                                configurations.targetResolution
+                            )
+
+                        def individual = [:]
+
+                        configurations
+                            .findAll { configuration ->
+                                configuration.name.startsWith("targetResolution_")
+                            }
+                            .each { configuration ->
+                                def key =
+                                    configuration.ext.targetDependencyKey
+
+                                if (key != null) {
+                                    individual[key] =
+                                        resolveConfiguration(configuration)
+                                }
+                            }
+
                         def result = [
-                            roots: roots
+                            roots: roots,
+                            individual: individual
                         ]
 
                         file("${'$'}projectDir/resolution.json").text =
@@ -380,16 +435,15 @@ class GradleTargetResolutionService(
     ): TargetResolution {
         val type =
             object : TypeToken<ResolutionFile>() {}.type
-
         val file =
             gson.fromJson<ResolutionFile>(
                 json,
                 type,
             )
-
         return TargetResolution(
             gradleVersion = gradleVersion,
             roots = file.roots,
+            individual = file.individual,
         )
     }
 
@@ -410,5 +464,6 @@ class GradleTargetResolutionService(
 
     private data class ResolutionFile(
         val roots: List<ResolvedDependency>,
+        val individual: Map<String, List<ResolvedDependency>>,
     )
 }

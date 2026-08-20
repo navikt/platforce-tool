@@ -1,5 +1,4 @@
 package no.nav.platforce.tool.dependencies
-import mu.KotlinLogging
 import no.nav.platforce.tool.OverrideReason
 import no.nav.platforce.tool.ResolvedDependencySecurity
 import no.nav.platforce.tool.TargetSecurityResult
@@ -10,36 +9,33 @@ import kotlin.collections.isNotEmpty
 class TargetSecurityService(
     private val vulnerabilityService: VulnerabilityService,
 ) {
-    private val log = KotlinLogging.logger { }
-
     fun scan(
         resolution: TargetResolution,
         targetState: TargetVersionsState,
     ): TargetSecurityScan {
-        log.info {
-            "Starting target security scan for " +
-                "${resolution.roots.size} target dependencies"
-        }
+        val allDependencies =
+            allDependencies(resolution)
         val vulnerabilityMap =
             vulnerabilityService.find(
-                resolution.roots,
+                allDependencies,
             )
-        log.info {
-            "Vulnerability lookup completed for " +
-                "${vulnerabilityMap.size} dependency versions"
-        }
-        val targetResults =
-            resolution.roots.map { root ->
-                evaluateTarget(
-                    root = root,
-                    roots = resolution.roots,
-                    targetState = targetState,
-                    vulnerabilityMap = vulnerabilityMap,
-                )
-            }
-        val allResolvedDependencies =
-            flatten(resolution.roots)
-                .map { dependency ->
+        val targets =
+            targetState.dependencies
+                .toSortedMap()
+                .map { (targetKey, targetVersion) ->
+                    evaluateTarget(
+                        targetKey = targetKey,
+                        targetVersion = targetVersion,
+                        resolution = resolution,
+                        targetState = targetState,
+                        vulnerabilityMap = vulnerabilityMap,
+                    )
+                }
+        val securityDependencies =
+            allDependencies
+                .distinctBy {
+                    "${it.group}:${it.name}:${it.version}"
+                }.map { dependency ->
                     ResolvedDependencySecurity(
                         group = dependency.group,
                         name = dependency.name,
@@ -47,206 +43,183 @@ class TargetSecurityService(
                         resolvedVersion = dependency.version,
                         vulnerabilities =
                             vulnerabilityMap[
-                                coordinate(
-                                    dependency.group,
-                                    dependency.name,
-                                    dependency.version,
-                                ),
+                                "${dependency.group}:${dependency.name}:${dependency.version}",
                             ].orEmpty(),
-                    )
-                }.distinctBy {
-                    coordinate(
-                        it.group,
-                        it.name,
-                        it.resolvedVersion,
                     )
                 }
         return TargetSecurityScan(
-            dependencies = allResolvedDependencies,
-            targets = targetResults,
+            dependencies = securityDependencies,
+            targets = targets,
         )
     }
 
     private fun evaluateTarget(
-        root: ResolvedDependency,
-        roots: List<ResolvedDependency>,
+        targetKey: String,
+        targetVersion: String,
+        resolution: TargetResolution,
         targetState: TargetVersionsState,
         vulnerabilityMap: Map<String, List<Vulnerability>>,
     ): TargetSecurityResult {
-        val targetKey =
+        val standaloneTree =
+            resolution.individual[targetKey]
+                ?: emptyList()
+        val standaloneDependencies =
+            flatten(standaloneTree)
+        val vulnerableDependencies =
+            standaloneDependencies
+                .mapNotNull { dependency ->
+                    val vulnerabilities =
+                        vulnerabilityMap[
+                            coordinate(
+                                dependency.group,
+                                dependency.name,
+                                dependency.version,
+                            ),
+                        ].orEmpty()
+                    if (vulnerabilities.isEmpty()) {
+                        null
+                    } else {
+                        VulnerableDependency(
+                            dependency = dependency,
+                            vulnerabilities = vulnerabilities,
+                        )
+                    }
+                }
+        if (vulnerableDependencies.isEmpty()) {
+            return TargetSecurityResult(
+                key = targetKey,
+                targetVersion = targetVersion,
+                status = TargetSecurityStatus.OK,
+                vulnerabilities = emptyList(),
+                overriddenBy = emptyList(),
+            )
+        }
+        val overrides =
+            vulnerableDependencies
+                .flatMap { vulnerable ->
+                    findOverrides(
+                        vulnerable = vulnerable,
+                        targetKey = targetKey,
+                        targetState = targetState,
+                        resolution = resolution,
+                        vulnerabilityMap = vulnerabilityMap,
+                    )
+                }.distinctBy {
+                    "${it.dependency}:${it.targetVersion}:${it.resolvedVersion}"
+                }
+        val unresolvedVulnerabilities =
+            vulnerableDependencies.filter { vulnerable ->
+                !hasOverride(
+                    vulnerable = vulnerable,
+                    overrides = overrides,
+                )
+            }
+        return when {
+            unresolvedVulnerabilities.isNotEmpty() ->
+                TargetSecurityResult(
+                    key = targetKey,
+                    targetVersion = targetVersion,
+                    status = TargetSecurityStatus.VULNERABLE,
+                    vulnerabilities =
+                        unresolvedVulnerabilities
+                            .flatMap { it.vulnerabilities }
+                            .distinctBy { it.id },
+                    overriddenBy = overrides,
+                )
+            else ->
+                TargetSecurityResult(
+                    key = targetKey,
+                    targetVersion = targetVersion,
+                    status = TargetSecurityStatus.OK_OVERRIDDEN,
+                    vulnerabilities =
+                        vulnerableDependencies
+                            .flatMap { it.vulnerabilities }
+                            .distinctBy { it.id },
+                    overriddenBy = overrides,
+                )
+        }
+    }
+
+    private fun findOverrides(
+        vulnerable: VulnerableDependency,
+        targetKey: String,
+        targetState: TargetVersionsState,
+        resolution: TargetResolution,
+        vulnerabilityMap: Map<String, List<Vulnerability>>,
+    ): List<OverrideReason> {
+        val dependency = vulnerable.dependency
+        val dependencyKey =
             coordinateWithoutVersion(
-                root.group,
-                root.name,
+                dependency.group,
+                dependency.name,
             )
-        val targetVersion =
-            targetState.dependencies[targetKey]
-                ?: root.version
-        val subtree =
-            flatten(
-                listOf(root),
-            )
-        val resolvedVulnerabilities =
-            subtree
-                .flatMap { dependency ->
+        return targetState.dependencies
+            .filter { (otherKey, _) ->
+                otherKey != targetKey &&
+                    otherKey == dependencyKey
+            }.mapNotNull { (otherKey, otherTargetVersion) ->
+                val vulnerabilities =
                     vulnerabilityMap[
                         coordinate(
                             dependency.group,
                             dependency.name,
-                            dependency.version,
+                            otherTargetVersion,
                         ),
                     ].orEmpty()
-                }.distinctBy { it.id }
-        /*
-         * Look for dependency requests which were vulnerable at the
-         * requested version but became safe because Gradle selected
-         * another version.
-         */
-        val overridden =
-            findOverrides(
-                root = root,
-                roots = roots,
-                vulnerabilityMap = vulnerabilityMap,
-            )
-        val status =
-            when {
-                resolvedVulnerabilities.isNotEmpty() ->
-                    TargetSecurityStatus.VULNERABLE
-                overridden.isNotEmpty() ->
-                    TargetSecurityStatus.OK_OVERRIDDEN
-                else ->
-                    TargetSecurityStatus.OK
-            }
-        log.info {
-            "Target $targetKey:$targetVersion -> $status " +
-                "(vulnerabilities=${resolvedVulnerabilities.size}, " +
-                "overrides=${overridden.size})"
-        }
-        return TargetSecurityResult(
-            key = targetKey,
-            targetVersion = targetVersion,
-            status = status,
-            vulnerabilities = resolvedVulnerabilities,
-            overriddenBy = overridden,
-        )
-    }
-
-    private fun findOverrides(
-        root: ResolvedDependency,
-        roots: List<ResolvedDependency>,
-        vulnerabilityMap: Map<String, List<Vulnerability>>,
-    ): List<OverrideReason> {
-        val result = mutableListOf<OverrideReason>()
-        val subtree =
-            flatten(
-                listOf(root),
-            )
-        subtree.forEach { dependency ->
-            val requestedVersion =
-                dependency.requestedVersion
-                    ?: return@forEach
-            if (requestedVersion == dependency.version) {
-                return@forEach
-            }
-            val requestedKey =
-                coordinate(
-                    dependency.group,
-                    dependency.name,
-                    requestedVersion,
-                )
-            val resolvedKey =
-                coordinate(
-                    dependency.group,
-                    dependency.name,
-                    dependency.version,
-                )
-            val requestedVulnerabilities =
-                vulnerabilityMap[requestedKey].orEmpty()
-            val resolvedVulnerabilities =
-                vulnerabilityMap[resolvedKey].orEmpty()
-            /*
-             * We only consider this an override when:
-             *
-             *   requested version = vulnerable
-             *   resolved version  = safe
-             *
-             * This means the target would have had a vulnerable
-             * dependency request, but the combined target set caused
-             * Gradle to select a safe version.
-             */
-            if (
-                requestedVulnerabilities.isEmpty() ||
-                resolvedVulnerabilities.isNotEmpty()
-            ) {
-                return@forEach
-            }
-            val overridingTargets =
-                roots
-                    .filter { otherRoot ->
-                        !sameDependency(
-                            root,
-                            otherRoot,
-                        )
-                    }.filter { otherRoot ->
-                        containsResolvedVersion(
-                            root = otherRoot,
-                            group = dependency.group,
-                            name = dependency.name,
-                            version = dependency.version,
-                        )
-                    }
-            overridingTargets.forEach { overridingRoot ->
-                result +=
-                    OverrideReason(
-                        dependency =
-                            coordinateWithoutVersion(
-                                overridingRoot.group,
-                                overridingRoot.name,
-                            ),
-                        targetVersion =
-                            overridingRoot.version,
-                        resolvedVersion =
-                            dependency.version,
+                if (vulnerabilities.isNotEmpty()) {
+                    return@mapNotNull null
+                }
+                val combinedVersion =
+                    findResolvedVersion(
+                        resolution.roots,
+                        dependency.group,
+                        dependency.name,
                     )
+                if (combinedVersion != otherTargetVersion) {
+                    return@mapNotNull null
+                }
+                OverrideReason(
+                    dependency = otherKey,
+                    targetVersion = otherTargetVersion,
+                    resolvedVersion = combinedVersion,
+                )
             }
-        }
-        return result.distinctBy {
-            "${it.dependency}:${it.targetVersion}:${it.resolvedVersion}"
+    }
+
+    private fun hasOverride(
+        vulnerable: VulnerableDependency,
+        overrides: List<OverrideReason>,
+    ): Boolean {
+        val key =
+            coordinateWithoutVersion(
+                vulnerable.dependency.group,
+                vulnerable.dependency.name,
+            )
+        return overrides.any {
+            it.dependency == key
         }
     }
 
-    private fun containsResolvedVersion(
-        root: ResolvedDependency,
+    private fun findResolvedVersion(
+        roots: List<ResolvedDependency>,
         group: String?,
         name: String,
-        version: String,
-    ): Boolean =
-        flatten(listOf(root)).any { dependency ->
-            dependency.group == group &&
-                dependency.name == name &&
-                dependency.version == version
-        }
+    ): String? =
+        flatten(roots)
+            .firstOrNull {
+                it.group == group &&
+                    it.name == name
+            }?.version
 
-    private fun sameDependency(
-        left: ResolvedDependency,
-        right: ResolvedDependency,
-    ): Boolean =
-        left.group == right.group &&
-            left.name == right.name
+    private fun allDependencies(resolution: TargetResolution): List<ResolvedDependency> =
+        resolution.individual.values
+            .flatten()
+            .let(::flatten)
 
     private fun flatten(roots: List<ResolvedDependency>): List<ResolvedDependency> {
         val result = mutableListOf<ResolvedDependency>()
-        val visited = mutableSetOf<String>()
 
         fun visit(node: ResolvedDependency) {
-            val key =
-                coordinate(
-                    node.group,
-                    node.name,
-                    node.version,
-                )
-            if (!visited.add(key)) {
-                return
-            }
             result += node
             node.dependencies.forEach(::visit)
         }
@@ -264,4 +237,9 @@ class TargetSecurityService(
         group: String?,
         name: String,
     ): String = "${group ?: ""}:$name"
+
+    private data class VulnerableDependency(
+        val dependency: ResolvedDependency,
+        val vulnerabilities: List<Vulnerability>,
+    )
 }
