@@ -47,6 +47,20 @@ function securityResultForTarget(key) {
     ) || null;
 }
 
+async function loadTargetSecurityScan() {
+    const response =
+        await fetch("/internal/api/target-resolution/security");
+
+    if (!response.ok) {
+        targetSecurityScan = null;
+        return false;
+    }
+
+    targetSecurityScan = await response.json();
+
+    return targetSecurityScan.status === "READY";
+}
+
 async function fetchRepoView() {
     const res = await fetch("/internal/repos/view");
     return await res.json();
@@ -1162,8 +1176,10 @@ async function scanTargetSecurity() {
             );
         }
 
-        targetSecurityScan =
-            security;
+        targetSecurityScan = security;
+
+        console.log("TARGET SECURITY SCAN:", targetSecurityScan);
+        console.log("TARGET SECURITY TARGETS:", targetSecurityScan?.result?.targets);
 
         updateScanStep(
             "scanStepOsv",
@@ -1222,55 +1238,99 @@ async function scanTargetSecurity() {
     }
 }
 
-async function startOrWaitForResolution() {
-    const response =
-        await fetch(
-            "/internal/api/target-resolution/start"
+async function waitForResolution() {
+    while (true) {
+        await new Promise(
+            resolve => setTimeout(resolve, 1000)
         );
 
-    if (!response.ok && response.status !== 202) {
-        throw new Error(
-            `Failed starting target resolution: HTTP ${response.status}`
-        );
-    }
+        const response =
+            await fetch("/internal/api/target-resolution");
 
-    let snapshot =
-        await response.json();
-
-    while (
-        snapshot.status === "RUNNING"
-        ) {
-        await sleep(1000);
-
-        const poll =
-            await fetch(
-                "/internal/api/target-resolution"
-            );
-
-        if (!poll.ok && poll.status !== 202) {
+        if (!response.ok) {
             throw new Error(
-                `Failed polling target resolution: HTTP ${poll.status}`
+                `Target resolution lookup failed: HTTP ${response.status}`
             );
         }
 
-        snapshot =
-            await poll.json();
+        const snapshot =
+            await response.json();
+
+        if (snapshot.status === "READY") {
+            return snapshot;
+        }
+
+        if (snapshot.status === "FAILED") {
+            throw new Error(
+                snapshot.error || "Target resolution failed"
+            );
+        }
+
+        // IDLE or RUNNING means we are not finished yet.
+        // Normally RUNNING is expected here.
+    }
+}
+
+async function startOrWaitForResolution() {
+    // First check current state
+    let response =
+        await fetch("/internal/api/target-resolution");
+
+    if (!response.ok) {
+        throw new Error(
+            `Target resolution lookup failed: HTTP ${response.status}`
+        );
+    }
+
+    let snapshot = await response.json();
+
+    // Already available
+    if (snapshot.status === "READY") {
+        return snapshot;
+    }
+
+    // Already running
+    if (snapshot.status === "RUNNING") {
+        return await waitForResolution();
+    }
+
+    // Nothing started yet
+    if (snapshot.status === "IDLE") {
+        response =
+            await fetch("/internal/api/target-resolution/start");
+
+        if (!response.ok && response.status !== 202) {
+            throw new Error(
+                `Failed to start target resolution: HTTP ${response.status}`
+            );
+        }
+
+        snapshot = await response.json();
+
+        if (snapshot.status === "READY") {
+            return snapshot;
+        }
+
+        if (snapshot.status === "RUNNING") {
+            return await waitForResolution();
+        }
+
+        if (snapshot.status === "FAILED") {
+            throw new Error(
+                snapshot.error || "Target resolution failed"
+            );
+        }
     }
 
     if (snapshot.status === "FAILED") {
         throw new Error(
-            snapshot.error ||
-            "Target resolution failed"
+            snapshot.error || "Target resolution failed"
         );
     }
 
-    if (snapshot.status !== "READY") {
-        throw new Error(
-            `Unexpected resolution status: ${snapshot.status}`
-        );
-    }
-
-    return snapshot.result;
+    throw new Error(
+        `Unexpected target resolution status: ${snapshot.status}`
+    );
 }
 
 function sleep(milliseconds) {

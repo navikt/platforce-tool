@@ -177,7 +177,7 @@ class Application {
                             .header("Content-Type", "application/json")
                             .body(Gson().toJson(snapshot))
                     ResolutionStatus.IDLE ->
-                        Response(Status.NOT_FOUND)
+                        Response(Status.OK)
                             .body("No target resolution exists for current target versions")
                 }
             },
@@ -228,7 +228,7 @@ class Application {
                             .header("Content-Type", "application/json")
                             .body(Gson().toJson(snapshot))
                     SecurityScanStatus.IDLE ->
-                        Response(Status.NOT_FOUND)
+                        Response(Status.OK)
                             .body("No security scan exists for current target versions")
                 }
             },
