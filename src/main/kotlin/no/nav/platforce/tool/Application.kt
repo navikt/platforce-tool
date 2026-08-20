@@ -14,6 +14,7 @@ import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
 import no.nav.platforce.tool.dependencies.OsvVulnerabilityService
 import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.ResolutionStatus
+import no.nav.platforce.tool.dependencies.TargetSecurityService
 import no.nav.platforce.tool.dependencies.TargetVersionsStore
 import no.nav.platforce.tool.dependencies.VulnerabilityService
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
@@ -111,6 +112,8 @@ class Application {
 
     val vulnerabilityService = OsvVulnerabilityService(httpClient)
 
+    val targetSecurityService = TargetSecurityService(vulnerabilityService)
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -120,6 +123,47 @@ class Application {
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
+            "/internal/api/target-resolution/security" bind Method.GET to { request ->
+                val context = request.userContext()
+                val targetState =
+                    context.targetVersionsStore.get()
+                val snapshot =
+                    gradleTargetResolutionScanner.get(
+                        targetState = targetState,
+                    )
+                when {
+                    snapshot.status == ResolutionStatus.RUNNING ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(
+                                """{"status":"RUNNING"}""",
+                            )
+                    snapshot.status == ResolutionStatus.FAILED ->
+                        Response(Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(
+                                Gson().toJson(snapshot),
+                            )
+                    snapshot.status != ResolutionStatus.READY ||
+                        snapshot.result == null ->
+                        Response(Status.NOT_FOUND)
+                            .body(
+                                "No ready target resolution exists for current target versions",
+                            )
+                    else -> {
+                        val result =
+                            targetSecurityService.scan(
+                                resolution = snapshot.result,
+                                targetState = targetState,
+                            )
+                        Response(Status.OK)
+                            .header("Content-Type", "application/json")
+                            .body(
+                                Gson().toJson(result),
+                            )
+                    }
+                }
+            },
             "/internal/api/target-resolution/vulnerabilities" bind Method.GET to { request ->
                 val context = request.userContext()
                 val targetState = context.targetVersionsStore.get()
