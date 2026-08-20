@@ -159,27 +159,23 @@ class Application {
             "/internal/api/target-resolution" bind Method.GET to { request ->
                 val context = request.userContext()
                 val targetState = context.targetVersionsStore.get()
+
                 val snapshot =
                     gradleTargetResolutionScanner.get(
                         targetState = targetState,
                     )
-                when (snapshot.status) {
-                    ResolutionStatus.READY ->
-                        Response(Status.OK)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-                    ResolutionStatus.RUNNING ->
-                        Response(Status.ACCEPTED)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-                    ResolutionStatus.FAILED ->
-                        Response(Status.INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-                    ResolutionStatus.IDLE ->
-                        Response(Status.OK)
-                            .body("No target resolution exists for current target versions")
-                }
+
+                val status =
+                    when (snapshot.status) {
+                        ResolutionStatus.READY -> Status.OK
+                        ResolutionStatus.RUNNING -> Status.ACCEPTED
+                        ResolutionStatus.FAILED -> Status.INTERNAL_SERVER_ERROR
+                        ResolutionStatus.IDLE -> Status.OK
+                    }
+
+                Response(status)
+                    .header("Content-Type", "application/json")
+                    .body(Gson().toJson(snapshot))
             },
             "/internal/api/target-resolution/security/start" bind Method.GET to { request ->
                 val context = request.userContext()
@@ -210,27 +206,23 @@ class Application {
             "/internal/api/target-resolution/security" bind Method.GET to { request ->
                 val context = request.userContext()
                 val targetState = context.targetVersionsStore.get()
+
                 val snapshot =
                     targetSecurityScanner.get(
                         targetState = targetState,
                     )
-                when (snapshot.status) {
-                    SecurityScanStatus.READY ->
-                        Response(Status.OK)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-                    SecurityScanStatus.RUNNING ->
-                        Response(Status.ACCEPTED)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-                    SecurityScanStatus.FAILED ->
-                        Response(Status.INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-                    SecurityScanStatus.IDLE ->
-                        Response(Status.OK)
-                            .body("No security scan exists for current target versions")
-                }
+
+                val status =
+                    when (snapshot.status) {
+                        SecurityScanStatus.READY -> Status.OK
+                        SecurityScanStatus.RUNNING -> Status.ACCEPTED
+                        SecurityScanStatus.FAILED -> Status.INTERNAL_SERVER_ERROR
+                        SecurityScanStatus.IDLE -> Status.OK
+                    }
+
+                Response(status)
+                    .header("Content-Type", "application/json")
+                    .body(Gson().toJson(snapshot))
             },
             "/internal/api/target-resolution/vulnerabilities" bind Method.GET to { request ->
                 val context = request.userContext()

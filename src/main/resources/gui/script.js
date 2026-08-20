@@ -1104,17 +1104,15 @@ async function loadCachedTargetSecurity() {
                 "/internal/api/target-resolution/security"
             );
 
-        if (response.status === 404 ||
-            response.status === 202) {
-            return;
-        }
-
         if (!response.ok) {
+            console.warn(
+                "Could not load target security:",
+                response.status
+            );
             return;
         }
 
-        const snapshot =
-            await response.json();
+        const snapshot = await response.json();
 
         if (
             snapshot.status === "READY" &&
@@ -1272,59 +1270,59 @@ async function waitForResolution() {
 }
 
 async function startOrWaitForResolution() {
-    // First check current state
-    let response =
-        await fetch("/internal/api/target-resolution");
+    const startResponse =
+        await fetch(
+            "/internal/api/target-resolution/start"
+        );
 
-    if (!response.ok) {
+    if (!startResponse.ok && startResponse.status !== 202) {
+        const text = await startResponse.text();
         throw new Error(
-            `Target resolution lookup failed: HTTP ${response.status}`
+            `Failed to start target resolution: ${text}`
         );
     }
 
-    let snapshot = await response.json();
+    let snapshot = await startResponse.json();
 
-    // Already available
     if (snapshot.status === "READY") {
         return snapshot;
     }
 
-    // Already running
-    if (snapshot.status === "RUNNING") {
-        return await waitForResolution();
+    if (snapshot.status === "IDLE") {
+        throw new Error(
+            "Target resolution is idle"
+        );
     }
 
-    // Nothing started yet
-    if (snapshot.status === "IDLE") {
-        response =
-            await fetch("/internal/api/target-resolution/start");
+    while (snapshot.status === "RUNNING") {
+        await new Promise(
+            resolve => setTimeout(resolve, 1000)
+        );
+
+        const response =
+            await fetch(
+                "/internal/api/target-resolution"
+            );
 
         if (!response.ok && response.status !== 202) {
+            const text = await response.text();
+
             throw new Error(
-                `Failed to start target resolution: HTTP ${response.status}`
+                `Failed to get target resolution: ${text}`
             );
         }
 
         snapshot = await response.json();
+    }
 
-        if (snapshot.status === "READY") {
-            return snapshot;
-        }
-
-        if (snapshot.status === "RUNNING") {
-            return await waitForResolution();
-        }
-
-        if (snapshot.status === "FAILED") {
-            throw new Error(
-                snapshot.error || "Target resolution failed"
-            );
-        }
+    if (snapshot.status === "READY") {
+        return snapshot;
     }
 
     if (snapshot.status === "FAILED") {
         throw new Error(
-            snapshot.error || "Target resolution failed"
+            snapshot.error ||
+            "Target resolution failed"
         );
     }
 
@@ -1340,38 +1338,54 @@ function sleep(milliseconds) {
 }
 
 async function startOrWaitForSecurity() {
-    const response =
+    const startResponse =
         await fetch(
             "/internal/api/target-resolution/security/start"
         );
 
-    if (!response.ok && response.status !== 202) {
+    if (!startResponse.ok && startResponse.status !== 202) {
+        const text = await startResponse.text();
+
         throw new Error(
-            `Failed starting security scan: HTTP ${response.status}`
+            `Failed to start security scan: ${text}`
         );
     }
 
-    let snapshot =
-        await response.json();
+    let snapshot = await startResponse.json();
 
-    while (
-        snapshot.status === "RUNNING"
-        ) {
-        await sleep(1000);
+    if (snapshot.status === "READY") {
+        return snapshot;
+    }
 
-        const poll =
+    if (snapshot.status === "IDLE") {
+        throw new Error(
+            "Security scan is idle"
+        );
+    }
+
+    while (snapshot.status === "RUNNING") {
+        await new Promise(
+            resolve => setTimeout(resolve, 1000)
+        );
+
+        const response =
             await fetch(
                 "/internal/api/target-resolution/security"
             );
 
-        if (!poll.ok && poll.status !== 202) {
+        if (!response.ok && response.status !== 202) {
+            const text = await response.text();
+
             throw new Error(
-                `Failed polling security scan: HTTP ${poll.status}`
+                `Failed to get security scan: ${text}`
             );
         }
 
-        snapshot =
-            await poll.json();
+        snapshot = await response.json();
+    }
+
+    if (snapshot.status === "READY") {
+        return snapshot;
     }
 
     if (snapshot.status === "FAILED") {
@@ -1381,13 +1395,9 @@ async function startOrWaitForSecurity() {
         );
     }
 
-    if (snapshot.status !== "READY") {
-        throw new Error(
-            `Unexpected security status: ${snapshot.status}`
-        );
-    }
-
-    return snapshot.result;
+    throw new Error(
+        `Unexpected security scan status: ${snapshot.status}`
+    );
 }
 
 async function initTargets() {
