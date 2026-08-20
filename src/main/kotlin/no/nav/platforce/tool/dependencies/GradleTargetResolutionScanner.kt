@@ -183,42 +183,42 @@ class GradleTargetResolutionScanner(
             }
         }
     }
+}
 
-    private fun fingerprint(targetState: TargetVersionsState): String {
-        val canonical =
-            buildString {
-                append("gradle=")
-                append(targetState.gradleVersion)
-                append('\n')
+fun fingerprint(targetState: TargetVersionsState): String {
+    val canonical =
+        buildString {
+            append("gradle=")
+            append(targetState.gradleVersion)
+            append('\n')
 
-                targetState.plugins
-                    .toSortedMap()
-                    .forEach { (key, version) ->
-                        append("plugin:")
-                        append(key)
-                        append('=')
-                        append(version)
-                        append('\n')
-                    }
+            targetState.plugins
+                .toSortedMap()
+                .forEach { (key, version) ->
+                    append("plugin:")
+                    append(key)
+                    append('=')
+                    append(version)
+                    append('\n')
+                }
 
-                targetState.dependencies
-                    .toSortedMap()
-                    .forEach { (key, version) ->
-                        append("dependency:")
-                        append(key)
-                        append('=')
-                        append(version)
-                        append('\n')
-                    }
-            }
-
-        val digest =
-            MessageDigest
-                .getInstance("SHA-256")
-                .digest(canonical.toByteArray())
-
-        return digest.joinToString("") {
-            "%02x".format(it)
+            targetState.dependencies
+                .toSortedMap()
+                .forEach { (key, version) ->
+                    append("dependency:")
+                    append(key)
+                    append('=')
+                    append(version)
+                    append('\n')
+                }
         }
+
+    val digest =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(canonical.toByteArray())
+
+    return digest.joinToString("") {
+        "%02x".format(it)
     }
 }

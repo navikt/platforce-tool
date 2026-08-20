@@ -24,6 +24,7 @@ fun targetVersionsRoutes() =
             context.targetVersionsStore.update(parsed)
 
             application.gradleTargetResolutionScanner.invalidate()
+            application.targetSecurityScanner.invalidate()
 
             Response(Status.OK).body("updated")
         },

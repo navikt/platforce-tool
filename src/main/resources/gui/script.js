@@ -35,6 +35,18 @@ let lastLoadedData = [];
 
 let ignoredRepositories = [];
 
+let targetSecurityScan = null;
+
+function securityResultForTarget(key) {
+    if (!targetSecurityScan?.targets) {
+        return null;
+    }
+
+    return targetSecurityScan.targets.find(
+        target => target.key === key
+    ) || null;
+}
+
 async function fetchRepoView() {
     const res = await fetch("/internal/repos/view");
     return await res.json();
@@ -601,6 +613,7 @@ function renderTargets(data) {
     };
 
     renderTargetTables()
+    loadCachedTargetSecurity()
 }
 
 function renderTargetTables() {
@@ -651,79 +664,325 @@ function renderGradleVersion(version) {
 
 function renderTable(containerId, entries, type) {
     const container = document.getElementById(containerId);
-
     container.innerHTML = "";
-
     entries.forEach(([key, version]) => {
-
         const drafted =
             targetState.drafted?.has(`${type.toUpperCase()}:${key}`);
-
+        const securityTarget =
+            type === "dependency"
+                ? targetSecurityScan?.result?.targets?.find(
+                    target => target.key === key
+                )
+                : null;
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
-
         row.innerHTML = `
             <input class="key" value="${key}" />
             <input class="version" value="${version}" />
-
+            ${securityStatusHtml(securityTarget)}
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>
         `;
-
         row.querySelector(".remove-btn").onclick = () => {
             if (drafted) {
                 targetState.drafted.delete(`${type.toUpperCase()}:${key}`);
             }
             row.remove();
         };
-
+        const statusButton =
+            row.querySelector(".target-status-pill");
+        if (statusButton) {
+            statusButton.onclick = () => {
+                showSecurityDetails(securityTarget);
+            };
+        }
         container.appendChild(row);
     });
-
-    // add new row
     const addRow = document.createElement("div");
     addRow.className = "target-row";
-
     addRow.innerHTML = `
         <input class="key" placeholder="group:name or plugin.id" />
         <input class="version" placeholder="version" />
-        <button class="icon-btn add-btn" title="add">  
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M12.75 5.5C12.75 5.08579 12.4142 4.75 12 4.75C11.5858 4.75 11.25 5.08579 11.25 5.5V11.25H5.5C5.08579 11.25 4.75 11.5858 4.75 12C4.75 12.4142 5.08579 12.75 5.5 12.75H11.25V18.5C11.25 18.9142 11.5858 19.25 12 19.25C12.4142 19.25 12.75 18.9142 12.75 18.5V12.75H18.5C18.9142 12.75 19.25 12.4142 19.25 12C19.25 11.5858 18.9142 11.25 18.5 11.25H12.75V5.5Z" fill="currentColor"/>
-</svg>
-</button>
+        <button class="icon-btn add-btn" title="add">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12.75 5.5C12.75 5.08579 12.4142 4.75 12 4.75C11.5858 4.75 11.25 5.08579 11.25 5.5V11.25H5.5C5.08579 11.25 4.75 11.5858 4.75 12C4.75 12.4142 5.08579 12.75 12.75 12.75H11.25V18.5C11.25 18.9142 11.5858 19.25 12 19.25C12.4142 19.25 12.75 18.9142 12.75 18.5V12.75H18.5C18.9142 12.75 19.25 12.4142 19.25 12C19.25 11.5858 18.9142 11.25 18.5 11.25H12.75V5.5Z" fill="currentColor"/>
+            </svg>
+        </button>
     `;
-
     addRow.querySelector(".add-btn").onclick = () => {
         const kInput = addRow.querySelector(".key");
         const vInput = addRow.querySelector(".version");
-
         const k = kInput.value.trim();
         const v = vInput.value.trim();
-
         if (!k || !v) return;
-
+        const securityTarget =
+            type === "dependency"
+                ? targetSecurityScan?.result?.targets?.find(
+                    target => target.key === k
+                )
+                : null;
         const newRow = document.createElement("div");
         newRow.className = "target-row";
-
         newRow.innerHTML = `
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
+            ${securityStatusHtml(securityTarget)}
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>
         `;
-
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
-
+        const statusButton =
+            newRow.querySelector(".target-status-pill");
+        if (statusButton) {
+            statusButton.onclick = () => {
+                showSecurityDetails(securityTarget);
+            };
+        }
         container.insertBefore(newRow, addRow);
-
         kInput.value = "";
         vInput.value = "";
     };
-
     container.appendChild(addRow);
+}
+
+function securityStatusHtml(security) {
+    if (!security) {
+        return `
+            <span class="target-status-pill target-status-unknown">
+                —
+            </span>
+        `;
+    }
+
+    switch (security.status) {
+        case "OK":
+            return `
+                <button
+                    class="target-status-pill target-status-ok"
+                    title="No vulnerabilities"
+                >
+                    OK
+                </button>
+            `;
+
+        case "OK_OVERRIDDEN":
+            return `
+                <button
+                    class="target-status-pill target-status-overridden"
+                    title="Safe because another target dependency overrides a vulnerable transitive dependency"
+                >
+                    OK *
+                </button>
+            `;
+
+        case "VULNERABLE":
+            return `
+                <button
+                    class="target-status-pill target-status-vulnerable"
+                    title="Vulnerable"
+                >
+                    VULNERABLE
+                </button>
+            `;
+
+        default:
+            return `
+                <button
+                    class="target-status-pill target-status-unknown"
+                >
+                    ?
+                </button>
+            `;
+    }
+}
+
+function showSecurityDetails(security) {
+    const container =
+        document.getElementById("targetScanDetails");
+
+    container.style.display = "block";
+
+    if (!security) {
+        container.innerHTML = `
+            <div>No security result available.</div>
+        `;
+
+        return;
+    }
+
+    let html = `
+        <div class="target-security-detail">
+            <h4>
+                ${escapeHtml(security.key)}
+                ${escapeHtml(security.targetVersion)}
+            </h4>
+    `;
+
+    if (security.status === "OK") {
+        html += `
+            <div>
+                No vulnerabilities found in the resolved dependency tree.
+            </div>
+        `;
+    }
+
+    if (security.status === "OK_OVERRIDDEN") {
+        html += `
+            <div>
+                <strong>OK with override</strong>
+            </div>
+
+            <p>
+                This target has vulnerable transitive dependencies
+                when resolved on its own, but another target dependency
+                causes Gradle to resolve a safe version.
+            </p>
+        `;
+
+        if (security.overriddenBy?.length) {
+            html += `
+                <strong>Overridden by:</strong>
+                <ul>
+            `;
+
+            security.overriddenBy.forEach(reason => {
+                html += `
+                    <li>
+                        ${escapeHtml(reason.dependency)}
+                        →
+                        ${escapeHtml(reason.resolvedVersion)}
+                    </li>
+                `;
+            });
+
+            html += `
+                </ul>
+            `;
+        }
+    }
+
+    if (security.status === "VULNERABLE") {
+        html += `
+            <div>
+                <strong>Vulnerable</strong>
+            </div>
+        `;
+
+        if (security.vulnerabilities?.length) {
+            html += `
+                <h4>Vulnerabilities</h4>
+            `;
+
+            security.vulnerabilities.forEach(vulnerability => {
+                html += `
+                    <div class="target-security-vulnerability">
+                        <strong>
+                            ${escapeHtml(vulnerability.id)}
+                        </strong>
+
+                        <div>
+                            ${escapeHtml(
+                    vulnerability.summary || ""
+                )}
+                        </div>
+
+                        ${
+                    vulnerability.aliases?.length
+                        ? `
+                                    <div>
+                                        Aliases:
+                                        ${escapeHtml(
+                            vulnerability.aliases.join(", ")
+                        )}
+                                    </div>
+                                `
+                        : ""
+                }
+                    </div>
+                `;
+            });
+        }
+    }
+
+    html += `
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function showScanDetails() {
+    const container =
+        document.getElementById("targetScanDetails");
+
+    container.style.display = "block";
+
+    container.innerHTML = `
+        <div id="targetScanSteps">
+            <div
+                id="scanStepResolution"
+                class="target-scan-step running"
+            >
+                <span class="step-status">RUNNING</span>
+                <span>Target resolution</span>
+            </div>
+
+            <div
+                id="scanStepOsv"
+                class="target-scan-step"
+            >
+                <span class="step-status">WAITING</span>
+                <span>Query OSV for vulnerabilities</span>
+            </div>
+
+            <div
+                id="scanStepDone"
+                class="target-scan-step"
+            >
+                <span class="step-status">WAITING</span>
+                <span>Security scan</span>
+            </div>
+        </div>
+    `;
+}
+
+function updateScanStep(
+    id,
+    status,
+) {
+    const element =
+        document.getElementById(id);
+
+    if (!element) {
+        return;
+    }
+
+    element.classList.remove(
+        "running",
+        "done",
+        "failed",
+    );
+
+    element.classList.add(
+        status.toLowerCase()
+    );
+
+    const statusElement =
+        element.querySelector(".step-status");
+
+    statusElement.textContent =
+        status;
 }
 
 document.getElementById("saveTargets")
@@ -819,6 +1078,257 @@ document
                     : "none";
         });
     });
+
+document
+    .getElementById("scanTargets")
+    .addEventListener("click", scanTargetSecurity);
+
+async function loadCachedTargetSecurity() {
+    try {
+        const response =
+            await fetch(
+                "/internal/api/target-resolution/security"
+            );
+
+        if (response.status === 404 ||
+            response.status === 202) {
+            return;
+        }
+
+        if (!response.ok) {
+            return;
+        }
+
+        const snapshot =
+            await response.json();
+
+        if (
+            snapshot.status === "READY" &&
+            snapshot.result
+        ) {
+            targetSecurityScan =
+                snapshot.result;
+
+            renderTargetTables();
+        }
+    } catch (error) {
+        console.warn(
+            "Could not load cached target security result",
+            error
+        );
+    }
+}
+
+async function scanTargetSecurity() {
+    const button =
+        document.getElementById("scanTargets");
+
+    button.disabled = true;
+    button.textContent = "SCANNING...";
+
+    showScanDetails();
+
+    try {
+        updateScanStep(
+            "scanStepResolution",
+            "RUNNING",
+        );
+
+        const resolution =
+            await startOrWaitForResolution();
+
+        if (!resolution) {
+            throw new Error(
+                "Target resolution did not complete"
+            );
+        }
+
+        updateScanStep(
+            "scanStepResolution",
+            "DONE",
+        );
+
+        updateScanStep(
+            "scanStepOsv",
+            "RUNNING",
+        );
+
+        const security =
+            await startOrWaitForSecurity();
+
+        if (!security) {
+            throw new Error(
+                "Security scan did not complete"
+            );
+        }
+
+        targetSecurityScan =
+            security;
+
+        updateScanStep(
+            "scanStepOsv",
+            "DONE",
+        );
+
+        updateScanStep(
+            "scanStepDone",
+            "DONE",
+        );
+
+        renderTargetTables();
+
+        document.getElementById(
+            "targetScanDetails"
+        ).insertAdjacentHTML(
+            "beforeend",
+            `
+                <div style="margin-top:8px">
+                    DONE
+                </div>
+            `
+        );
+    } catch (error) {
+        console.error(error);
+
+        updateScanStep(
+            "scanStepResolution",
+            "FAILED",
+        );
+
+        updateScanStep(
+            "scanStepOsv",
+            "FAILED",
+        );
+
+        updateScanStep(
+            "scanStepDone",
+            "FAILED",
+        );
+
+        document.getElementById(
+            "targetScanDetails"
+        ).insertAdjacentHTML(
+            "beforeend",
+            `
+                <div style="margin-top:8px">
+                    FAILED:
+                    ${escapeHtml(error.message)}
+                </div>
+            `
+        );
+    } finally {
+        button.disabled = false;
+        button.textContent = "SCAN";
+    }
+}
+
+async function startOrWaitForResolution() {
+    const response =
+        await fetch(
+            "/internal/api/target-resolution/start"
+        );
+
+    if (!response.ok && response.status !== 202) {
+        throw new Error(
+            `Failed starting target resolution: HTTP ${response.status}`
+        );
+    }
+
+    let snapshot =
+        await response.json();
+
+    while (
+        snapshot.status === "RUNNING"
+        ) {
+        await sleep(1000);
+
+        const poll =
+            await fetch(
+                "/internal/api/target-resolution"
+            );
+
+        if (!poll.ok && poll.status !== 202) {
+            throw new Error(
+                `Failed polling target resolution: HTTP ${poll.status}`
+            );
+        }
+
+        snapshot =
+            await poll.json();
+    }
+
+    if (snapshot.status === "FAILED") {
+        throw new Error(
+            snapshot.error ||
+            "Target resolution failed"
+        );
+    }
+
+    if (snapshot.status !== "READY") {
+        throw new Error(
+            `Unexpected resolution status: ${snapshot.status}`
+        );
+    }
+
+    return snapshot.result;
+}
+
+function sleep(milliseconds) {
+    return new Promise(
+        resolve => setTimeout(resolve, milliseconds)
+    );
+}
+
+async function startOrWaitForSecurity() {
+    const response =
+        await fetch(
+            "/internal/api/target-resolution/security/start"
+        );
+
+    if (!response.ok && response.status !== 202) {
+        throw new Error(
+            `Failed starting security scan: HTTP ${response.status}`
+        );
+    }
+
+    let snapshot =
+        await response.json();
+
+    while (
+        snapshot.status === "RUNNING"
+        ) {
+        await sleep(1000);
+
+        const poll =
+            await fetch(
+                "/internal/api/target-resolution/security"
+            );
+
+        if (!poll.ok && poll.status !== 202) {
+            throw new Error(
+                `Failed polling security scan: HTTP ${poll.status}`
+            );
+        }
+
+        snapshot =
+            await poll.json();
+    }
+
+    if (snapshot.status === "FAILED") {
+        throw new Error(
+            snapshot.error ||
+            "Security scan failed"
+        );
+    }
+
+    if (snapshot.status !== "READY") {
+        throw new Error(
+            `Unexpected security status: ${snapshot.status}`
+        );
+    }
+
+    return snapshot.result;
+}
 
 async function initTargets() {
     const data = await fetchTargetVersions();

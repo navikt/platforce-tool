@@ -14,7 +14,11 @@ import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
 import no.nav.platforce.tool.dependencies.OsvVulnerabilityService
 import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.ResolutionStatus
+import no.nav.platforce.tool.dependencies.SecurityScanStatus
+import no.nav.platforce.tool.dependencies.TargetResolution
+import no.nav.platforce.tool.dependencies.TargetSecurityScanner
 import no.nav.platforce.tool.dependencies.TargetSecurityService
+import no.nav.platforce.tool.dependencies.TargetVersionsState
 import no.nav.platforce.tool.dependencies.TargetVersionsStore
 import no.nav.platforce.tool.dependencies.VulnerabilityService
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
@@ -60,6 +64,7 @@ import java.io.StringReader
 import java.security.interfaces.RSAPrivateKey
 import java.util.Base64
 import kotlin.collections.mapOf
+import kotlin.text.get
 
 class Application {
     private val log = KotlinLogging.logger { }
@@ -114,6 +119,8 @@ class Application {
 
     val targetSecurityService = TargetSecurityService(vulnerabilityService)
 
+    val targetSecurityScanner = TargetSecurityScanner(targetSecurityService)
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     fun api(): HttpHandler =
@@ -123,45 +130,106 @@ class Application {
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
-            "/internal/api/target-resolution/security" bind Method.GET to { request ->
+            "/internal/api/target-resolution/start" bind Method.GET to { request ->
                 val context = request.userContext()
-                val targetState =
-                    context.targetVersionsStore.get()
+                val targetState = context.targetVersionsStore.get()
+                val snapshot =
+                    gradleTargetResolutionScanner.start(
+                        targetState = targetState,
+                    )
+                when (snapshot.status) {
+                    ResolutionStatus.READY ->
+                        Response(Status.OK)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    ResolutionStatus.RUNNING ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    ResolutionStatus.FAILED ->
+                        Response(Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    ResolutionStatus.IDLE ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                }
+            },
+            "/internal/api/target-resolution" bind Method.GET to { request ->
+                val context = request.userContext()
+                val targetState = context.targetVersionsStore.get()
                 val snapshot =
                     gradleTargetResolutionScanner.get(
                         targetState = targetState,
                     )
-                when {
-                    snapshot.status == ResolutionStatus.RUNNING ->
-                        Response(Status.ACCEPTED)
-                            .header("Content-Type", "application/json")
-                            .body(
-                                """{"status":"RUNNING"}""",
-                            )
-                    snapshot.status == ResolutionStatus.FAILED ->
-                        Response(Status.INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "application/json")
-                            .body(
-                                Gson().toJson(snapshot),
-                            )
-                    snapshot.status != ResolutionStatus.READY ||
-                        snapshot.result == null ->
-                        Response(Status.NOT_FOUND)
-                            .body(
-                                "No ready target resolution exists for current target versions",
-                            )
-                    else -> {
-                        val result =
-                            targetSecurityService.scan(
-                                resolution = snapshot.result,
-                                targetState = targetState,
-                            )
+                when (snapshot.status) {
+                    ResolutionStatus.READY ->
                         Response(Status.OK)
                             .header("Content-Type", "application/json")
-                            .body(
-                                Gson().toJson(result),
-                            )
-                    }
+                            .body(Gson().toJson(snapshot))
+                    ResolutionStatus.RUNNING ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    ResolutionStatus.FAILED ->
+                        Response(Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    ResolutionStatus.IDLE ->
+                        Response(Status.NOT_FOUND)
+                            .body("No target resolution exists for current target versions")
+                }
+            },
+            "/internal/api/target-resolution/security/start" bind Method.GET to { request ->
+                val context = request.userContext()
+                val targetState = context.targetVersionsStore.get()
+                val snapshot =
+                    targetSecurityScanner.start(
+                        targetState = targetState,
+                    )
+                when (snapshot.status) {
+                    SecurityScanStatus.READY ->
+                        Response(Status.OK)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    SecurityScanStatus.RUNNING ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    SecurityScanStatus.FAILED ->
+                        Response(Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    SecurityScanStatus.IDLE ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                }
+            },
+            "/internal/api/target-resolution/security" bind Method.GET to { request ->
+                val context = request.userContext()
+                val targetState = context.targetVersionsStore.get()
+                val snapshot =
+                    targetSecurityScanner.get(
+                        targetState = targetState,
+                    )
+                when (snapshot.status) {
+                    SecurityScanStatus.READY ->
+                        Response(Status.OK)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    SecurityScanStatus.RUNNING ->
+                        Response(Status.ACCEPTED)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    SecurityScanStatus.FAILED ->
+                        Response(Status.INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Gson().toJson(snapshot))
+                    SecurityScanStatus.IDLE ->
+                        Response(Status.NOT_FOUND)
+                            .body("No security scan exists for current target versions")
                 }
             },
             "/internal/api/target-resolution/vulnerabilities" bind Method.GET to { request ->
@@ -193,15 +261,6 @@ class Application {
                         .body(Gson().toJson(vulnerabilities))
                 }
             },
-//            "/internal/api/target-resolution" bind Method.GET to { request ->
-//                val context = request.userContext()
-//                val state = context.targetVersionsStore.get()
-//                val result =
-//                    gradleTargetResolutionService.resolve(state)
-//                Response(OK)
-//                    .header("Content-Type", "application/json")
-//                    .body(Gson().toJson(result))
-//            },
             "/internal/repos" bind Method.GET to {
                 Response(OK).body(githubClient.listRepositories().joinToString("\n"))
             },
@@ -726,66 +785,6 @@ class Application {
                         .body("deps.dev fetch failed: ${e.message}")
                 }
             },
-            "/internal/api/target-resolution/start" bind Method.GET to { request ->
-                val context = request.userContext()
-                val state = context.targetVersionsStore.get()
-
-                val snapshot =
-                    gradleTargetResolutionScanner.start(
-                        targetState = state,
-                    )
-
-                when (snapshot.status) {
-                    ResolutionStatus.RUNNING ->
-                        Response(Status.ACCEPTED)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-
-                    ResolutionStatus.READY ->
-                        Response(Status.OK)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-
-                    ResolutionStatus.FAILED ->
-                        Response(Status.INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-
-                    ResolutionStatus.IDLE ->
-                        Response(Status.ACCEPTED)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-                }
-            },
-            "/internal/api/target-resolution" bind Method.GET to { request ->
-                val context = request.userContext()
-                val state = context.targetVersionsStore.get()
-
-                val snapshot =
-                    gradleTargetResolutionScanner.get(
-                        targetState = state,
-                    )
-
-                when (snapshot.status) {
-                    ResolutionStatus.READY ->
-                        Response(Status.OK)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-
-                    ResolutionStatus.RUNNING ->
-                        Response(Status.ACCEPTED)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-
-                    ResolutionStatus.FAILED ->
-                        Response(Status.INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "application/json")
-                            .body(Gson().toJson(snapshot))
-
-                    ResolutionStatus.IDLE ->
-                        Response(Status.NOT_FOUND)
-                }
-            },
         )
 
     /**
@@ -1289,6 +1288,33 @@ class Application {
         SbomCache.put(key, graph)
 
         return graph
+    }
+
+    fun waitForResolution(targetState: TargetVersionsState): TargetResolution {
+        while (true) {
+            val resolutionSnapshot =
+                gradleTargetResolutionScanner.get(
+                    targetState = targetState,
+                )
+            when (resolutionSnapshot.status) {
+                ResolutionStatus.READY -> {
+                    return checkNotNull(resolutionSnapshot.result)
+                }
+                ResolutionStatus.FAILED -> {
+                    throw IllegalStateException(
+                        "Gradle target resolution failed: ${resolutionSnapshot.error}",
+                    )
+                }
+                ResolutionStatus.IDLE -> {
+                    gradleTargetResolutionScanner.start(
+                        targetState = targetState,
+                    )
+                }
+                ResolutionStatus.RUNNING -> {
+                    Thread.sleep(250)
+                }
+            }
+        }
     }
 }
 
