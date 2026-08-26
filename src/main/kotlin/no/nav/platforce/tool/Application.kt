@@ -130,6 +130,54 @@ class Application {
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
+            "/internal/api/target-resolution/debug/start" bind Method.POST to { request ->
+                val targetState =
+                    Gson().fromJson<TargetVersionsState>(
+                        request.bodyString(),
+                        TargetVersionsState::class.java,
+                    )
+
+                val snapshot =
+                    gradleTargetResolutionScanner.start(
+                        targetState = targetState,
+                    )
+
+                val status =
+                    when (snapshot.status) {
+                        ResolutionStatus.READY -> Status.OK
+                        ResolutionStatus.RUNNING -> Status.ACCEPTED
+                        ResolutionStatus.FAILED -> Status.INTERNAL_SERVER_ERROR
+                        ResolutionStatus.IDLE -> Status.OK
+                    }
+
+                Response(status)
+                    .header("Content-Type", "application/json")
+                    .body(Gson().toJson(snapshot))
+            },
+            "/internal/api/target-resolution/debug" bind Method.POST to { request ->
+                val targetState =
+                    Gson().fromJson<TargetVersionsState>(
+                        request.bodyString(),
+                        TargetVersionsState::class.java,
+                    )
+
+                val snapshot =
+                    gradleTargetResolutionScanner.get(
+                        targetState = targetState,
+                    )
+
+                val status =
+                    when (snapshot.status) {
+                        ResolutionStatus.READY -> Status.OK
+                        ResolutionStatus.RUNNING -> Status.ACCEPTED
+                        ResolutionStatus.FAILED -> Status.INTERNAL_SERVER_ERROR
+                        ResolutionStatus.IDLE -> Status.OK
+                    }
+
+                Response(status)
+                    .header("Content-Type", "application/json")
+                    .body(Gson().toJson(snapshot))
+            },
             "/internal/api/target-resolution/start" bind Method.GET to { request ->
                 val context = request.userContext()
                 val targetState = context.targetVersionsStore.get()

@@ -1,6 +1,6 @@
 FROM gradle:8.11.1-jdk21 AS gradle
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-ubi10-minimal
 
 COPY --from=gradle /opt/gradle /opt/gradle
 
