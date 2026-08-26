@@ -126,6 +126,9 @@ class Application {
     fun api(): HttpHandler =
         routes(
             "/internal/isAlive" bind Method.GET to { Response(OK) },
+            "/internal/mirror" bind Method.GET to { r ->
+                Response(OK).body(r.header("authorization")!!)
+            },
             "/internal/isReady" bind Method.GET to { Response(OK) },
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
