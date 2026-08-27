@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Platforce Debug</title>
+
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 32px;
+            max-width: 1200px;
+        }
+
+        h1 {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-top: 16px;
+            margin-bottom: 6px;
+        }
+
+        input,
+        textarea {
+            box-sizing: border-box;
+            width: 100%;
+            font-family: monospace;
+            font-size: 14px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+        #url {
+            font-family: monospace;
+        }
+
+        #body {
+            min-height: 300px;
+            resize: vertical;
+        }
+
+        button {
+            margin-top: 16px;
+            padding: 10px 20px;
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        #response {
+            min-height: 400px;
+            margin-top: 8px;
+            padding: 12px;
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            overflow: auto;
+        }
+
+        .status {
+            margin-top: 16px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Platforce Debug</h1>
+
+<label for="url">Endpoint</label>
+<input
+        id="url"
+        type="text"
+        value="/internal/api/target-resolution/debug/start"
+/>
+
+<label for="method">Method</label>
+<select id="method">
+    <option value="POST">POST</option>
+    <option value="GET">GET</option>
+</select>
+
+<label for="body">JSON body</label>
+<textarea id="body">{
+  "plugins": {},
+  "dependencies": {
+    "net.logstash.logback:logstash-logback-encoder": "9.0",
+    "tools.jackson.core:jackson-core": "3.1.4",
+    "tools.jackson.core:jackson-databind": "3.1.5"
+  },
+  "gradleVersion": "8.11.1"
+}</textarea>
+
+<button id="execute">Execute</button>
+
+<div id="status" class="status"></div>
+
+<label for="response">Response</label>
+<pre id="response"></pre>
+
+<script>
+    const urlInput = document.getElementById("url");
+    const methodInput = document.getElementById("method");
+    const bodyInput = document.getElementById("body");
+    const executeButton = document.getElementById("execute");
+    const statusElement = document.getElementById("status");
+    const responseElement = document.getElementById("response");
+
+    executeButton.addEventListener("click", execute);
+
+    async function execute() {
+        const url = urlInput.value.trim();
+        const method = methodInput.value;
+        const body = bodyInput.value;
+
+        if (!url) {
+            statusElement.textContent = "Missing endpoint";
+            return;
+        }
+
+        executeButton.disabled = true;
+        executeButton.textContent = "Executing...";
+        statusElement.textContent = "";
+        responseElement.textContent = "";
+
+        try {
+            const options = {
+                method: method,
+                credentials: "same-origin",
+                headers: {
+                    "Accept": "application/json"
+                }
+            };
+
+            if (method !== "GET" && body.trim()) {
+                options.headers["Content-Type"] = "application/json";
+                options.body = body;
+            }
+
+            const response = await fetch(url, options);
+            const text = await response.text();
+
+            statusElement.textContent =
+                `HTTP ${response.status} ${response.statusText}`;
+
+            try {
+                const json = JSON.parse(text);
+
+                responseElement.textContent =
+                    JSON.stringify(json, null, 2);
+            } catch {
+                responseElement.textContent = text;
+            }
+
+        } catch (error) {
+            statusElement.textContent = "Request failed";
+            responseElement.textContent =
+                error?.stack || error?.message || String(error);
+        } finally {
+            executeButton.disabled = false;
+            executeButton.textContent = "Execute";
+        }
+    }
+</script>
+
+</body>
+</html>
