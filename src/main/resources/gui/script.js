@@ -844,36 +844,55 @@ function showSecurityDetails(security) {
 
     if (security.status === "OK_OVERRIDDEN") {
         html += `
-            <div>
-                <strong>OK with override</strong>
-            </div>
-
-            <p>
-                This target has vulnerable transitive dependencies
-                when resolved on its own, but another target dependency
-                causes Gradle to resolve a safe version.
-            </p>
-        `;
+        <div>
+            <strong>Safe through dependency resolution</strong>
+        </div>
+    `;
 
         if (security.overriddenBy?.length) {
             html += `
-                <strong>Overridden by:</strong>
-                <ul>
-            `;
+            <ul>
+        `;
 
             security.overriddenBy.forEach(reason => {
                 html += `
-                    <li>
-                        ${escapeHtml(reason.dependency)}
-                        →
-                        ${escapeHtml(reason.resolvedVersion)}
-                    </li>
+                <li>
+                    <strong>${escapeHtml(reason.dependency)}</strong>
+                    ${escapeHtml(reason.vulnerableVersion || "")}
+                    →
+                    ${escapeHtml(reason.resolvedVersion)}
+            `;
+
+                if (reason.causedBy?.length) {
+                    html += `
+                    <div>
+                        Resolved by:
+                        ${reason.causedBy
+                        .map(cause => escapeHtml(cause))
+                        .join(", ")}
+                    </div>
                 `;
+                }
+
+                if (reason.suggestedVersion) {
+                    html += `
+                    <div>
+                        <strong>
+                            Upgrade to ${escapeHtml(reason.suggestedVersion)}
+                            to avoid the vulnerability.
+                        </strong>
+                    </div>
+                `;
+                }
+
+                html += `
+                </li>
+            `;
             });
 
             html += `
-                </ul>
-            `;
+            </ul>
+        `;
         }
     }
 
