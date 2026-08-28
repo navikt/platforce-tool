@@ -934,3 +934,22 @@ button:hover {
     border: 1px solid #ddd;
     border-radius: 5px;
 }
+
+.target-status-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.target-security-upgrade {
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 0.15rem 0.5rem;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.85em;
+}
+
+.target-security-upgrade:hover {
+    text-decoration: underline;
+}

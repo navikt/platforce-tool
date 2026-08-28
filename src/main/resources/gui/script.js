@@ -764,9 +764,6 @@ function renderTable(containerId, entries, type) {
 function securityStatusHtml(security) {
     if (!security) {
         return `
-            <span class="target-status-pill target-status-unknown">
-                —
-            </span>
         `;
     }
 
@@ -789,6 +786,21 @@ function securityStatusHtml(security) {
                 >
                     OK *
                 </button>
+                
+                ${
+                suggestedVersion
+                    ? `
+                                <button
+                                    class="target-security-upgrade"
+                                    title="Upgrade target to ${escapeHtml(suggestedVersion)}"
+                                    onclick="addDraftTarget('DEPENDENCY','${escapeHtml(security.key)}','${escapeHtml(suggestedVersion)}')"
+
+                                >
+                                    → ${escapeHtml(suggestedVersion)}
+                                </button>
+                            `
+                    : ""
+            }
             `;
 
         case "VULNERABLE":
