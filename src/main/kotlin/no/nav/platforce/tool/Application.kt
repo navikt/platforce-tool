@@ -16,11 +16,10 @@ import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.ResolutionStatus
 import no.nav.platforce.tool.dependencies.SecurityScanStatus
 import no.nav.platforce.tool.dependencies.TargetResolution
+import no.nav.platforce.tool.dependencies.TargetSecurityScan
 import no.nav.platforce.tool.dependencies.TargetSecurityScanner
 import no.nav.platforce.tool.dependencies.TargetSecurityService
 import no.nav.platforce.tool.dependencies.TargetVersionsState
-import no.nav.platforce.tool.dependencies.TargetVersionsStore
-import no.nav.platforce.tool.dependencies.VulnerabilityService
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
 import no.nav.platforce.tool.dependencies.targetVersionsRoutes
 import no.nav.platforce.tool.entra.AuthRouteBuilder
@@ -29,12 +28,9 @@ import no.nav.platforce.tool.entra.MockTokenValidator
 import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
 import no.nav.platforce.tool.github.DefaultGithubClient
 import no.nav.platforce.tool.github.GithubAppAuthenticator
-import no.nav.platforce.tool.ignore.IgnoredRepositoriesStore
 import no.nav.platforce.tool.ignore.ignoredRepositoriesRoutes
-import no.nav.platforce.tool.notes.RepositoryNotesStore
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.sbom.SbomCache
-import no.nav.platforce.tool.sbom.SbomCache.buildSbomGraph
 import no.nav.platforce.tool.sbom.SbomGraph
 import no.nav.platforce.tool.user.userContext
 import no.nav.sf.keytool.db.PostgresDatabase
@@ -50,7 +46,6 @@ import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.core.Status.Companion.OK
-import org.http4k.core.Status.Companion.UNAUTHORIZED
 import org.http4k.routing.ResourceLoader
 import org.http4k.routing.bind
 import org.http4k.routing.path
@@ -62,9 +57,7 @@ import org.http4k.server.asServer
 import java.io.File
 import java.io.StringReader
 import java.security.interfaces.RSAPrivateKey
-import java.util.Base64
 import kotlin.collections.mapOf
-import kotlin.text.get
 
 class Application {
     private val log = KotlinLogging.logger { }
@@ -115,9 +108,9 @@ class Application {
 
     val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService)
 
-    val vulnerabilityService = OsvVulnerabilityService(httpClient)
+    val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
 
-    val targetSecurityService = TargetSecurityService(vulnerabilityService)
+    val targetSecurityService = TargetSecurityService(osvVulnerabilityService)
 
     val targetSecurityScanner = TargetSecurityScanner(targetSecurityService)
 
@@ -130,6 +123,53 @@ class Application {
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
+            "/internal/api/target-resolution/security/debug" bind Method.POST to { request ->
+                val targetState =
+                    Gson().fromJson<TargetVersionsState>(
+                        request.bodyString(),
+                        TargetVersionsState::class.java,
+                    )
+
+                try {
+                    val resolution =
+                        application.waitForResolution(
+                            targetState = targetState,
+                        )
+
+                    val (securityScan, osvTrace) =
+                        osvVulnerabilityService.withDebugTrace {
+                            targetSecurityService.scan(
+                                resolution = resolution,
+                                targetState = targetState,
+                            )
+                        }
+
+                    Response(Status.OK)
+                        .header("Content-Type", "application/json")
+                        .body(
+                            Gson().toJson(
+                                OsvDebugScan(
+                                    securityScan = securityScan,
+                                    osv = osvTrace,
+                                ),
+                            ),
+                        )
+                } catch (e: Exception) {
+                    Response(Status.INTERNAL_SERVER_ERROR)
+                        .header("Content-Type", "application/json")
+                        .body(
+                            Gson().toJson(
+                                mapOf(
+                                    "status" to "FAILED",
+                                    "error" to (
+                                        e.message
+                                            ?: e.javaClass.simpleName
+                                    ),
+                                ),
+                            ),
+                        )
+                }
+            },
             "/internal/api/target-resolution/debug/start" bind Method.POST to { request ->
                 val targetState =
                     Gson().fromJson<TargetVersionsState>(
@@ -283,7 +323,7 @@ class Application {
                         .body("No ready target resolution available")
                 } else {
                     val vulnerabilities =
-                        vulnerabilityService.find(
+                        osvVulnerabilityService.find(
                             snapshot.result.roots,
                         )
 
@@ -1391,4 +1431,25 @@ data class OverrideReason(
     val dependency: String,
     val targetVersion: String,
     val resolvedVersion: String,
+    val vulnerableVersion: String? = null,
+)
+
+data class OsvDebugScan(
+    val securityScan: TargetSecurityScan,
+    val osv: OsvDebugTrace,
+)
+
+data class OsvDebugTrace(
+    val queryBatchRequests: List<OsvDebugQueryBatch>,
+    val vulnerabilityRequests: List<OsvDebugVulnerabilityRequest>,
+)
+
+data class OsvDebugQueryBatch(
+    val request: String,
+    val response: String,
+)
+
+data class OsvDebugVulnerabilityRequest(
+    val id: String,
+    val response: String,
 )
