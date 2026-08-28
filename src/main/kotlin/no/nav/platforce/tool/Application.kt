@@ -1432,6 +1432,7 @@ data class OverrideReason(
     val targetVersion: String,
     val resolvedVersion: String,
     val vulnerableVersion: String? = null,
+    val causedBy: String? = null,
 )
 
 data class OsvDebugScan(

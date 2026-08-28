@@ -162,6 +162,27 @@ class TargetSecurityService(
                             dependency.version != resolvedDependency.version &&
                             resolvedVulnerabilities.isEmpty()
                         ) {
+                            val causedBy =
+                                targetState.dependencies
+                                    .filter { (otherTargetKey, _) ->
+                                        otherTargetKey != targetKey
+                                    }.filter { (otherTargetKey, _) ->
+                                        flatten(
+                                            resolution.individual[otherTargetKey]
+                                                ?: emptyList(),
+                                        ).any { otherDependency ->
+                                            coordinateWithoutVersion(
+                                                otherDependency.group,
+                                                otherDependency.name,
+                                            ) == dependencyKey &&
+                                                otherDependency.version ==
+                                                resolvedDependency.version
+                                        }
+                                    }.keys
+                                    .toList()
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.joinToString(", ")
+
                             listOf(
                                 OverrideReason(
                                     dependency = dependencyKey,
@@ -173,6 +194,7 @@ class TargetSecurityService(
                                         resolvedDependency.version,
                                     vulnerableVersion =
                                         dependency.version,
+                                    causedBy = causedBy,
                                 ),
                             )
                         } else {
@@ -180,7 +202,7 @@ class TargetSecurityService(
                         }
                     }
                 }.distinctBy {
-                    "${it.dependency}:${it.targetVersion}:${it.resolvedVersion}:${it.vulnerableVersion}"
+                    "${it.dependency}:${it.targetVersion}:${it.resolvedVersion}:${it.vulnerableVersion}:${it.causedBy}"
                 }
 
         val unresolvedVulnerabilities =
@@ -233,7 +255,8 @@ class TargetSecurityService(
                     "${it.dependency} " +
                         "targetVersion=${it.targetVersion} " +
                         "resolvedVersion=${it.resolvedVersion} " +
-                        "vulnerableVersion=${it.vulnerableVersion}"
+                        "vulnerableVersion=${it.vulnerableVersion}" +
+                        "causedBy=${it.causedBy}"
                 }
             }
               unresolved=${
