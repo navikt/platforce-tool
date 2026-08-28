@@ -178,9 +178,9 @@ class TargetSecurityService(
                                                 otherDependency.version ==
                                                 resolvedDependency.version
                                         }
-                                    }.keys
-                                    .toList()
-                                    .takeIf { it.isNotEmpty() }
+                                    }.map { (otherTargetKey, otherTargetVersion) ->
+                                        "$otherTargetKey:$otherTargetVersion"
+                                    }.takeIf { it.isNotEmpty() }
                                     ?.joinToString(", ")
 
                             listOf(
