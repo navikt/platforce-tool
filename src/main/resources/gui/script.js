@@ -779,6 +779,10 @@ function securityStatusHtml(security) {
             `;
 
         case "OK_OVERRIDDEN":
+            const suggestedVersion =
+                security.overriddenBy
+                    ?.find(reason => reason.suggestedVersion)
+                    ?.suggestedVersion;
             return `
                 <button
                     class="target-status-pill target-status-overridden"
