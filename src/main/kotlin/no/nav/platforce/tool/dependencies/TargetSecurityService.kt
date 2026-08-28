@@ -5,6 +5,7 @@ import no.nav.platforce.tool.ResolvedDependencySecurity
 import no.nav.platforce.tool.TargetSecurityResult
 import no.nav.platforce.tool.TargetSecurityStatus
 import no.nav.platforce.tool.Vulnerability
+import org.apache.maven.artifact.versioning.ComparableVersion
 import kotlin.collections.isNotEmpty
 
 class TargetSecurityService(
@@ -195,6 +196,15 @@ class TargetSecurityService(
                                     vulnerableVersion =
                                         dependency.version,
                                     causedBy = causedBy,
+                                    suggestedVersion =
+                                        if (
+                                            ComparableVersion(resolvedDependency.version)
+                                                .compareTo(ComparableVersion(dependency.version)) > 0
+                                        ) {
+                                            resolvedDependency.version
+                                        } else {
+                                            null
+                                        },
                                 ),
                             )
                         } else {
