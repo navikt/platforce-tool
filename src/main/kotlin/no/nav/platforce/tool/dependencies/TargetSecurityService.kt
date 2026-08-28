@@ -181,8 +181,7 @@ class TargetSecurityService(
                                         }
                                     }.map { (otherTargetKey, otherTargetVersion) ->
                                         "$otherTargetKey:$otherTargetVersion"
-                                    }.takeIf { it.isNotEmpty() }
-                                    ?.joinToString(", ")
+                                    }
 
                             listOf(
                                 OverrideReason(

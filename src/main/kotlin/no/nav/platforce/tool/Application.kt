@@ -1432,7 +1432,7 @@ data class OverrideReason(
     val targetVersion: String,
     val resolvedVersion: String,
     val vulnerableVersion: String? = null,
-    val causedBy: String? = null,
+    val causedBy: List<String> = emptyList(),
     val suggestedVersion: String? = null,
 )
 
