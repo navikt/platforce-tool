@@ -63,32 +63,38 @@ class TargetSecurityService(
         targetState: TargetVersionsState,
         vulnerabilityMap: Map<String, List<Vulnerability>>,
     ): TargetSecurityResult {
-        log.info {
-            """
-            SECURITY DEBUG target=$targetKey:$targetVersion
-
-            INDIVIDUAL:
-            ${
-                flatten(
-                    resolution.individual[targetKey] ?: emptyList(),
-                ).joinToString("\n") {
-                    "  ${it.group}:${it.name}:${it.version} (requested=${it.requestedVersion})"
-                }
-            }
-
-            COMBINED:
-            ${
-                resolution.roots.joinToString("\n") {
-                    "${it.group}:${it.name}:${it.version}"
-                }
-            }
-            """.trimIndent()
-        }
         val standaloneTree =
             resolution.individual[targetKey]
                 ?: emptyList()
+
         val standaloneDependencies =
             flatten(standaloneTree)
+
+        /*
+         * The individual tree tells us what this target originally requested.
+         *
+         * The combined tree tells us what Gradle actually resolved for the
+         * application.
+         */
+        val combinedDependencies =
+            flatten(resolution.roots)
+
+        val combinedByDependency =
+            combinedDependencies
+                .filter { it.group != null }
+                .groupBy {
+                    coordinateWithoutVersion(
+                        it.group,
+                        it.name,
+                    )
+                }
+
+        /*
+         * Find vulnerabilities in the versions requested by this target.
+         *
+         * These are NOT automatically vulnerabilities in the final application.
+         * We still have to check what Gradle resolved in the combined graph.
+         */
         val vulnerableDependencies =
             standaloneDependencies
                 .mapNotNull { dependency ->
@@ -100,6 +106,7 @@ class TargetSecurityService(
                                 dependency.version,
                             ),
                         ].orEmpty()
+
                     if (vulnerabilities.isEmpty()) {
                         null
                     } else {
@@ -109,7 +116,11 @@ class TargetSecurityService(
                         )
                     }
                 }
+
         if (vulnerableDependencies.isEmpty()) {
+            log.info {
+                "SECURITY RESULT target=$targetKey:$targetVersion status=OK vulnerableDependencies=0"
+            }
             return TargetSecurityResult(
                 key = targetKey,
                 targetVersion = targetVersion,
@@ -118,19 +129,60 @@ class TargetSecurityService(
                 overriddenBy = emptyList(),
             )
         }
+
         val overrides =
             vulnerableDependencies
                 .flatMap { vulnerable ->
-                    findOverrides(
-                        vulnerable = vulnerable,
-                        targetKey = targetKey,
-                        targetState = targetState,
-                        resolution = resolution,
-                        vulnerabilityMap = vulnerabilityMap,
-                    )
+                    val dependency =
+                        vulnerable.dependency
+
+                    val dependencyKey =
+                        coordinateWithoutVersion(
+                            dependency.group,
+                            dependency.name,
+                        )
+
+                    val resolvedDependency =
+                        combinedByDependency[dependencyKey]
+                            ?.firstOrNull()
+
+                    if (resolvedDependency == null) {
+                        emptyList()
+                    } else {
+                        val resolvedVulnerabilities =
+                            vulnerabilityMap[
+                                coordinate(
+                                    resolvedDependency.group,
+                                    resolvedDependency.name,
+                                    resolvedDependency.version,
+                                ),
+                            ].orEmpty()
+
+                        if (
+                            dependency.version != resolvedDependency.version &&
+                            resolvedVulnerabilities.isEmpty()
+                        ) {
+                            listOf(
+                                OverrideReason(
+                                    dependency = dependencyKey,
+                                    targetVersion =
+                                        targetState.dependencies[
+                                            dependencyKey,
+                                        ] ?: resolvedDependency.version,
+                                    resolvedVersion =
+                                        resolvedDependency.version,
+                                    vulnerableVersion =
+                                        dependency.version,
+                                ),
+                            )
+                        } else {
+                            emptyList()
+                        }
+                    }
                 }.distinctBy {
-                    "${it.dependency}:${it.targetVersion}:${it.resolvedVersion}"
+                    "${it.dependency}:${it.targetVersion}:${it.resolvedVersion}:${it.vulnerableVersion}"
                 }
+
         val unresolvedVulnerabilities =
             vulnerableDependencies.filter { vulnerable ->
                 !hasOverride(
@@ -138,76 +190,60 @@ class TargetSecurityService(
                     overrides = overrides,
                 )
             }
-        return when {
-            unresolvedVulnerabilities.isNotEmpty() ->
-                TargetSecurityResult(
-                    key = targetKey,
-                    targetVersion = targetVersion,
-                    status = TargetSecurityStatus.VULNERABLE,
-                    vulnerabilities =
-                        unresolvedVulnerabilities
-                            .flatMap { it.vulnerabilities }
-                            .distinctBy { it.id },
-                    overriddenBy = overrides,
-                )
-            else ->
-                TargetSecurityResult(
-                    key = targetKey,
-                    targetVersion = targetVersion,
-                    status = TargetSecurityStatus.OK_OVERRIDDEN,
-                    vulnerabilities =
-                        vulnerableDependencies
-                            .flatMap { it.vulnerabilities }
-                            .distinctBy { it.id },
-                    overriddenBy = overrides,
-                )
-        }
-    }
 
-    private fun findOverrides(
-        vulnerable: VulnerableDependency,
-        targetKey: String,
-        targetState: TargetVersionsState,
-        resolution: TargetResolution,
-        vulnerabilityMap: Map<String, List<Vulnerability>>,
-    ): List<OverrideReason> {
-        val dependency = vulnerable.dependency
-        val dependencyKey =
-            coordinateWithoutVersion(
-                dependency.group,
-                dependency.name,
-            )
-        return targetState.dependencies
-            .filter { (otherKey, _) ->
-                otherKey != targetKey &&
-                    otherKey == dependencyKey
-            }.mapNotNull { (otherKey, otherTargetVersion) ->
-                val vulnerabilities =
-                    vulnerabilityMap[
-                        coordinate(
-                            dependency.group,
-                            dependency.name,
-                            otherTargetVersion,
-                        ),
-                    ].orEmpty()
-                if (vulnerabilities.isNotEmpty()) {
-                    return@mapNotNull null
-                }
-                val combinedVersion =
-                    findResolvedVersion(
-                        resolution.roots,
-                        dependency.group,
-                        dependency.name,
+        val result =
+            when {
+                unresolvedVulnerabilities.isNotEmpty() ->
+                    TargetSecurityResult(
+                        key = targetKey,
+                        targetVersion = targetVersion,
+                        status = TargetSecurityStatus.VULNERABLE,
+                        vulnerabilities =
+                            unresolvedVulnerabilities
+                                .flatMap { it.vulnerabilities }
+                                .distinctBy { it.id },
+                        overriddenBy = overrides,
                     )
-                if (combinedVersion != otherTargetVersion) {
-                    return@mapNotNull null
-                }
-                OverrideReason(
-                    dependency = otherKey,
-                    targetVersion = otherTargetVersion,
-                    resolvedVersion = combinedVersion,
-                )
+
+                else ->
+                    TargetSecurityResult(
+                        key = targetKey,
+                        targetVersion = targetVersion,
+                        status = TargetSecurityStatus.OK_OVERRIDDEN,
+                        vulnerabilities =
+                            vulnerableDependencies
+                                .flatMap { it.vulnerabilities }
+                                .distinctBy { it.id },
+                        overriddenBy = overrides,
+                    )
             }
+        log.info {
+            """
+            SECURITY RESULT
+              target=$targetKey:$targetVersion
+              status=${result.status}
+              vulnerableDependencies=${
+                vulnerableDependencies.joinToString {
+                    "${it.dependency.group}:${it.dependency.name}:${it.dependency.version}" +
+                        " vulnerabilities=${it.vulnerabilities.map { vulnerability -> vulnerability.id }}"
+                }
+            }
+              overrides=${
+                overrides.joinToString {
+                    "${it.dependency} " +
+                        "targetVersion=${it.targetVersion} " +
+                        "resolvedVersion=${it.resolvedVersion} " +
+                        "vulnerableVersion=${it.vulnerableVersion}"
+                }
+            }
+              unresolved=${
+                unresolvedVulnerabilities.joinToString {
+                    "${it.dependency.group}:${it.dependency.name}:${it.dependency.version}"
+                }
+            }
+            """.trimIndent()
+        }
+        return result
     }
 
     private fun hasOverride(
