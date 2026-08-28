@@ -1,4 +1,5 @@
 package no.nav.platforce.tool.dependencies
+import mu.KotlinLogging
 import no.nav.platforce.tool.OverrideReason
 import no.nav.platforce.tool.ResolvedDependencySecurity
 import no.nav.platforce.tool.TargetSecurityResult
@@ -9,6 +10,8 @@ import kotlin.collections.isNotEmpty
 class TargetSecurityService(
     private val vulnerabilityService: VulnerabilityService,
 ) {
+    private val log = KotlinLogging.logger { }
+
     fun scan(
         resolution: TargetResolution,
         targetState: TargetVersionsState,
@@ -60,6 +63,27 @@ class TargetSecurityService(
         targetState: TargetVersionsState,
         vulnerabilityMap: Map<String, List<Vulnerability>>,
     ): TargetSecurityResult {
+        log.info {
+            """
+            SECURITY DEBUG target=$targetKey:$targetVersion
+
+            INDIVIDUAL:
+            ${
+                flatten(
+                    resolution.individual[targetKey] ?: emptyList(),
+                ).joinToString("\n") {
+                    "  ${it.group}:${it.name}:${it.version} (requested=${it.requestedVersion})"
+                }
+            }
+
+            COMBINED:
+            ${
+                resolution.roots.joinToString("\n") {
+                    "${it.group}:${it.name}:${it.version}"
+                }
+            }
+            """.trimIndent()
+        }
         val standaloneTree =
             resolution.individual[targetKey]
                 ?: emptyList()
