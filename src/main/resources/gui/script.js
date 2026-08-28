@@ -797,8 +797,11 @@ function securityStatusHtml(security) {
                                 <button
                                     class="target-version-pill"
                                     title="Upgrade target to ${escapeHtml(suggestedVersion)}"
-                                    onclick="addDraftTarget('DEPENDENCY','${escapeHtml(security.key)}','${escapeHtml(suggestedVersion)}'); this.remove();"
-
+                                    onclick="applySecurityUpgrade(
+                                       this,
+                                     '${escapeHtml(security.key)}',
+                                     '${escapeHtml(suggestedVersion)}'
+                                     )"
                                 >
                                     → ${escapeHtml(suggestedVersion)}
                                 </button>
@@ -1659,6 +1662,11 @@ async function saveSelectedTeam(team) {
     if (!response.ok) {
         console.warn("Failed to save selected team");
     }
+}
+
+async function applySecurityUpgrade(button, key, version) {
+    await addDraftTarget("DEPENDENCY", key, version);
+    button.remove();
 }
 
 async function init() {
