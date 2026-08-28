@@ -183,13 +183,14 @@ class TargetSecurityService(
                                         "$otherTargetKey:$otherTargetVersion"
                                     }
 
+                            val targetDependencyVersion =
+                                targetState.dependencies[dependencyKey]
+                                    ?: resolvedDependency.version
+
                             listOf(
                                 OverrideReason(
                                     dependency = dependencyKey,
-                                    targetVersion =
-                                        targetState.dependencies[
-                                            dependencyKey,
-                                        ] ?: resolvedDependency.version,
+                                    targetVersion = targetDependencyVersion,
                                     resolvedVersion =
                                         resolvedDependency.version,
                                     vulnerableVersion =
@@ -198,7 +199,7 @@ class TargetSecurityService(
                                     suggestedVersion =
                                         if (
                                             ComparableVersion(resolvedDependency.version)
-                                                .compareTo(ComparableVersion(dependency.version)) > 0
+                                                .compareTo(ComparableVersion(targetDependencyVersion)) > 0
                                         ) {
                                             resolvedDependency.version
                                         } else {
