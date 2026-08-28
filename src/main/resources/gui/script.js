@@ -795,9 +795,9 @@ function securityStatusHtml(security) {
                 suggestedVersion
                     ? `
                                 <button
-                                    class="target-security-upgrade"
+                                    class="target-version-pill"
                                     title="Upgrade target to ${escapeHtml(suggestedVersion)}"
-                                    onclick="addDraftTarget('DEPENDENCY','${escapeHtml(security.key)}','${escapeHtml(suggestedVersion)}')"
+                                    onclick="addDraftTarget('DEPENDENCY','${escapeHtml(security.key)}','${escapeHtml(suggestedVersion)}'); this.remove();"
 
                                 >
                                     → ${escapeHtml(suggestedVersion)}
