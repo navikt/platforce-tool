@@ -864,7 +864,7 @@ function showSecurityDetails(security) {
     if (security.status === "OK_OVERRIDDEN") {
         html += `
         <div>
-            <strong>Safe through dependency resolution</strong>
+            <strong>Transitive vulnerability overridden by dependency resolution</strong>
         </div>
     `;
 
@@ -1665,7 +1665,7 @@ async function saveSelectedTeam(team) {
 }
 
 async function applySecurityUpgrade(button, key, version) {
-    await addDraftTarget("DEPENDENCY", key, version);
+    addDraftTarget("DEPENDENCY", key, version);
     button.remove();
 }
 
