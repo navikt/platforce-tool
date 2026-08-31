@@ -112,9 +112,19 @@ class TargetSecurityService(
                     if (vulnerabilities.isEmpty()) {
                         null
                     } else {
+                        val suggestedVersion =
+                            vulnerabilities
+                                .flatMap { it.fixedVersions }
+                                .filter {
+                                    ComparableVersion(it)
+                                        .compareTo(ComparableVersion(dependency.version)) > 0
+                                }.minWithOrNull(
+                                    compareBy { ComparableVersion(it) },
+                                )
                         VulnerableDependency(
                             dependency = dependency,
                             vulnerabilities = vulnerabilities,
+                            suggestedVersion = suggestedVersion,
                         )
                     }
                 }

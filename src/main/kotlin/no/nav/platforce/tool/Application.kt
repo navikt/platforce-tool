@@ -1418,6 +1418,7 @@ data class ResolvedDependencySecurity(
 data class VulnerableDependency(
     val dependency: ResolvedDependency,
     val vulnerabilities: List<Vulnerability>,
+    val suggestedVersion: String? = null,
 )
 
 enum class TargetSecurityStatus {

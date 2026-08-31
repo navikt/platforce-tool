@@ -929,85 +929,74 @@ function showSecurityDetails(security) {
 
             security.vulnerableDependencies.forEach(vulnerable => {
                 const dependency = vulnerable.dependency;
+                const suggestedVersion =
+                    vulnerable.suggestedVersion;
 
                 html += `
                 <div class="target-security-vulnerability">
                     <div>
                         <strong>
-                            ${escapeHtml(
-                    dependency.group
-                        ? `${dependency.group}:${dependency.name}`
-                        : dependency.name
-                )}
+                            ${escapeHtml(dependency.group)}:${escapeHtml(dependency.name)}
                         </strong>
-                        ${escapeHtml(dependency.version)}
-                    </div>
-            `;
+                        <span>
+                            ${escapeHtml(dependency.version)}
+                        </span>
 
-                const fixedVersions = [
-                    ...new Set(
-                        (vulnerable.vulnerabilities || [])
-                            .flatMap(vulnerability =>
-                                vulnerability.fixedVersions || []
-                            )
-                    )
-                ];
+                        ${
+                    suggestedVersion
+                        ? `
+                                    <button
+                                        class="target-version-pill"
+                                        title="Upgrade target to ${escapeHtml(suggestedVersion)}"
+                                        onclick="applySecurityUpgrade(
+                                            this,
+                                            '${escapeHtml(security.key)}',
+                                            '${escapeHtml(suggestedVersion)}'
+                                        )"
+                                    >
+                                        → ${escapeHtml(suggestedVersion)}
+                                    </button>
+                                `
+                        : ""
+                }
+                    </div>
 
-                if (fixedVersions.length) {
-                    html += `
-                    <div>
-                        Fixed in:
-                        <strong>
-                            ${escapeHtml(fixedVersions.join(", "))}
-                        </strong>
-                    </div>
-                `;
-                } else {
-                    html += `
-                    <div>
-                        No fixed version reported by OSV.
-                    </div>
-                `;
+                    ${
+                    vulnerable.vulnerabilities?.length
+                        ? `
+                                <div>
+                                    Fixed in:
+                                    ${escapeHtml(
+                            [...new Set(
+                                vulnerable.vulnerabilities
+                                    .flatMap(v => v.fixedVersions || [])
+                            )].join(", ")
+                        )}
+                                </div>
+                            `
+                        : ""
                 }
 
-                html += `
                     <details>
                         <summary>Vulnerability details</summary>
-            `;
-
-                (vulnerable.vulnerabilities || []).forEach(vulnerability => {
-                    html += `
-                    <div>
-                        <strong>
-                            ${escapeHtml(vulnerability.id)}
-                        </strong>
 
                         ${
-                        vulnerability.aliases?.length
-                            ? `
+                    vulnerable.vulnerabilities
+                        .map(vulnerability => `
                                     <div>
-                                        ${escapeHtml(
-                                vulnerability.aliases.join(", ")
-                            )}
-                                    </div>
-                                `
-                            : ""
-                    }
+                                        <strong>
+                                            ${escapeHtml(vulnerability.id)}
+                                        </strong>
 
-                        ${
-                        vulnerability.summary
-                            ? `
-                                    <div>
-                                        ${escapeHtml(vulnerability.summary)}
+                                        <div>
+                                            ${escapeHtml(
+                            vulnerability.summary || ""
+                        )}
+                                        </div>
                                     </div>
-                                `
-                            : ""
-                    }
-                    </div>
-                `;
-                });
-
-                html += `
+                                `)
+                        .join("")
+                }
                     </details>
                 </div>
             `;
