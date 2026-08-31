@@ -987,7 +987,7 @@ function showScanDetails() {
                 class="target-scan-step running"
             >
                 <span class="step-status">RUNNING</span>
-                <span>Target resolution</span>
+                <span>Gradle target resolution</span>
             </div>
 
             <div
@@ -1003,7 +1003,7 @@ function showScanDetails() {
                 class="target-scan-step"
             >
                 <span class="step-status">WAITING</span>
-                <span>Security scan</span>
+                <span>Update security status</span>
             </div>
         </div>
     `;
