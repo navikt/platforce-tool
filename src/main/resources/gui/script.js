@@ -917,43 +917,100 @@ function showSecurityDetails(security) {
 
     if (security.status === "VULNERABLE") {
         html += `
-            <div>
-                <strong>Vulnerable</strong>
-            </div>
+        <div>
+            <strong>Vulnerable</strong>
+        </div>
+    `;
+
+        if (security.vulnerableDependencies?.length) {
+            html += `
+            <h4>Vulnerable dependencies</h4>
         `;
 
-        if (security.vulnerabilities?.length) {
-            html += `
-                <h4>Vulnerabilities</h4>
+            security.vulnerableDependencies.forEach(vulnerable => {
+                const dependency = vulnerable.dependency;
+
+                html += `
+                <div class="target-security-vulnerability">
+                    <div>
+                        <strong>
+                            ${escapeHtml(
+                    dependency.group
+                        ? `${dependency.group}:${dependency.name}`
+                        : dependency.name
+                )}
+                        </strong>
+                        ${escapeHtml(dependency.version)}
+                    </div>
             `;
 
-            security.vulnerabilities.forEach(vulnerability => {
+                const fixedVersions = [
+                    ...new Set(
+                        (vulnerable.vulnerabilities || [])
+                            .flatMap(vulnerability =>
+                                vulnerability.fixedVersions || []
+                            )
+                    )
+                ];
+
+                if (fixedVersions.length) {
+                    html += `
+                    <div>
+                        Fixed in:
+                        <strong>
+                            ${escapeHtml(fixedVersions.join(", "))}
+                        </strong>
+                    </div>
+                `;
+                } else {
+                    html += `
+                    <div>
+                        No fixed version reported by OSV.
+                    </div>
+                `;
+                }
+
                 html += `
-                    <div class="target-security-vulnerability">
+                    <details>
+                        <summary>Vulnerability details</summary>
+            `;
+
+                (vulnerable.vulnerabilities || []).forEach(vulnerability => {
+                    html += `
+                    <div>
                         <strong>
                             ${escapeHtml(vulnerability.id)}
                         </strong>
 
-                        <div>
-                            ${escapeHtml(
-                    vulnerability.summary || ""
-                )}
-                        </div>
-
                         ${
-                    vulnerability.aliases?.length
-                        ? `
+                        vulnerability.aliases?.length
+                            ? `
                                     <div>
-                                        Aliases:
                                         ${escapeHtml(
-                            vulnerability.aliases.join(", ")
-                        )}
+                                vulnerability.aliases.join(", ")
+                            )}
                                     </div>
                                 `
-                        : ""
-                }
+                            : ""
+                    }
+
+                        ${
+                        vulnerability.summary
+                            ? `
+                                    <div>
+                                        ${escapeHtml(vulnerability.summary)}
+                                    </div>
+                                `
+                            : ""
+                    }
                     </div>
                 `;
+                });
+
+                html += `
+                    </details>
+                </div>
+            `;
             });
         }
     }

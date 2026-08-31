@@ -5,6 +5,7 @@ import no.nav.platforce.tool.ResolvedDependencySecurity
 import no.nav.platforce.tool.TargetSecurityResult
 import no.nav.platforce.tool.TargetSecurityStatus
 import no.nav.platforce.tool.Vulnerability
+import no.nav.platforce.tool.VulnerableDependency
 import org.apache.maven.artifact.versioning.ComparableVersion
 import kotlin.collections.isNotEmpty
 
@@ -127,6 +128,7 @@ class TargetSecurityService(
                 targetVersion = targetVersion,
                 status = TargetSecurityStatus.OK,
                 vulnerabilities = emptyList(),
+                vulnerableDependencies = emptyList(),
                 overriddenBy = emptyList(),
             )
         }
@@ -234,6 +236,7 @@ class TargetSecurityService(
                             unresolvedVulnerabilities
                                 .flatMap { it.vulnerabilities }
                                 .distinctBy { it.id },
+                        vulnerableDependencies = unresolvedVulnerabilities,
                         overriddenBy = overrides,
                     )
 
@@ -246,6 +249,7 @@ class TargetSecurityService(
                             vulnerableDependencies
                                 .flatMap { it.vulnerabilities }
                                 .distinctBy { it.id },
+                        vulnerableDependencies = vulnerableDependencies,
                         overriddenBy = overrides,
                     )
             }
@@ -330,9 +334,4 @@ class TargetSecurityService(
         group: String?,
         name: String,
     ): String = "${group ?: ""}:$name"
-
-    private data class VulnerableDependency(
-        val dependency: ResolvedDependency,
-        val vulnerabilities: List<Vulnerability>,
-    )
 }

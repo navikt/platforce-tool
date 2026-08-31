@@ -14,6 +14,7 @@ import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
 import no.nav.platforce.tool.dependencies.OsvVulnerabilityService
 import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.ResolutionStatus
+import no.nav.platforce.tool.dependencies.ResolvedDependency
 import no.nav.platforce.tool.dependencies.SecurityScanStatus
 import no.nav.platforce.tool.dependencies.TargetResolution
 import no.nav.platforce.tool.dependencies.TargetSecurityScan
@@ -1403,6 +1404,7 @@ data class Vulnerability(
     val summary: String?,
     val aliases: List<String>,
     val references: List<String>,
+    val fixedVersions: List<String>,
 )
 
 data class ResolvedDependencySecurity(
@@ -1410,6 +1412,11 @@ data class ResolvedDependencySecurity(
     val name: String,
     val requestedVersion: String?,
     val resolvedVersion: String,
+    val vulnerabilities: List<Vulnerability>,
+)
+
+data class VulnerableDependency(
+    val dependency: ResolvedDependency,
     val vulnerabilities: List<Vulnerability>,
 )
 
@@ -1424,6 +1431,7 @@ data class TargetSecurityResult(
     val targetVersion: String,
     val status: TargetSecurityStatus,
     val vulnerabilities: List<Vulnerability>,
+    val vulnerableDependencies: List<VulnerableDependency>,
     val overriddenBy: List<OverrideReason>,
 )
 
