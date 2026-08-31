@@ -970,7 +970,12 @@ function showSecurityDetails(security) {
                             [...new Set(
                                 vulnerable.vulnerabilities
                                     .flatMap(v => v.fixedVersions || [])
-                            )].join(", ")
+                            )].sort((a, b) =>
+                                a.localeCompare(b, undefined, {
+                                    numeric: true,
+                                    sensitivity: "base"
+                                })
+                            ).join(", ")
                         )}
                                 </div>
                             `
