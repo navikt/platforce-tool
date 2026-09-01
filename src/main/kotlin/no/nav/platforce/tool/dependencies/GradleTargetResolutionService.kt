@@ -288,9 +288,9 @@ class GradleTargetResolutionService(
                         def resolveConfiguration = { configuration ->
                             def resolutionResult =
                                 configuration.incoming.resolutionResult
-
+                        
                             def roots = []
-
+                        
                             resolutionResult.root.dependencies.each { dependency ->
                                 if (dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult) {
                                     roots << buildNode(
@@ -300,8 +300,8 @@ class GradleTargetResolutionService(
                                     )
                                 } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
                                     def unresolvedRequested = dependency.requested
-                                
-                                    node.dependencies << [
+                        
+                                    roots << [
                                         group: unresolvedRequested.group,
                                         name: unresolvedRequested.name,
                                         version: "<unresolved>",
@@ -311,7 +311,7 @@ class GradleTargetResolutionService(
                                     ]
                                 }
                             }
-
+                        
                             return roots
                         }
 
