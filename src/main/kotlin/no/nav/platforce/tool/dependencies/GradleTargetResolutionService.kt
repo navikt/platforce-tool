@@ -244,20 +244,18 @@ class GradleTargetResolutionService(
                 
                         unresolvedReport.parentFile.mkdirs()
                         unresolvedReport.text = ""
-                        
+                
                         def reportUnresolved = { dependency, context ->
                             def requested = dependency.requested
                 
-                            unresolvedReport << "${'$'}{'"'}
-                            UNRESOLVED DEPENDENCY
-                            Context: ${'$'}{'$'}{context}
-                            Group: ${'$'}{'$'}{requested.group}
-                            Name: ${'$'}{'$'}{requested.name}
-                            Version: ${'$'}{'$'}{requested.version}
-                            Display: ${'$'}{'$'}{requested.displayName}
-                            Reason: ${'$'}{'$'}{dependency.failure?.message ?: "unknown"}
-                            ----------------------------------------
-                            "${'$'}{'"'}.stripIndent()
+                            unresolvedReport << "UNRESOLVED DEPENDENCY\n" +
+                                "Context: ${'$'}{'$'}{context}\n" +
+                                "Group: ${'$'}{'$'}{requested.group}\n" +
+                                "Name: ${'$'}{'$'}{requested.name}\n" +
+                                "Version: ${'$'}{'$'}{requested.version}\n" +
+                                "Display: ${'$'}{'$'}{requested.displayName}\n" +
+                                "Reason: ${'$'}{'$'}{dependency.failure?.message ?: "unknown"}\n" +
+                                "----------------------------------------\n"
                         }
                     
                         def buildNode
