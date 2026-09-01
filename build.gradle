@@ -44,7 +44,6 @@ dependencies {
     implementation "net.logstash.logback:logstash-logback-encoder:9.0"
     implementation "tools.jackson.core:jackson-core:3.1.5" // Transitive to net.logstash.logback:logstash-logback-encoder
     implementation "tools.jackson.core:jackson-databind:3.1.5" // Transitive to net.logstash.logback:logstash-logback-encoder
-    implementation "com.fasterxml.jackson.core:jackson-databind:2.22.1" // Transitive to tools.jackson.core:jackson-databind
 
     implementation "io.prometheus:simpleclient_common:0.9.0"
     implementation "io.prometheus:simpleclient_hotspot:0.9.0"
@@ -60,7 +59,8 @@ dependencies {
     implementation "org.jetbrains.exposed:exposed-jdbc:0.46.0"
     implementation "org.jetbrains.exposed:exposed-java-time:0.46.0"
 
-    implementation("org.apache.maven:maven-artifact:3.9.11")
+    implementation "org.apache.maven:maven-artifact:3.9.11"
+    implementation "org.codehaus.plexus:plexus-utils:3.6.1"
 
     implementation "com.zaxxer:HikariCP:3.4.1"
 
