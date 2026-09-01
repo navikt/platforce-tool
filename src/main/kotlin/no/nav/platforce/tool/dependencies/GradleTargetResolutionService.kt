@@ -83,6 +83,15 @@ class GradleTargetResolutionService(
                 state = state,
             )
 
+            val debugDir = Path.of("/tmp/files")
+            Files.createDirectories(debugDir)
+
+            Files.copy(
+                projectDir.resolve("build.gradle"),
+                debugDir.resolve("build.gradle"),
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+
             val gradleHome =
                 ensureGradleDistribution(
                     state.gradleVersion,
@@ -260,14 +269,14 @@ class GradleTargetResolutionService(
                                         newPath
                                     )
                                 } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
-                                    def requested = dependency.requested
-                            
+                                    def unresolvedRequested = dependency.requested
+                                
                                     node.dependencies << [
-                                        group: requested.group,
-                                        name: requested.name,
+                                        group: unresolvedRequested.group,
+                                        name: unresolvedRequested.name,
                                         version: "<unresolved>",
-                                        requestedVersion: requested.version,
-                                        requested: requested.displayName,
+                                        requestedVersion: unresolvedRequested.version,
+                                        requested: unresolvedRequested.displayName,
                                         dependencies: []
                                     ]
                                 }
@@ -290,14 +299,14 @@ class GradleTargetResolutionService(
                                         []
                                     )
                                 } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
-                                    def requested = dependency.requested
-                            
-                                    roots << [
-                                        group: requested.group,
-                                        name: requested.name,
+                                    def unresolvedRequested = dependency.requested
+                                
+                                    node.dependencies << [
+                                        group: unresolvedRequested.group,
+                                        name: unresolvedRequested.name,
                                         version: "<unresolved>",
-                                        requestedVersion: requested.version,
-                                        requested: requested.displayName,
+                                        requestedVersion: unresolvedRequested.version,
+                                        requested: unresolvedRequested.displayName,
                                         dependencies: []
                                     ]
                                 }

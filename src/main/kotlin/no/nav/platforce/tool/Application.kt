@@ -29,6 +29,7 @@ import no.nav.platforce.tool.entra.MockTokenValidator
 import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
 import no.nav.platforce.tool.github.DefaultGithubClient
 import no.nav.platforce.tool.github.GithubAppAuthenticator
+import no.nav.platforce.tool.gui.filesHandler
 import no.nav.platforce.tool.ignore.ignoredRepositoriesRoutes
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.sbom.SbomCache
@@ -123,6 +124,8 @@ class Application {
             "/internal/isReady" bind Method.GET to { Response(OK) },
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
+            "/internal/files" bind Method.GET to filesHandler(File("/tmp/files")),
+            "/internal/files/{path:.*}" bind Method.GET to filesHandler(File("/tmp/files")),
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
             "/internal/api/target-resolution/security/debug" bind Method.POST to { request ->
                 val targetState =
@@ -875,6 +878,8 @@ class Application {
 
     fun start() {
         log.info { "Starting in cluster $cluster" }
+        val dir = File("/tmp/files")
+        dir.mkdirs()
         apiServer(8080).start()
     }
 
