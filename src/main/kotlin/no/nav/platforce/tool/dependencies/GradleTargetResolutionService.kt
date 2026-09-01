@@ -239,6 +239,27 @@ class GradleTargetResolutionService(
 
                 tasks.register("platforceResolve") {
                     doLast {
+                        def unresolvedReport =
+                            file("/tmp/files/gradle-unresolved-dependencies.txt")
+                
+                        unresolvedReport.parentFile.mkdirs()
+                        unresolvedReport.text = ""
+                        
+                        def reportUnresolved = { dependency, context ->
+                            def requested = dependency.requested
+                
+                            unresolvedReport << "${'$'}{'"'}
+                            UNRESOLVED DEPENDENCY
+                            Context: ${'$'}{'$'}{context}
+                            Group: ${'$'}{'$'}{requested.group}
+                            Name: ${'$'}{'$'}{requested.name}
+                            Version: ${'$'}{'$'}{requested.version}
+                            Display: ${'$'}{'$'}{requested.displayName}
+                            Reason: ${'$'}{'$'}{dependency.failure?.message ?: "unknown"}
+                            ----------------------------------------
+                            "${'$'}{'"'}.stripIndent()
+                        }
+                    
                         def buildNode
 
                         buildNode = { component, requested, path ->
@@ -269,6 +290,11 @@ class GradleTargetResolutionService(
                                         newPath
                                     )
                                 } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
+                                    reportUnresolved(
+                                        dependency,
+                                        "dependency of ${'$'}{component.id.displayName}"
+                                    )
+                                    
                                     def unresolvedRequested = dependency.requested
                             
                                     node.dependencies << [
@@ -300,6 +326,11 @@ class GradleTargetResolutionService(
                                         []
                                     )
                                 } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
+                                    reportUnresolved(
+                                        dependency,
+                                        "root dependency in ${'$'}{configuration.name}"
+                                    )
+                                    
                                     def unresolvedRequested = dependency.requested
                         
                                     roots << [
