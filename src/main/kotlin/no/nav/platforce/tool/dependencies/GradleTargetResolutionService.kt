@@ -270,14 +270,15 @@ class GradleTargetResolutionService(
                                     )
                                 } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
                                     def unresolvedRequested = dependency.requested
-                                
+                            
                                     node.dependencies << [
                                         group: unresolvedRequested.group,
-                                        name: unresolvedRequested.name,
+                                        name: unresolvedRequested.module,
                                         version: "<unresolved>",
                                         requestedVersion: unresolvedRequested.version,
                                         requested: unresolvedRequested.displayName,
-                                        dependencies: []
+                                        dependencies: [],
+                                        unresolved: true
                                     ]
                                 }
                             }
@@ -303,11 +304,12 @@ class GradleTargetResolutionService(
                         
                                     roots << [
                                         group: unresolvedRequested.group,
-                                        name: unresolvedRequested.name,
+                                        name: unresolvedRequested.module,
                                         version: "<unresolved>",
                                         requestedVersion: unresolvedRequested.version,
                                         requested: unresolvedRequested.displayName,
-                                        dependencies: []
+                                        dependencies: [],
+                                        unresolved: true
                                     ]
                                 }
                             }
