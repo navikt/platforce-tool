@@ -251,7 +251,7 @@ class GradleTargetResolutionService(
                             unresolvedReport << "UNRESOLVED DEPENDENCY\n" +
                                 "Context: " + context + "\n" +
                                 "Group: " + requested.group + "\n" +
-                                "Name: " + requested.name + "\n" +
+                                "Module: " + requested.module + "\n" +
                                 "Version: " + requested.version + "\n" +
                                 "Display: " + requested.displayName + "\n" +
                                 "Reason: " + (dependency.failure?.message ?: "unknown") + "\n" +
