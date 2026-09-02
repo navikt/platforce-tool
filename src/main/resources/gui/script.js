@@ -318,37 +318,53 @@ function renderRepo(repoView, scanMap, container) {
             ? `
             <div class="table">
                 ${findings.map(f => {
-                const kind = (f.kind || "UNKNOWN").toLowerCase();
-                const status = (f.status || "UNKNOWN");
-
-                return `
+                    const kind = (f.kind || "UNKNOWN").toLowerCase();
+                    const status = (f.status || "UNKNOWN");
+            
+                    const displayStatus =
+                        status === "OK_OVERRIDDEN"
+                            ? "OK"
+                            : status;
+            
+                    const statusClass =
+                        status === "OK_OVERRIDDEN"
+                            ? "status-ok"
+                            : `status-${status.toLowerCase()}`;
+            
+                    const statusExtra =
+                        status === "OK_OVERRIDDEN"
+                            ? `<span class="target-status-overridden">*</span>`
+                            : "";
+            
+                    return `
                         <div class="row ${kind}-row">
                             <div class="pill">${f.kind}</div>
                             <div>${f.key || "-"}</div>
-
+            
                             <div class="version-cell">
                                 <span class="current-version">
                                     ${f.currentVersion || "-"}
                                 </span>
-
+            
                                 ${
-                    (status === "UPDATE" || status === "AHEAD") && f.targetVersion
-                        ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
-                        : ""
-                }
+                                (status === "UPDATE" || status === "AHEAD") && f.targetVersion
+                                    ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
+                                    : ""
+                            }
                             </div>
-
+            
                             <div>
-                                <span class="status-pill status-${status.toLowerCase()} ${status === "AHEAD" ? "target-draft-pill" : ""}"
+                                <span
+                                    class="status-pill ${statusClass} ${status === "AHEAD" ? "target-draft-pill" : ""}"
                                     data-kind="${f.kind}"
                                     data-key="${f.key}"
-                                    data-version="${f.currentVersion}">
-                                    ${status}
+                                    data-version="${f.currentVersion || ""}">
+                                    ${displayStatus}${statusExtra}
                                 </span>
                             </div>
                         </div>
                     `;
-            }).join("")}
+                        }).join("")}
             </div>
 
             ${
