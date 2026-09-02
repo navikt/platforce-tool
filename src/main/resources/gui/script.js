@@ -320,21 +320,20 @@ function renderRepo(repoView, scanMap, container) {
                 ${findings.map(f => {
                     const kind = (f.kind || "UNKNOWN").toLowerCase();
                     const status = (f.status || "UNKNOWN");
-            
+
                     const displayStatus =
                         status === "OK_OVERRIDDEN"
-                            ? "OK"
-                            : status;
-            
+                            ? "OK *"
+                            : status === "OK_WITH_ADD"
+                                ? "OK +ADD"
+                                : status;
+
                     const statusClass =
                         status === "OK_OVERRIDDEN"
-                            ? "status-ok"
-                            : `status-${status.toLowerCase()}`;
-            
-                    const statusExtra =
-                        status === "OK_OVERRIDDEN"
-                            ? `<span class="target-status-overridden">*</span>`
-                            : "";
+                            ? "target-status-overridden"
+                            : status === "VULNERABLE"
+                                ? "target-status-vulnerable"
+                                : `status-${status.toLowerCase()}`;
             
                     return `
                         <div class="row ${kind}-row">
@@ -359,7 +358,7 @@ function renderRepo(repoView, scanMap, container) {
                                     data-kind="${f.kind}"
                                     data-key="${f.key}"
                                     data-version="${f.currentVersion || ""}">
-                                    ${displayStatus}${statusExtra}
+                                    ${displayStatus}
                                 </span>
                             </div>
                         </div>
