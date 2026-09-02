@@ -11,9 +11,20 @@ data class RepositoryDependencyScan(
 data class DependencyFinding(
     val kind: DependencyKind,
     val key: String,
-    val currentVersion: String,
+    val currentVersion: String?,
     val targetVersion: String,
     val status: DependencyStatus,
+    // Dependency is safe because another dependency/version overrides
+    // the vulnerable transitive version.
+    val overriddenBy: List<DependencyReference> = emptyList(),
+    // Dependency should be added explicitly to the repository.
+    // val suggestedDependency: DependencyReference? = null
+)
+
+data class DependencyReference(
+    val kind: DependencyKind,
+    val key: String,
+    val version: String,
 )
 
 enum class DependencyKind {
@@ -26,6 +37,10 @@ enum class DependencyStatus {
     OK,
     UPDATE,
     AHEAD,
+    VULNERABLE, // Enrichment from Security Scan
+    OK_OVERRIDDEN, // Enrichment from Security Scan
+    OK_WITH_ADD, // Enrichment from Security Scan
+    ADD, // Enrichment from Security Scan
 }
 
 data class UntrackedDependency(

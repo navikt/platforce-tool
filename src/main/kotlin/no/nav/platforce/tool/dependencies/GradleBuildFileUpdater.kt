@@ -12,7 +12,7 @@ class GradleBuildFileUpdater {
             .filter { it.status != DependencyStatus.OK }
             .forEach { f ->
 
-                val from = f.currentVersion
+                val from = f.currentVersion ?: return@forEach
                 val to = f.targetVersion
 
                 updated =

@@ -1,11 +1,13 @@
 package no.nav.platforce.tool.dependencies
 
+import no.nav.platforce.tool.TargetSecurityStatus
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.user.UserContext
 import java.time.Instant
 
 class DependencyScanner(
     private val githubClient: GithubClient,
+    private val targetSecurityScanner: TargetSecurityScanner,
 ) {
     private val gradleDependencyParser = GradleDependencyParser()
     private val gradleWrapperParser = GradleWrapperParser()
@@ -69,31 +71,21 @@ class DependencyScanner(
         val buildFile = tryGetBuildFile(owner, repo) ?: return null
 
         val parsedBuildFile = gradleDependencyParser.parse(buildFile)
-/*
-        DependencyInventoryCache.put(
-            RepositoryDependencyInventory(
-                repository = repository,
-                scannedAt = Instant.now().toString(),
-                plugins =
-                    parsedBuildFile.plugins.map {
-                        ConfiguredDependency(
-                            key = it.key,
-                            version = it.value,
-                        )
-                    },
-                dependencies =
-                    parsedBuildFile.dependencies.map {
-                        ConfiguredDependency(
-                            key = it.key,
-                            version = it.value,
-                        )
-                    },
-            ),
-        )*/
 
         val findings = mutableListOf<DependencyFinding>()
 
         val store = userContext.targetVersionsStore.get()
+
+        // To apply data from security scan:
+        val targetState = userContext.targetVersionsStore.get()
+        val securitySnapshot =
+            targetSecurityScanner.get(targetState)
+
+        val securityResult =
+            targetSecurityScanner
+                .get(targetState)
+                .takeIf { it.status == SecurityScanStatus.READY }
+                ?.result
 
         store.plugins.forEach { (plugin, target) ->
             val current = parsedBuildFile.plugins[plugin] ?: return@forEach
@@ -104,17 +96,7 @@ class DependencyScanner(
                     key = plugin,
                     currentVersion = current,
                     targetVersion = target,
-                    status =
-                        when {
-                            VersionComparator.compare(current, target) < 0 ->
-                                DependencyStatus.UPDATE
-
-                            VersionComparator.compare(current, target) > 0 ->
-                                DependencyStatus.AHEAD
-
-                            else ->
-                                DependencyStatus.OK
-                        },
+                    status = dependencyStatus(current, target),
                 )
         }
 
@@ -127,17 +109,7 @@ class DependencyScanner(
                     key = dep,
                     currentVersion = current,
                     targetVersion = target,
-                    status =
-                        when {
-                            VersionComparator.compare(current, target) < 0 ->
-                                DependencyStatus.UPDATE
-
-                            VersionComparator.compare(current, target) > 0 ->
-                                DependencyStatus.AHEAD
-
-                            else ->
-                                DependencyStatus.OK
-                        },
+                    status = dependencyStatus(current, target),
                 )
         }
 
@@ -150,17 +122,7 @@ class DependencyScanner(
                     key = "gradle-wrapper",
                     currentVersion = current,
                     targetVersion = target,
-                    status =
-                        when {
-                            VersionComparator.compare(current, target) < 0 ->
-                                DependencyStatus.UPDATE
-
-                            VersionComparator.compare(current, target) > 0 ->
-                                DependencyStatus.AHEAD
-
-                            else ->
-                                DependencyStatus.OK
-                        },
+                    status = dependencyStatus(current, target),
                 )
         }
 
@@ -187,13 +149,165 @@ class DependencyScanner(
                     )
                 }
 
+        val enrichedFindings =
+            if (securityResult != null) {
+                enrichSecurityFindings(
+                    findings = findings,
+                    securityResult = securityResult,
+                )
+            } else {
+                findings
+            }
+
         return RepositoryDependencyScan(
             repository = repository,
             scannedAt = Instant.now().toString(),
-            findings = findings,
+            findings = enrichedFindings,
             untrackedDependencies = untrackedDependencies,
             untrackedPlugins = untrackedPlugins,
         )
+    }
+
+    private fun enrichSecurityFindings(
+        findings: List<DependencyFinding>,
+        securityResult: TargetSecurityScan,
+    ): List<DependencyFinding> {
+        val securityByKey =
+            securityResult.targets.associateBy { it.key }
+
+        val presentDependencies =
+            findings
+                .filter { it.kind == DependencyKind.DEPENDENCY }
+                .map { it.key }
+                .toSet()
+
+        val enriched = mutableListOf<DependencyFinding>()
+
+        findings.forEach { finding ->
+            if (finding.kind != DependencyKind.DEPENDENCY) {
+                enriched += finding
+                return@forEach
+            }
+
+            val targetResult = securityByKey[finding.key]
+
+            if (targetResult == null) {
+                enriched += finding
+                return@forEach
+            }
+
+            val current = finding.currentVersion
+
+            if (current == null) {
+                enriched += finding
+                return@forEach
+            }
+
+            val comparison =
+                VersionComparator.compare(
+                    current,
+                    finding.targetVersion,
+                )
+
+            // These always win over security status.
+            if (comparison < 0) {
+                enriched +=
+                    finding.copy(
+                        status = DependencyStatus.UPDATE,
+                    )
+                return@forEach
+            }
+
+            if (comparison > 0) {
+                enriched +=
+                    finding.copy(
+                        status = DependencyStatus.AHEAD,
+                    )
+                return@forEach
+            }
+
+            // We are exactly on the target version.
+            when (targetResult.status) {
+                TargetSecurityStatus.OK -> {
+                    enriched += finding
+                }
+
+                TargetSecurityStatus.VULNERABLE -> {
+                    enriched +=
+                        finding.copy(
+                            status = DependencyStatus.VULNERABLE,
+                        )
+                }
+
+                TargetSecurityStatus.OK_OVERRIDDEN -> {
+                    val overriddenBy =
+                        targetResult.overriddenBy
+
+                    val presentOverrides =
+                        overriddenBy.filter {
+                            it.dependency in presentDependencies
+                        }
+
+                    if (presentOverrides.isNotEmpty()) {
+                        enriched +=
+                            finding.copy(
+                                status = DependencyStatus.OK_OVERRIDDEN,
+                                overriddenBy =
+                                    presentOverrides.map {
+                                        DependencyReference(
+                                            kind = DependencyKind.DEPENDENCY,
+                                            key = it.dependency,
+                                            version = it.targetVersion,
+                                        )
+                                    },
+                            )
+                    } else {
+                        // Target is safe in the global target set,
+                        // but this repository does not contain the
+                        // dependency that makes it safe.
+                        enriched +=
+                            finding.copy(
+                                status = DependencyStatus.OK_WITH_ADD,
+                            )
+
+                        overriddenBy.forEach { override ->
+                            if (override.dependency !in presentDependencies) {
+                                enriched +=
+                                    DependencyFinding(
+                                        kind = DependencyKind.DEPENDENCY,
+                                        key = override.dependency,
+                                        currentVersion = null,
+                                        targetVersion = override.targetVersion,
+                                        status = DependencyStatus.ADD,
+                                    )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return enriched
+    }
+
+    fun dependencyStatus(
+        current: String?,
+        target: String,
+    ): DependencyStatus {
+        if (current == null) {
+            return DependencyStatus.ADD
+        }
+
+        return when {
+            VersionComparator.compare(current, target) < 0 ->
+                DependencyStatus.UPDATE
+
+            VersionComparator.compare(current, target) > 0 ->
+                DependencyStatus.AHEAD
+
+            else ->
+                DependencyStatus.OK
+        }
     }
 
     private fun tryGetBuildFile(

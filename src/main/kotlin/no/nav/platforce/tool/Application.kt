@@ -102,8 +102,6 @@ class Application {
 
     private val dependencyScanCache = DependencyScanCache()
 
-    private val dependencyScanner = DependencyScanner(githubClient)
-
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
 
     private val gradleTargetResolutionService = GradleTargetResolutionService()
@@ -115,6 +113,8 @@ class Application {
     val targetSecurityService = TargetSecurityService(osvVulnerabilityService)
 
     val targetSecurityScanner = TargetSecurityScanner(targetSecurityService)
+
+    private val dependencyScanner = DependencyScanner(githubClient, targetSecurityScanner)
 
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
