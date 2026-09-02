@@ -109,9 +109,7 @@ class DefaultGithubClient(
 
         httpClient.newCall(request).execute().use { response ->
 
-            val body =
-                response.body?.string()
-                    ?: error("Missing body")
+            val body = response.body.string()
 
             if (!response.isSuccessful) {
                 error("Failed to fetch branch head sha: $body")
@@ -145,7 +143,7 @@ class DefaultGithubClient(
                 .build()
 
         httpClient.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: ""
+            val body = response.body.string()
 
             if (!response.isSuccessful) {
                 error("Failed to create branch: $body")
@@ -182,7 +180,7 @@ class DefaultGithubClient(
                 .build()
 
         httpClient.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: ""
+            val body = response.body.string()
 
             if (!response.isSuccessful) {
                 error("Failed to update file: $body")
@@ -213,7 +211,7 @@ class DefaultGithubClient(
                 .build()
 
         httpClient.newCall(request).execute().use { response ->
-            val bodyStr = response.body?.string() ?: error("Missing body")
+            val bodyStr = response.body.string()
 
             if (!response.isSuccessful) {
                 error("Failed to create PR: $bodyStr")
@@ -236,9 +234,7 @@ class DefaultGithubClient(
 
         httpClient.newCall(request).execute().use { response ->
 
-            val body =
-                response.body?.string()
-                    ?: error("Missing response body")
+            val body = response.body.string()
 
             if (!response.isSuccessful) {
                 error(body)

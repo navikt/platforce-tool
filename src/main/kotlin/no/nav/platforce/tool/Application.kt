@@ -678,7 +678,7 @@ class Application {
                             .header("Accept", "text/html")
                             .build()
 
-                    return httpClient.newCall(req).execute().use { it.body.string() ?: "" }
+                    return httpClient.newCall(req).execute().use { it.body.string() }
                 }
 
                 fun extractRootCause(html: String): MutableMap<String, Any?> {
@@ -812,7 +812,7 @@ class Application {
                                     .build(),
                             ).execute()
 
-                    val body = response.body?.string().orEmpty()
+                    val body = response.body.string()
 
                     if (!response.isSuccessful) {
                         return@to Response(Status(response.code, response.message))
@@ -1179,7 +1179,7 @@ class Application {
             val root =
                 JsonParser
                     .parseString(
-                        response.body?.string() ?: return emptyList(),
+                        response.body.string(),
                     ).asJsonObject
 
             val data =
@@ -1245,7 +1245,7 @@ class Application {
             val root =
                 JsonParser
                     .parseString(
-                        response.body?.string() ?: "{}",
+                        response.body.string(),
                     ).asJsonObject
 
             val user =

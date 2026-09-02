@@ -279,6 +279,14 @@ class DependencyScanner(
                                         currentVersion = null,
                                         targetVersion = override.targetVersion,
                                         status = DependencyStatus.ADD,
+                                        overriddenBy =
+                                            listOf(
+                                                DependencyReference(
+                                                    kind = DependencyKind.DEPENDENCY,
+                                                    key = finding.key,
+                                                    version = finding.targetVersion,
+                                                ),
+                                            ),
                                     )
                             }
                         }

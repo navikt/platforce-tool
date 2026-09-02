@@ -898,7 +898,20 @@ button:hover {
     border-color: #a5d6a7;
 }
 
+
 .target-status-overridden {
+    background: #fff8e1;
+    color: #8d6500;
+    border-color: #ffe082;
+}
+
+.status-ok_with_add {
+    background: #fff8e1;
+    color: #8d6500;
+    border-color: #ffe082;
+}
+
+.status-add {
     background: #fff8e1;
     color: #8d6500;
     border-color: #ffe082;

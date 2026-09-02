@@ -48,9 +48,7 @@ class DefaultGithubAccessTokenHandler(
 
         httpClient.newCall(request).execute().use { response ->
 
-            val body =
-                response.body?.string()
-                    ?: error("Missing response body")
+            val body = response.body.string()
 
             if (!response.isSuccessful) {
                 error("Failed to create access token: $body")
