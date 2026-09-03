@@ -354,7 +354,7 @@ function renderRepo(repoView, scanMap, container) {
                     ${
                             status === "OK_OVERRIDDEN"
                                 ? `
-                                <strong>Overridden by:</strong>
+                                <strong>Vulnerability overridden by:</strong>
                                 <ul>
                                     ${f.relatedTo.map(r =>
                                     `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
@@ -714,6 +714,10 @@ function addDraftTarget(kind, key, version) {
         targetState.dependencies[key] = version;
     }
 
+    if (kind === "GRADLE") {
+        targetState.gradleVersion = version;
+    }
+
     targetState.drafted.add(`${kind}:${key}`);
 
     console.log("Draft target:", {
@@ -729,8 +733,11 @@ function renderGradleVersion(version) {
     const container = document.getElementById("gradleTable");
     container.innerHTML = "";
 
+    const drafted =
+        targetState.drafted?.has("GRADLE:gradle-wrapper");
+
     const row = document.createElement("div");
-    row.className = "target-row";
+    row.className = `target-row${drafted ? " drafted" : ""}`;
 
     const keyInput = document.createElement("input");
     keyInput.className = "key";
