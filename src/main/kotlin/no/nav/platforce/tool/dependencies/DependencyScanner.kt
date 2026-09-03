@@ -168,6 +168,18 @@ class DependencyScanner(
         )
     }
 
+    fun enrichSecurityScan(
+        scan: RepositoryDependencyScan,
+        securityResult: TargetSecurityScan,
+    ): RepositoryDependencyScan =
+        scan.copy(
+            findings =
+                enrichSecurityFindings(
+                    findings = scan.findings,
+                    securityResult = securityResult,
+                ),
+        )
+
     private fun enrichSecurityFindings(
         findings: List<DependencyFinding>,
         securityResult: TargetSecurityScan,

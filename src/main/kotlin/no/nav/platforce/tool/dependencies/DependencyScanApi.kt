@@ -12,11 +12,35 @@ fun dependencyScanRoutes(
     cache: DependencyScanCache,
     scanner: DependencyScanner,
     pullRequestService: DependencyPullRequestService,
+    targetSecurityScanner: TargetSecurityScanner,
+    dependencyScanner: DependencyScanner,
 ) = listOf(
-    "/internal/api/dependency-scan" bind Method.GET to {
+    "/internal/api/dependency-scan" bind Method.GET to { request ->
+        val context = request.userContext()
+
+        val targetState = context.targetVersionsStore.get()
+
+        val securityResult =
+            targetSecurityScanner
+                .get(targetState)
+                .takeIf { it.status == SecurityScanStatus.READY }
+                ?.result
+
+        val scans =
+            cache.get().map { scan ->
+                if (securityResult != null) {
+                    dependencyScanner.enrichSecurityScan(
+                        scan = scan,
+                        securityResult = securityResult,
+                    )
+                } else {
+                    scan
+                }
+            }
+
         Response(Status.OK)
             .header("Content-Type", "application/json")
-            .body(Gson().toJson(cache.get()))
+            .body(Gson().toJson(scans))
     },
     "/internal/api/dependency-scan/refresh" bind Method.POST to { request ->
         val result = scanner.scanAllRepositoriesWithProgress(cache, request.userContext())

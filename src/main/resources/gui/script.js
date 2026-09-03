@@ -47,20 +47,6 @@ function securityResultForTarget(key) {
     ) || null;
 }
 
-async function loadTargetSecurityScan() {
-    const response =
-        await fetch("/internal/api/target-resolution/security");
-
-    if (!response.ok) {
-        targetSecurityScan = null;
-        return false;
-    }
-
-    targetSecurityScan = await response.json();
-
-    return targetSecurityScan.status === "READY";
-}
-
 async function fetchRepoView() {
     const res = await fetch("/internal/repos/view");
     return await res.json();
@@ -389,7 +375,7 @@ function renderRepo(repoView, scanMap, container) {
                         <div class="finding-container">
                             <div class="row ${kind}-row">
                                 <div class="pill">${f.kind}</div>
-                                <div>${f.key || "-"}</div>
+                                <div>${f.key || ""}</div>
                 
                                 <div class="version-cell">
                                     <span class="current-version">
@@ -397,7 +383,7 @@ function renderRepo(repoView, scanMap, container) {
                                     </span>
                 
                                     ${
-                                    (status === "UPDATE" || status === "AHEAD") && f.targetVersion
+                                    (status === "UPDATE" || status === "AHEAD" || status === "ADD") && f.targetVersion
                                         ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
                                         : ""
                                 }
@@ -1214,7 +1200,8 @@ document.getElementById("saveTargets")
             drafted: new Set()
         };
 
-        renderTargetTables()
+        renderTargetTables();
+        await loadData();
     });
 
 document.getElementById("refreshBtn")
@@ -1279,21 +1266,27 @@ async function loadCachedTargetSecurity() {
 
         const snapshot = await response.json();
 
-        if (
-            snapshot.status === "READY" &&
-            snapshot.result
-        ) {
-            targetSecurityScan =
-                snapshot.result;
-
-            renderTargetTables();
-        }
+        await applyTargetSecurityResult(snapshot)
     } catch (error) {
         console.warn(
             "Could not load cached target security result",
             error
         );
     }
+}
+
+async function applyTargetSecurityResult(snapshot) {
+    if (
+        snapshot.status !== "READY" ||
+        !snapshot.result
+    ) {
+        return;
+    }
+
+    targetSecurityScan = snapshot.result;
+
+    renderTargetTables();
+    await loadData();
 }
 
 async function scanTargetSecurity() {
@@ -1519,6 +1512,7 @@ async function startOrWaitForSecurity() {
     let snapshot = await startResponse.json();
 
     if (snapshot.status === "READY") {
+        await applyTargetSecurityResult(snapshot);
         return snapshot;
     }
 
@@ -1550,6 +1544,7 @@ async function startOrWaitForSecurity() {
     }
 
     if (snapshot.status === "READY") {
+        await applyTargetSecurityResult(snapshot);
         return snapshot;
     }
 
