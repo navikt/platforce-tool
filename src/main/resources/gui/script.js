@@ -221,10 +221,16 @@ function renderRepo(repoView, scanMap, container) {
     const ok = findings.filter(f => f.status === "OK").length;
     const update = findings.filter(f => f.status === "UPDATE").length;
     const ahead = findings.filter(f => f.status === "AHEAD").length;
+    const add = findings.filter(f => f.status === "ADD").length;
 
     const hasActionable = findings.some(f =>
-        f.status === "UPDATE" || f.status === "AHEAD"
+        f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD"
     );
+
+    const addBadge =
+        add > 0
+            ? `<span class="badge add">${add} ADD</span>`
+            : "";
 
     const noteText = notes?.[repo]?.trim() || "";
     const noteExists = noteText.length > 0;
@@ -259,6 +265,7 @@ function renderRepo(repoView, scanMap, container) {
                             <span class="badge ok ${ok === 0 ? 'zero' : ''}">${ok} OK</span>
                             <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                             <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
+                            ${addBadge}
                             ${untrackedBadge}
                     `
             : isMissing

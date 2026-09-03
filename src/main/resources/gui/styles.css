@@ -80,6 +80,7 @@ button:hover {
         80px    /* OK */
         80px    /* UPDATE */
         80px    /* AHEAD */
+        100px   /* ADD (potential) */
         100px   /* UNTRACKED (potential) */
         30px    /* note icon*/
         100px;  /* padding */
@@ -122,6 +123,11 @@ button:hover {
 .badge.ahead {
     background: #ede9fe;
     color: #6b21a8;
+}
+
+.badge.add {
+    background: #e9fbfe;
+    color: #219da8;
 }
 
 .badge.zero {
@@ -907,14 +913,14 @@ button:hover {
 
 .status-ok_with_add {
     background: #fff8e1;
-    color: #8d6500;
+    color: #007692;
     border-color: #ffe082;
 }
 
 .status-add {
-    background: #fff8e1;
-    color: #8d6500;
-    border-color: #ffe082;
+    background: #d6f4ff;
+    color: #007692;
+    border-color: #7cb4ff;
 }
 
 .target-status-vulnerable {
