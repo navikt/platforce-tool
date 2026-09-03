@@ -974,26 +974,24 @@ button:hover {
     text-decoration: underline;
 }
 
-.finding-details {
-    padding: 6px 0 8px 0;
-    margin-left: 0;
-    font-size: 0.85em;
-    opacity: 0.85;
-}
-
 .finding-details.hidden {
     display: none;
 }
 
-.finding-detail-label {
-    margin-bottom: 3px;
-    font-weight: 500;
+.finding-details {
+    padding: 8px 16px 12px;
+    margin-left: 0;
+    font-size: 0.9em;
 }
 
-.finding-detail-item {
-    padding-left: 12px;
+.finding-details ul {
+    margin: 4px 0 0 20px;
 }
 
-.status-pill.clickable {
+.status-pill[data-toggle-details="true"] {
     cursor: pointer;
+}
+
+.status-pill[data-toggle-details="true"]:hover {
+    filter: brightness(0.95);
 }

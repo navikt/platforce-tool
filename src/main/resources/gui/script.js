@@ -347,54 +347,43 @@ function renderRepo(repoView, scanMap, container) {
                         (status === "OK_WITH_ADD" && f.relatedTo?.length > 0) ||
                         (status === "ADD" && f.relatedTo?.length > 0);
 
-                    let detailHtml = "";
-
-                    if (hasDetails) {
-                        if (status === "OK_OVERRIDDEN") {
-                            detailHtml = `
-                    <div class="finding-details hidden">
-                        <div class="finding-detail-label">
-                            Safe because of:
-                        </div>
-                        ${f.relatedTo.map(r => `
-                            <div class="finding-detail-item">
-                                ${r.key}:${r.version}
-                            </div>
-                        `).join("")}
-                    </div>
-                `;
+                const details =
+                    hasDetails
+                        ? `
+                <div class="finding-details hidden">
+                    ${
+                            status === "OK_OVERRIDDEN"
+                                ? `
+                                <strong>Overridden by:</strong>
+                                <ul>
+                                    ${f.relatedTo.map(r =>
+                                    `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                ).join("")}
+                                </ul>
+                              `
+                                : status === "OK_WITH_ADD"
+                                    ? `
+                                    <strong>Safe with added dependency:</strong>
+                                    <ul>
+                                        ${f.relatedTo.map(r =>
+                                        `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                    ).join("")}
+                                    </ul>
+                                  `
+                                    : status === "ADD"
+                                        ? `
+                                        <strong>Transitive override for:</strong>
+                                        <ul>
+                                            ${f.relatedTo.map(r =>
+                                            `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                        ).join("")}
+                                        </ul>
+                                      `
+                                        : ""
                         }
-    
-                        if (status === "OK_WITH_ADD") {
-                            detailHtml = `
-                    <div class="finding-details hidden">
-                        <div class="finding-detail-label">
-                            Requires adding:
-                        </div>
-                        ${f.relatedTo.map(r => `
-                            <div class="finding-detail-item">
-                                ${r.key}:${r.version}
-                            </div>
-                        `).join("")}
-                    </div>
-                `;
-                        }
-    
-                        if (status === "ADD") {
-                            detailHtml = `
-                    <div class="finding-details hidden">
-                        <div class="finding-detail-label">
-                            Transitive override for:
-                        </div>
-                        ${f.relatedTo.map(r => `
-                            <div class="finding-detail-item">
-                                ${r.key}:${r.version}
-                            </div>
-                        `).join("")}
-                    </div>
-                `;
-                        }
-                    }
+                </div>
+              `
+                        : "";
             
                     return `
                         <div class="finding-container">
@@ -425,6 +414,7 @@ function renderRepo(repoView, scanMap, container) {
                                     </span>
                                 </div>
                             </div>
+                            ${details}
                         </div>
                     `;
                         }).join("")}
