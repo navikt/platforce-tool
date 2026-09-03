@@ -13,6 +13,9 @@ object TargetVersionsTable : Table(TARGET_VERSIONS) {
     val type = varchar("type", 20)
     val key = varchar("dependency_key", 500)
     val version = varchar("version", 100)
+
+    val transient = bool("transient").default(false)
+
     val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")
     override val primaryKey =
@@ -29,6 +32,7 @@ data class TargetVersion(
     val type: TargetVersionType,
     val key: String,
     val version: String,
+    val transient: Boolean = false,
     val createdAt: Instant,
     val updatedAt: Instant,
 )
@@ -46,6 +50,7 @@ fun ResultRow.toTargetVersion() =
         type = TargetVersionType.valueOf(this[TargetVersionsTable.type]),
         key = this[TargetVersionsTable.key],
         version = this[TargetVersionsTable.version],
+        transient = this[TargetVersionsTable.transient],
         createdAt = this[TargetVersionsTable.createdAt],
         updatedAt = this[TargetVersionsTable.updatedAt],
     )

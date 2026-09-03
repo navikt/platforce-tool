@@ -33,6 +33,7 @@ data class TargetVersionsState(
     val plugins: MutableMap<String, String>,
     val dependencies: MutableMap<String, String>,
     val gradleVersion: String,
+    val transientDependencies: Set<String> = emptySet(),
 )
 
 class TargetVersionsStore(

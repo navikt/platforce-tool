@@ -9,8 +9,23 @@ class GradleBuildFileUpdater {
 
         findings
             .filter { it.kind != DependencyKind.GRADLE }
-            .filter { it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD }
-            .forEach { f ->
+            .filter {
+                it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD ||
+                    it.status == DependencyStatus.DELETE
+            }.forEach { f ->
+                if (f.status == DependencyStatus.DELETE) {
+                    val version = f.currentVersion ?: return@forEach
+
+                    updated =
+                        updated.replace(
+                            Regex(
+                                """(?m)^[ \t]*implementation\s+["']${Regex.escape(f.key)}:${Regex.escape(version)}["'].*\r?\n?""",
+                            ),
+                            "",
+                        )
+
+                    return@forEach
+                }
 
                 if (f.status == DependencyStatus.ADD) {
                     val parent =

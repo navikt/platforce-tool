@@ -24,7 +24,10 @@ class DependencyPullRequestService(
 
         val actionable =
             scan.findings
-                .filter { it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD }
+                .filter {
+                    it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD ||
+                        it.status == DependencyStatus.DELETE
+                }
 
         if (actionable.isEmpty()) {
             return "No changes required "
@@ -131,6 +134,10 @@ class DependencyPullRequestService(
                                             "(transitive dependency override)",
                                     )
                                 }
+                            }
+
+                            DependencyStatus.DELETE -> {
+                                appendLine("- DELETE ${finding.key}:${finding.targetVersion} (deprecated transitive override)")
                             }
 
                             else -> {

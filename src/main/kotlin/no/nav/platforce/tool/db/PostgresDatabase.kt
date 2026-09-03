@@ -205,4 +205,15 @@ object PostgresDatabase {
             }
         }
     }
+
+    fun expandTargetVersionsWithTransient() {
+        transaction(database) {
+            exec(
+                """
+                ALTER TABLE target_versions
+                ADD COLUMN IF NOT EXISTS transient BOOLEAN NOT NULL DEFAULT FALSE
+                """.trimIndent(),
+            )
+        }
+    }
 }

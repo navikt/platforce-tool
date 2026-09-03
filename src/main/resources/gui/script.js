@@ -228,7 +228,7 @@ function renderRepo(repoView, scanMap, container) {
     const untrackedCount = untrackedDependencies.length + untrackedPlugins.length;
     const untrackedBadge =
         untrackedCount > 0
-            ? `<span class="badge untracked">${untrackedCount} UNTRACKED</span>`
+            ? `<span class="badge untracked">${untrackedCount} UNTRACK</span>`
             : "";
 
     const el = document.createElement("div");

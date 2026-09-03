@@ -38,7 +38,9 @@ enum class DependencyStatus {
     VULNERABLE, // Enrichment from Security Scan
     OK_OVERRIDDEN, // Enrichment from Security Scan
     OK_WITH_ADD, // Enrichment from Security Scan
+    OK_TRANSIENT, // Enrichment from Security Scan
     ADD, // Enrichment from Security Scan
+    DELETE, // Enrichment from Security Scan (on unused transient)
 }
 
 data class UntrackedDependency(

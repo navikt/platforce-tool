@@ -36,6 +36,11 @@ class TargetSecurityService(
                         vulnerabilityMap = vulnerabilityMap,
                     )
                 }
+        val enrichedTargets =
+            applyTransientStatus(
+                targets = targets,
+                targetState = targetState,
+            )
         val securityDependencies =
             allDependencies
                 .distinctBy {
@@ -56,6 +61,37 @@ class TargetSecurityService(
             dependencies = securityDependencies,
             targets = targets,
         )
+    }
+
+    private fun applyTransientStatus(
+        targets: List<TargetSecurityResult>,
+        targetState: TargetVersionsState,
+    ): List<TargetSecurityResult> {
+        val targetByKey =
+            targets.associateBy { it.key }
+
+        val stillRequired =
+            targets
+                .filter { it.status == TargetSecurityStatus.OK_OVERRIDDEN }
+                .flatMap { it.overriddenBy }
+                .map { it.dependency }
+                .toSet()
+
+        return targets.map { target ->
+            if (target.key !in targetState.transientDependencies) {
+                return@map target
+            }
+
+            if (target.key in stillRequired) {
+                target.copy(
+                    status = TargetSecurityStatus.OK_TRANSIENT,
+                )
+            } else {
+                target.copy(
+                    status = TargetSecurityStatus.TRANSIENT_UNUSED,
+                )
+            }
+        }
     }
 
     private fun evaluateTarget(

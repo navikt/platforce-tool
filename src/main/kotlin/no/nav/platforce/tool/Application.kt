@@ -130,6 +130,22 @@ class Application {
             "/internal/files" bind Method.GET to filesHandler(File("/tmp/files")),
             "/internal/files/{path:.*}" bind Method.GET to filesHandler(File("/tmp/files")),
             "/internal/secrethello" authbind Method.GET to { Response(OK).body("Secret Hello!") },
+            "/internal/add-transient" bind Method.GET to { _ ->
+                try {
+                    PostgresDatabase.expandTargetVersionsWithTransient()
+
+                    Response(Status.OK)
+                        .header("Content-Type", "text/plain")
+                        .body("target_versions.transient added")
+                } catch (e: Exception) {
+                    Response(Status.INTERNAL_SERVER_ERROR)
+                        .header("Content-Type", "text/plain")
+                        .body(
+                            "Failed to add target_versions.transient: " +
+                                (e.message ?: e.javaClass.simpleName),
+                        )
+                }
+            },
             "/internal/api/target-resolution/security/debug" bind Method.POST to { request ->
                 val targetState =
                     Gson().fromJson<TargetVersionsState>(
@@ -1438,6 +1454,14 @@ enum class TargetSecurityStatus {
     OK,
     OK_OVERRIDDEN,
     VULNERABLE,
+
+    // Explicitly configured as a transitive dependency
+    // and still required to override a vulnerability.
+    OK_TRANSIENT,
+
+    // Explicitly configured as transitive, but no longer
+    // referenced by an active override.
+    TRANSIENT_UNUSED,
 }
 
 data class TargetSecurityResult(
