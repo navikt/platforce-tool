@@ -973,3 +973,27 @@ button:hover {
 .target-security-upgrade:hover {
     text-decoration: underline;
 }
+
+.finding-details {
+    padding: 6px 0 8px 0;
+    margin-left: 0;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.finding-details.hidden {
+    display: none;
+}
+
+.finding-detail-label {
+    margin-bottom: 3px;
+    font-weight: 500;
+}
+
+.finding-detail-item {
+    padding-left: 12px;
+}
+
+.status-pill.clickable {
+    cursor: pointer;
+}

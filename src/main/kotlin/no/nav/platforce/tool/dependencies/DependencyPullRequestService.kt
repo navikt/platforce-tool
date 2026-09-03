@@ -112,8 +112,33 @@ class DependencyPullRequestService(
                 buildString {
                     appendLine("Automated dependency update via platforce-tool app")
                     appendLine()
-                    actionable.forEach {
-                        appendLine("- ${it.kind} ${it.key}: ${it.currentVersion} → ${it.targetVersion}")
+
+                    actionable.forEach { finding ->
+                        when (finding.status) {
+                            DependencyStatus.ADD -> {
+                                val related = finding.relatedTo.firstOrNull()
+
+                                if (related != null) {
+                                    appendLine(
+                                        "- ADD ${finding.key}:${finding.targetVersion} " +
+                                            "(transitive dependency override for " +
+                                            "${related.key}:${related.version})",
+                                    )
+                                } else {
+                                    appendLine(
+                                        "- ADD ${finding.key}:${finding.targetVersion} " +
+                                            "(transitive dependency override)",
+                                    )
+                                }
+                            }
+
+                            else -> {
+                                appendLine(
+                                    "- ${finding.kind} ${finding.key}: " +
+                                        "${finding.currentVersion} → ${finding.targetVersion}",
+                                )
+                            }
+                        }
                     }
                 },
             head = branchName,

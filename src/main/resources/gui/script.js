@@ -341,32 +341,89 @@ function renderRepo(repoView, scanMap, container) {
                             : status === "VULNERABLE"
                                 ? "target-status-vulnerable"
                                 : `status-${status.toLowerCase()}`;
+
+                    const hasDetails =
+                        (status === "OK_OVERRIDDEN" && f.relatedTo?.length > 0) ||
+                        (status === "OK_WITH_ADD" && f.relatedTo?.length > 0) ||
+                        (status === "ADD" && f.relatedTo?.length > 0);
+
+                    let detailHtml = "";
+
+                    if (hasDetails) {
+                        if (status === "OK_OVERRIDDEN") {
+                            detailHtml = `
+                    <div class="finding-details hidden">
+                        <div class="finding-detail-label">
+                            Safe because of:
+                        </div>
+                        ${f.relatedTo.map(r => `
+                            <div class="finding-detail-item">
+                                ${r.key}:${r.version}
+                            </div>
+                        `).join("")}
+                    </div>
+                `;
+                        }
+    
+                        if (status === "OK_WITH_ADD") {
+                            detailHtml = `
+                    <div class="finding-details hidden">
+                        <div class="finding-detail-label">
+                            Requires adding:
+                        </div>
+                        ${f.relatedTo.map(r => `
+                            <div class="finding-detail-item">
+                                ${r.key}:${r.version}
+                            </div>
+                        `).join("")}
+                    </div>
+                `;
+                        }
+    
+                        if (status === "ADD") {
+                            detailHtml = `
+                    <div class="finding-details hidden">
+                        <div class="finding-detail-label">
+                            Transitive override for:
+                        </div>
+                        ${f.relatedTo.map(r => `
+                            <div class="finding-detail-item">
+                                ${r.key}:${r.version}
+                            </div>
+                        `).join("")}
+                    </div>
+                `;
+                        }
+                    }
             
                     return `
-                        <div class="row ${kind}-row">
-                            <div class="pill">${f.kind}</div>
-                            <div>${f.key || "-"}</div>
-            
-                            <div class="version-cell">
-                                <span class="current-version">
-                                    ${f.currentVersion || "-"}
-                                </span>
-            
-                                ${
-                                (status === "UPDATE" || status === "AHEAD") && f.targetVersion
-                                    ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
-                                    : ""
-                            }
-                            </div>
-            
-                            <div>
-                                <span
-                                    class="status-pill ${statusClass} ${status === "AHEAD" ? "target-draft-pill" : ""}"
-                                    data-kind="${f.kind}"
-                                    data-key="${f.key}"
-                                    data-version="${f.currentVersion || ""}">
-                                    ${displayStatus}
-                                </span>
+                        <div class="finding-container">
+                            <div class="row ${kind}-row">
+                                <div class="pill">${f.kind}</div>
+                                <div>${f.key || "-"}</div>
+                
+                                <div class="version-cell">
+                                    <span class="current-version">
+                                        ${f.currentVersion || "-"}
+                                    </span>
+                
+                                    ${
+                                    (status === "UPDATE" || status === "AHEAD") && f.targetVersion
+                                        ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
+                                        : ""
+                                }
+                                </div>
+                
+                                <div>
+                                    <span
+                                        class="status-pill ${statusClass} ${status === "AHEAD" ? "target-draft-pill" : ""}"
+                                        data-kind="${f.kind}"
+                                        data-key="${f.key}"
+                                        data-version="${f.currentVersion || ""}"
+                                        ${hasDetails ? 'data-toggle-details="true"' : ""}>
+                                        ${displayStatus}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -1706,6 +1763,19 @@ document.addEventListener("click", (e) => {
     if (!section) return;
 
     section.classList.toggle("open");
+});
+
+document.addEventListener("click", event => {
+    const status = event.target.closest("[data-toggle-details='true']");
+
+    if (!status) return;
+
+    const container = status.closest(".finding-container");
+    const details = container?.querySelector(".finding-details");
+
+    if (!details) return;
+
+    details.classList.toggle("hidden");
 });
 
 async function loadSelectedTeam() {
