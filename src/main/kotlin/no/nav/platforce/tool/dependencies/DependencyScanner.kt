@@ -252,7 +252,7 @@ class DependencyScanner(
                         enriched +=
                             finding.copy(
                                 status = DependencyStatus.OK_OVERRIDDEN,
-                                overriddenBy =
+                                relatedTo =
                                     presentOverrides.map {
                                         DependencyReference(
                                             kind = DependencyKind.DEPENDENCY,
@@ -279,7 +279,7 @@ class DependencyScanner(
                                         currentVersion = null,
                                         targetVersion = override.targetVersion,
                                         status = DependencyStatus.ADD,
-                                        overriddenBy =
+                                        relatedTo =
                                             listOf(
                                                 DependencyReference(
                                                     kind = DependencyKind.DEPENDENCY,

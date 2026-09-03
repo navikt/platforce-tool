@@ -9,18 +9,39 @@ class GradleBuildFileUpdater {
 
         findings
             .filter { it.kind != DependencyKind.GRADLE }
-            .filter { it.status != DependencyStatus.OK }
+            .filter { it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD }
             .forEach { f ->
 
                 if (f.status == DependencyStatus.ADD) {
-                    val dependencyLine =
-                        "    ${f.key}:${f.targetVersion} // Transitive dependency for ${
-                            f.overriddenBy.joinToString(", ") {
-                                "${it.key}:${it.version}"
-                            }
-                        }"
+                    val parent =
+                        f.relatedTo.firstOrNull()
+                            ?: return@forEach
 
-                    updated = addDependency(updated, dependencyLine)
+                    val parentKey = parent.key
+                    val parentVersion = parent.version
+
+                    val implementationRegex =
+                        Regex(
+                            """^(\s*)implementation\s+["']${Regex.escape(parentKey)}:${Regex.escape(parentVersion)}["']\s*$""",
+                            RegexOption.MULTILINE,
+                        )
+
+                    val match =
+                        implementationRegex.find(updated)
+                            ?: return@forEach
+
+                    val indentation = match.groupValues[1]
+
+                    val newLine =
+                        """${indentation}implementation "${f.key}:${f.targetVersion}" // Transitive dependency for $parentKey:$parentVersion"""
+
+                    updated =
+                        updated.replaceRange(
+                            match.range.last + 1,
+                            match.range.last + 1,
+                            "\n$newLine",
+                        )
+
                     return@forEach
                 }
 
@@ -54,45 +75,5 @@ class GradleBuildFileUpdater {
             }
 
         return updated
-    }
-
-    private fun addDependency(
-        content: String,
-        dependencyLine: String,
-    ): String {
-        // Prefer inserting after the last existing dependency declaration.
-        val dependencyRegex =
-            Regex("""(?m)^\s*(?:implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly)\s+["'][^"']+["']\s*$""")
-
-        val matches = dependencyRegex.findAll(content).toList()
-
-        if (matches.isNotEmpty()) {
-            val last = matches.last()
-            val insertAt = last.range.last + 1
-
-            return content.substring(0, insertAt) +
-                "\n" +
-                dependencyLine +
-                content.substring(insertAt)
-        }
-
-        // No existing dependency declaration found.
-        // Fall back to the dependencies block.
-        val dependenciesBlock =
-            Regex("""(?m)^dependencies\s*\{\s*$""")
-
-        val match = dependenciesBlock.find(content)
-
-        if (match != null) {
-            val insertAt = match.range.last + 1
-
-            return content.substring(0, insertAt) +
-                "\n" +
-                dependencyLine +
-                content.substring(insertAt)
-        }
-
-        // Nothing sensible to attach to.
-        return content
     }
 }

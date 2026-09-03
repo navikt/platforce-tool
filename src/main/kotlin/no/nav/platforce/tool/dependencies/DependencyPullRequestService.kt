@@ -23,7 +23,7 @@ class DependencyPullRequestService(
 
         val actionable =
             scan.findings
-                .filter { it.status != DependencyStatus.OK }
+                .filter { it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD }
 
         if (actionable.isEmpty()) {
             return "No changes required "

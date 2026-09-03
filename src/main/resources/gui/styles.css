@@ -80,8 +80,8 @@ button:hover {
         80px    /* OK */
         80px    /* UPDATE */
         80px    /* AHEAD */
-        100px   /* ADD (potential) */
-        100px   /* UNTRACKED (potential) */
+        80px   /* ADD (potential) */
+        80px   /* UNTRACKED (potential) */
         30px    /* note icon*/
         100px;  /* padding */
     gap: 8px;

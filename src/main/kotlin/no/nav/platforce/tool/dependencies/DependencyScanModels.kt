@@ -15,10 +15,8 @@ data class DependencyFinding(
     val targetVersion: String,
     val status: DependencyStatus,
     // Dependency is safe because another dependency/version overrides
-    // the vulnerable transitive version.
-    val overriddenBy: List<DependencyReference> = emptyList(),
-    // Dependency should be added explicitly to the repository.
-    // val suggestedDependency: DependencyReference? = null
+    // the vulnerable transitive version OR added due to parent otherwise has vulnerability
+    val relatedTo: List<DependencyReference> = emptyList(),
 )
 
 data class DependencyReference(
