@@ -4,7 +4,7 @@ import no.nav.platforce.tool.github.GithubClient
 
 class DependencyPullRequestService(
     private val githubClient: GithubClient,
-    private val cache: DependencyScanCache,
+    private val dependencyScanViewService: DependencyScanViewService,
 ) {
     private val buildFileUpdater = GradleBuildFileUpdater()
     private val wrapperFileUpdater = GradleWrapperUpdater()
@@ -12,12 +12,13 @@ class DependencyPullRequestService(
     fun createPullRequest(
         owner: String,
         repo: String,
+        targetState: TargetVersionsState,
     ): String {
         val fullRepo = "$owner/$repo"
 
         val scan =
-            cache
-                .get()
+            dependencyScanViewService
+                .get(targetState)
                 .singleOrNull { it.repository == fullRepo }
                 ?: error("No scan found for $fullRepo")
 

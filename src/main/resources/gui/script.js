@@ -379,7 +379,7 @@ function renderRepo(repoView, scanMap, container) {
                 
                                 <div class="version-cell">
                                     <span class="current-version">
-                                        ${f.currentVersion || "-"}
+                                        ${f.currentVersion || ""}
                                     </span>
                 
                                     ${
@@ -423,7 +423,7 @@ function renderRepo(repoView, scanMap, container) {
 
                                         <div class="version-cell">
                                             <span class="current-version">
-                                                ${plugin.version || "-"}
+                                                ${plugin.version || ""}
                                             </span>
                                         </div>
 
@@ -445,7 +445,7 @@ function renderRepo(repoView, scanMap, container) {
 
                                         <div class="version-cell">
                                             <span class="current-version">
-                                                ${dep.version || "-"}
+                                                ${dep.version || ""}
                                             </span>
                                         </div>
 

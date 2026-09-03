@@ -8,6 +8,7 @@ import com.google.gson.JsonParser
 import mu.KotlinLogging
 import no.nav.platforce.tool.dependencies.DependencyPullRequestService
 import no.nav.platforce.tool.dependencies.DependencyScanCache
+import no.nav.platforce.tool.dependencies.DependencyScanViewService
 import no.nav.platforce.tool.dependencies.DependencyScanner
 import no.nav.platforce.tool.dependencies.GradleTargetResolutionScanner
 import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
@@ -100,11 +101,9 @@ class Application {
             httpClient = httpClient,
         )
 
-    private val dependencyScanCache = DependencyScanCache()
+    val dependencyScanCache = DependencyScanCache()
 
-    private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanCache)
-
-    private val gradleTargetResolutionService = GradleTargetResolutionService()
+    val gradleTargetResolutionService = GradleTargetResolutionService()
 
     val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService)
 
@@ -114,7 +113,11 @@ class Application {
 
     val targetSecurityScanner = TargetSecurityScanner(targetSecurityService)
 
-    private val dependencyScanner = DependencyScanner(githubClient, targetSecurityScanner)
+    val dependencyScanner = DependencyScanner(githubClient, targetSecurityScanner)
+
+    val dependencyScanViewService = DependencyScanViewService(dependencyScanCache, targetSecurityScanner, dependencyScanner)
+
+    val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanViewService)
 
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
@@ -383,8 +386,7 @@ class Application {
                 dependencyScanCache,
                 dependencyScanner,
                 pullRequestService,
-                targetSecurityScanner,
-                dependencyScanner,
+                dependencyScanViewService,
             ).toTypedArray(),
             *targetVersionsRoutes().toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
