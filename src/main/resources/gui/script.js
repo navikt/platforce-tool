@@ -688,7 +688,7 @@ function renderTargets(data) {
         plugins: data.plugins || {},
         dependencies: data.dependencies || {},
         gradleVersion: data.gradleVersion || "",
-        transientDependencies: data.transientDependencies || {},
+        transientDependencies: data.transientDependencies || [],
         drafted
     };
 
@@ -1253,6 +1253,7 @@ document.getElementById("saveTargets")
             plugins: payload.plugins,
             dependencies: payload.dependencies,
             gradleVersion: payload.gradleVersion,
+            transientDependencies: new Set(payload.transientDependencies),
             drafted: new Set()
         };
 
