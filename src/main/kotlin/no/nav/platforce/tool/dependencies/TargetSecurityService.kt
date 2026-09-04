@@ -41,6 +41,7 @@ class TargetSecurityService(
                 targets = targets,
                 targetState = targetState,
             )
+
         val securityDependencies =
             allDependencies
                 .distinctBy {
@@ -67,9 +68,6 @@ class TargetSecurityService(
         targets: List<TargetSecurityResult>,
         targetState: TargetVersionsState,
     ): List<TargetSecurityResult> {
-        val targetByKey =
-            targets.associateBy { it.key }
-
         val stillRequired =
             targets
                 .filter { it.status == TargetSecurityStatus.OK_OVERRIDDEN }

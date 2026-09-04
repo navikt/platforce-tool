@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.dependencies
 
+import mu.KotlinLogging
 import no.nav.platforce.tool.TargetSecurityStatus
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.user.UserContext
@@ -11,6 +12,8 @@ class DependencyScanner(
 ) {
     private val gradleDependencyParser = GradleDependencyParser()
     private val gradleWrapperParser = GradleWrapperParser()
+
+    val log = KotlinLogging.logger { }
 
     fun scanAllRepositoriesWithProgress(
         cache: DependencyScanCache,
@@ -239,6 +242,17 @@ class DependencyScanner(
             }
 
             // We are exactly on the target version.
+            log.info(
+                """
+                SECURITY ENRICH
+                  finding.key=${finding.key}
+                  finding.currentVersion=${finding.currentVersion}
+                  finding.targetVersion=${finding.targetVersion}
+                  targetResult.status=${targetResult.status}
+                  targetResult.overriddenBy=${targetResult.overriddenBy}
+                  presentDependencies=$presentDependencies
+                """.trimIndent(),
+            )
             when (targetResult.status) {
                 TargetSecurityStatus.OK -> {
                     enriched += finding
@@ -290,7 +304,18 @@ class DependencyScanner(
                             it.dependency in presentDependencies
                         }
 
+                    log.info(
+                        """
+                        OK_OVERRIDDEN
+                          finding=${finding.key}
+                          relatedTo=$relatedTo
+                          presentOverrides=$presentOverrides
+                          presentDependencies=$presentDependencies
+                        """.trimIndent(),
+                    )
+
                     if (presentOverrides.isNotEmpty()) {
+                        log.info(" -> repository status = OK_OVERRIDDEN")
                         enriched +=
                             finding.copy(
                                 status = DependencyStatus.OK_OVERRIDDEN,
@@ -304,6 +329,7 @@ class DependencyScanner(
                                     },
                             )
                     } else {
+                        log.info(" -> repository status = OK_WITH_ADD")
                         // Target is safe in the global target set,
                         // but this repository does not contain the
                         // dependency that makes it safe.

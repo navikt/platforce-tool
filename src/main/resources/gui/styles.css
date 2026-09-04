@@ -310,7 +310,7 @@ button:hover {
 .target-row {
     display: grid;
     /*grid-template-columns: 300px 110px 70px;*/
-    grid-template-columns: 300px 110px 90px 70px 34px;
+    grid-template-columns: 300px 110px 90px 25px 25px;
     gap: 8px;
     align-items: center;
     padding: 1px 5px;
