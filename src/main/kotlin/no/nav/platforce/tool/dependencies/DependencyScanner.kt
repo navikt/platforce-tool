@@ -192,8 +192,10 @@ class DependencyScanner(
 
         val presentDependencies =
             findings
-                .filter { it.kind == DependencyKind.DEPENDENCY }
-                .map { it.key }
+                .filter {
+                    it.kind == DependencyKind.DEPENDENCY &&
+                        it.status != DependencyStatus.ADD
+                }.map { it.key }
                 .toSet()
 
         val enriched = mutableListOf<DependencyFinding>()
