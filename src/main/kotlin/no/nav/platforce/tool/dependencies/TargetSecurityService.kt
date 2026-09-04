@@ -59,7 +59,7 @@ class TargetSecurityService(
                 }
         return TargetSecurityScan(
             dependencies = securityDependencies,
-            targets = targets,
+            targets = enrichedTargets,
         )
     }
 
