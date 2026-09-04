@@ -326,9 +326,11 @@ function renderRepo(repoView, scanMap, container) {
                     const displayStatus =
                         status === "OK_OVERRIDDEN"
                             ? "OK *"
-                            : status === "OK_WITH_ADD"
-                                ? "OK +ADD"
-                                : status;
+                            : status === "OK_TRANSIENT"
+                                ? "OK *"
+                                : status === "OK_WITH_ADD"
+                                    ? "OK +ADD"
+                                    : status;
 
                     const statusClass =
                         status === "OK_OVERRIDDEN"
@@ -340,6 +342,7 @@ function renderRepo(repoView, scanMap, container) {
                     const hasDetails =
                         (status === "OK_OVERRIDDEN" && f.relatedTo?.length > 0) ||
                         (status === "OK_WITH_ADD" && f.relatedTo?.length > 0) ||
+                        (status === "OK_TRANSIENT" && f.relatedTo?.length > 0) ||
                         (status === "ADD" && f.relatedTo?.length > 0);
 
                 const details =
@@ -374,7 +377,16 @@ function renderRepo(repoView, scanMap, container) {
                                         ).join("")}
                                         </ul>
                                       `
-                                        : ""
+                                        : status === "OK_TRANSIENT"
+                                        ? `
+                                                        <strong>Transitive override for:</strong>
+                                                        <ul>
+                                                            ${f.relatedTo.map(r =>
+                                    `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                    ).join("")}
+                                                        </ul>
+                                                      `
+                                : ""
                         }
                 </div>
               `

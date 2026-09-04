@@ -245,25 +245,25 @@ class DependencyScanner(
                 }
 
                 TargetSecurityStatus.OK_TRANSIENT -> {
-                    val relatedTo =
-                        targetResult.overriddenBy
-
-                    val presentOverrides =
-                        relatedTo.filter {
-                            it.dependency in presentDependencies
-                        }
+//                    val relatedTo =
+//                        targetResult.overriddenBy
+//
+//                    val presentOverrides =
+//                        relatedTo.filter {
+//                            it.dependency in presentDependencies
+//                        }
 
                     enriched +=
                         finding.copy(
                             status = DependencyStatus.OK_TRANSIENT,
-                            relatedTo =
-                                presentOverrides.map {
-                                    DependencyReference(
-                                        kind = DependencyKind.DEPENDENCY,
-                                        key = it.dependency,
-                                        version = it.targetVersion,
-                                    )
-                                },
+//                            relatedTo =
+//                                presentOverrides.map {
+//                                    DependencyReference(
+//                                        kind = DependencyKind.DEPENDENCY,
+//                                        key = it.dependency,
+//                                        version = it.targetVersion,
+//                                    )
+//                                },
                         )
                 }
 

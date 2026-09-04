@@ -942,6 +942,12 @@ button:hover {
     border-color: #ffe082;
 }
 
+.status-ok_transient {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-color: #a5d6a7;
+}
+
 .status-add {
     background: #d6f4ff;
     color: #007692;
