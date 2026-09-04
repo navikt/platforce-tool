@@ -688,7 +688,7 @@ function renderTargets(data) {
         plugins: data.plugins || {},
         dependencies: data.dependencies || {},
         gradleVersion: data.gradleVersion || "",
-        transientDependencies: data.transientDependencies || [],
+        transientDependencies: new Set(data.transientDependencies || []),
         drafted
     };
 
