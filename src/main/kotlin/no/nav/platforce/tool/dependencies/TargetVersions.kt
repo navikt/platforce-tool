@@ -60,6 +60,13 @@ class TargetVersionsStore(
                 versions
                     .firstOrNull { it.type == TargetVersionType.GRADLE }
                     ?.version ?: "1.0.0-missing",
+            transientDependencies =
+                versions
+                    .filter {
+                        it.type == TargetVersionType.DEPENDENCY &&
+                            it.transient
+                    }.map { it.key }
+                    .toSet(),
         )
     }
 
@@ -74,6 +81,7 @@ class TargetVersionsStore(
                     type = TargetVersionType.PLUGIN,
                     key = it.key,
                     version = it.value,
+                    transient = false,
                     createdAt = now,
                     updatedAt = now,
                 )
@@ -85,6 +93,7 @@ class TargetVersionsStore(
                         type = TargetVersionType.DEPENDENCY,
                         key = it.key,
                         version = it.value,
+                        transient = it.key in state.transientDependencies,
                         createdAt = now,
                         updatedAt = now,
                     )
@@ -95,6 +104,7 @@ class TargetVersionsStore(
                     type = TargetVersionType.GRADLE,
                     key = "gradle-wrapper",
                     version = state.gradleVersion,
+                    transient = false,
                     createdAt = now,
                     updatedAt = now,
                 )
@@ -115,6 +125,7 @@ class TargetVersionsStore(
                             type = TargetVersionType.PLUGIN,
                             key = k,
                             version = v,
+                            transient = false,
                             createdAt = Instant.now(),
                             updatedAt = Instant.now(),
                         )
@@ -126,6 +137,7 @@ class TargetVersionsStore(
                                 type = TargetVersionType.DEPENDENCY,
                                 key = k,
                                 version = v,
+                                transient = false,
                                 createdAt = Instant.now(),
                                 updatedAt = Instant.now(),
                             )
@@ -136,6 +148,7 @@ class TargetVersionsStore(
                             type = TargetVersionType.GRADLE,
                             key = "gradle-wrapper",
                             version = TargetVersions.gradleVersion,
+                            transient = false,
                             createdAt = Instant.now(),
                             updatedAt = Instant.now(),
                         )

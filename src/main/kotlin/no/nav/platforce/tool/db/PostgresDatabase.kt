@@ -119,6 +119,7 @@ object PostgresDatabase {
                     it[TargetVersionsTable.type] = version.type.name
                     it[TargetVersionsTable.key] = version.key
                     it[TargetVersionsTable.version] = version.version
+                    it[TargetVersionsTable.transient] = version.transient
                     it[TargetVersionsTable.createdAt] = version.createdAt
                     it[TargetVersionsTable.updatedAt] = version.updatedAt
                 }

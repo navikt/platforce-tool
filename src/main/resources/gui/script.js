@@ -22,6 +22,15 @@ const TRASH_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                 fill="currentColor"/>
         </svg>`
 
+const BANDAGE_SVG = `
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+     xmlns="http://www.w3.org/2000/svg">
+    <path fill-rule="evenodd" clip-rule="evenodd"
+        d="M10.0305 2.96961C9.63556 2.57466 9.08917 2.59455 8.75188 2.65077C8.36871 2.71463 7.9501 2.87396 7.53977 3.07912C6.71185 3.49308 5.77206 4.1674 4.96985 4.96961C4.16764 5.77182 3.49332 6.71161 3.07936 7.53953C2.8742 7.94985 2.71487 8.36846 2.65101 8.75164C2.5948 9.08893 2.57491 9.63532 2.96985 10.0303L13.9699 21.0303C14.3648 21.4252 14.9112 21.4053 15.2485 21.3491C15.6317 21.2852 16.0503 21.1259 16.4606 20.9208C17.2885 20.5068 18.2283 19.8325 19.0305 19.0303C19.8327 18.2281 20.507 17.2883 20.921 16.4603C21.1262 16.05 21.2855 15.6314 21.3494 15.2482C21.4056 14.9109 21.4255 14.3646 21.0305 13.9696L10.0305 2.96961ZM6.03051 6.03027C6.7283 5.33248 7.53851 4.7568 8.21059 4.42076C8.55027 4.25092 8.81916 4.16025 8.99848 4.13036C9.02342 4.1262 9.04426 4.12352 9.06141 4.12183L10.9395 5.99988L6.00012 10.9392L4.12207 9.06117C4.12376 9.04402 4.12645 8.02318 4.1306 8.99824C4.16049 8.81891 4.25117 8.55002 4.421 8.21035C4.75704 7.53827 5.33272 6.72806 6.03051 6.03027ZM7.06078 11.9999L12.0001 7.06054L16.9395 11.9999L12.0001 16.9392L7.06078 11.9999ZM13.0608 17.9999L14.939 19.878C14.9561 19.8764 14.9769 19.8737 15.0019 19.8695C15.1812 19.8396 15.4501 19.749 15.7898 19.5791C16.4619 19.2431 17.2721 18.6674 17.9699 17.9696C18.6676 17.2718 19.2433 16.4616 19.5794 15.7895C19.7492 15.4499 19.8399 15.181 19.8698 15.0016C19.8739 14.9767 19.8766 14.9559 19.8783 14.9387L18.0001 13.0605L13.0608 17.9999ZM9.12754 4.12079C9.12754 4.12079 9.12429 4.12087 9.11876 4.11991L9.11625 4.11944C9.12426 4.11978 9.12754 4.12079 9.12754 4.12079ZM19.8793 14.8726C19.8793 14.8726 19.8801 14.8751 19.8805 14.8811L19.8807 14.8838C19.8792 14.8768 19.8793 14.8726 19.8793 14.8726ZM14.8728 19.8791C14.8728 19.8791 14.8761 19.879 14.8816 19.88L14.8841 19.8804C14.8761 19.8801 14.8728 19.8791 14.8728 19.8791Z"
+        fill="currentColor"/>
+</svg>
+`;
+
 const ADD_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.75 5.5C12.75 5.08579 12.4142 4.75 12 4.75C11.5858 4.75 11.25 5.08579 11.25 5.5V11.25H5.5C5.08579 11.25 4.75 11.5858 4.75 12C4.75 12.4142 5.08579 12.75 5.5 12.75H11.25V18.5C11.25 18.9142 11.5858 19.25 12 19.25C12.4142 19.25 12.75 18.9142 12.75 18.5V12.75H18.5C18.9142 12.75 19.25 12.4142 19.25 12C19.25 11.5858 18.9142 11.25 18.5 11.25H12.75V5.5Z" fill="currentColor"/></svg>`
 
 let progressInterval = null;
@@ -668,6 +677,7 @@ let targetState = {
     plugins: {},
     dependencies: {},
     gradleVersion: "",
+    transientDependencies: new Set(),
     drafted: new Set()
 };
 
@@ -678,6 +688,7 @@ function renderTargets(data) {
         plugins: data.plugins || {},
         dependencies: data.dependencies || {},
         gradleVersion: data.gradleVersion || "",
+        transientDependencies: data.transientDependencies || {},
         drafted
     };
 
@@ -744,6 +755,9 @@ function renderTable(containerId, entries, type) {
     entries.forEach(([key, version]) => {
         const drafted =
             targetState.drafted?.has(`${type.toUpperCase()}:${key}`);
+        const isTransient =
+            type === "dependency" &&
+            targetState.transientDependencies?.has(key);
         const securityTarget =
             type === "dependency"
                 ? targetSecurityScan?.result?.targets?.find(
@@ -756,10 +770,50 @@ function renderTable(containerId, entries, type) {
             <input class="key" value="${key}" />
             <input class="version" value="${version}" />
             ${securityStatusHtml(securityTarget)}
+            ${
+            type === "dependency"
+                ? `
+                    <button
+                        class="icon-btn transient-btn ${isTransient ? "active" : ""}"
+                        title="${isTransient ? "Transient dependency" : "Mark as transient"}">
+                        ${BANDAGE_SVG}
+                    </button>
+                `
+                : ""
+        }
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>
         `;
+        if (type === "dependency") {
+            row.querySelector(".transient-btn").onclick = () => {
+                const transient =
+                    targetState.transientDependencies;
+
+                if (transient.has(key)) {
+                    transient.delete(key);
+                } else {
+                    transient.add(key);
+                }
+
+                const button =
+                    row.querySelector(".transient-btn");
+
+                const nowTransient =
+                    transient.has(key);
+
+                button.classList.toggle(
+                    "active",
+                    nowTransient
+                );
+
+                button.title =
+                    nowTransient
+                        ? "Transient dependency"
+                        : "Mark as transient";
+            };
+        }
+
         row.querySelector(".remove-btn").onclick = () => {
             if (drafted) {
                 targetState.drafted.delete(`${type.toUpperCase()}:${key}`);
@@ -1180,7 +1234,9 @@ document.getElementById("saveTargets")
         const payload = {
             plugins: read("pluginsTable"),
             dependencies: read("depsTable"),
-            gradleVersion: readSingleVersion("gradleTable")
+            gradleVersion: readSingleVersion("gradleTable"),
+            transientDependencies:
+                Array.from(targetState.transientDependencies)
         };
 
         await fetch("/internal/api/target-versions/update", {

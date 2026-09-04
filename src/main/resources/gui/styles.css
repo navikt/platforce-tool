@@ -995,3 +995,21 @@ button:hover {
 .status-pill[data-toggle-details="true"]:hover {
     filter: brightness(0.95);
 }
+
+.transient-btn {
+    color: #202733;
+    opacity: 0.15;
+    transition: opacity 0.15s ease;
+}
+
+.transient-btn:hover {
+    opacity: 0.45;
+}
+
+.transient-btn.active {
+    opacity: 1;
+}
+
+.transient-btn.active:hover {
+    opacity: 0.8;
+}
