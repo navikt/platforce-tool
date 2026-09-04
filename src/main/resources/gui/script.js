@@ -894,6 +894,16 @@ function securityStatusHtml(security) {
                 </button>
             `;
 
+        case "OK_TRANSIENT":
+            return `
+                <button
+                    class="target-status-pill target-status-transient"
+                    title="Safe. This dependency is explicitly marked as a transient security override."
+                >
+                    OK
+                </button>
+            `;
+
         case "OK_OVERRIDDEN":
             const suggestedVersion =
                 security.overriddenBy
@@ -933,6 +943,16 @@ function securityStatusHtml(security) {
                     title="Vulnerable"
                 >
                     VULNERABLE
+                </button>
+            `;
+
+        case "TRANSIENT_UNUSED":
+            return `
+                <button
+                    class="target-status-pill target-status-remove"
+                    title="This transient override is no longer needed and should be removed"
+                >
+                    REMOVE
                 </button>
             `;
 

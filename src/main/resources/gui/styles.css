@@ -911,6 +911,31 @@ button:hover {
     border-color: #ffe082;
 }
 
+.target-status-vulnerable {
+    background: #ffebee;
+    color: #c62828;
+    border-color: #ef9a9a;
+}
+
+.target-status-transient {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-color: #a5d6a7;
+    opacity: 0.8;
+}
+
+.target-status-remove {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffb74d;
+}
+
+.target-status-unknown {
+    background: #eeeeee;
+    color: #666;
+    border-color: #ccc;
+}
+
 .status-ok_with_add {
     background: #fff8e1;
     color: #007692;
@@ -921,18 +946,6 @@ button:hover {
     background: #d6f4ff;
     color: #007692;
     border-color: #7cb4ff;
-}
-
-.target-status-vulnerable {
-    background: #ffebee;
-    color: #c62828;
-    border-color: #ef9a9a;
-}
-
-.target-status-unknown {
-    background: #eeeeee;
-    color: #666;
-    border-color: #ccc;
 }
 
 .target-security-detail {
