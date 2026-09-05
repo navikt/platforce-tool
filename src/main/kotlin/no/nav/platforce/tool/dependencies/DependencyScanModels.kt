@@ -40,7 +40,7 @@ enum class DependencyStatus {
     OK_WITH_ADD, // Enrichment from Security Scan
     OK_TRANSIENT, // Enrichment from Security Scan
     ADD, // Enrichment from Security Scan
-    DELETE, // Enrichment from Security Scan (on unused transient)
+    REMOVE, // Enrichment from Security Scan (on unused transient)
 }
 
 data class UntrackedDependency(

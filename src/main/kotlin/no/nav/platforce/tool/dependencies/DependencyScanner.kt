@@ -284,7 +284,7 @@ class DependencyScanner(
                 TargetSecurityStatus.TRANSIENT_UNUSED -> {
                     enriched +=
                         finding.copy(
-                            status = DependencyStatus.DELETE,
+                            status = DependencyStatus.REMOVE,
                         )
                 }
 

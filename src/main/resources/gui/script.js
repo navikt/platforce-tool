@@ -891,8 +891,7 @@ function renderTable(containerId, entries, type) {
 
 function securityStatusHtml(security) {
     if (!security) {
-        return `
-        `;
+        return `<div> </div>`;
     }
 
     switch (security.status) {

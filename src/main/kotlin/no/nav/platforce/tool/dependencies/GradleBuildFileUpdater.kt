@@ -11,9 +11,9 @@ class GradleBuildFileUpdater {
             .filter { it.kind != DependencyKind.GRADLE }
             .filter {
                 it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD ||
-                    it.status == DependencyStatus.DELETE
+                    it.status == DependencyStatus.REMOVE
             }.forEach { f ->
-                if (f.status == DependencyStatus.DELETE) {
+                if (f.status == DependencyStatus.REMOVE) {
                     val version = f.currentVersion ?: return@forEach
 
                     updated =

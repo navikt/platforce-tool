@@ -924,7 +924,7 @@ button:hover {
     opacity: 0.8;
 }
 
-.target-status-remove {
+.target-status-remove, .status-remove  {
     background: #fff3e0;
     color: #e65100;
     border-color: #ffb74d;

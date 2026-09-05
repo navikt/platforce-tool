@@ -26,7 +26,7 @@ class DependencyPullRequestService(
             scan.findings
                 .filter {
                     it.status == DependencyStatus.UPDATE || it.status == DependencyStatus.AHEAD || it.status == DependencyStatus.ADD ||
-                        it.status == DependencyStatus.DELETE
+                        it.status == DependencyStatus.REMOVE
                 }
 
         if (actionable.isEmpty()) {
@@ -136,7 +136,7 @@ class DependencyPullRequestService(
                                 }
                             }
 
-                            DependencyStatus.DELETE -> {
+                            DependencyStatus.REMOVE -> {
                                 appendLine("- DELETE ${finding.key}:${finding.targetVersion} (deprecated transitive override)")
                             }
 
