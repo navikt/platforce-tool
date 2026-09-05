@@ -130,6 +130,11 @@ button:hover {
     color: #219da8;
 }
 
+.badge.remove {
+    background: #fef7e9;
+    color: #a87221;
+}
+
 .badge.zero {
     background: #f2f2f2;
     color: #9aa0a6;
@@ -140,6 +145,8 @@ button:hover {
     background: #eeeeee;
     color: #666;
     border: 1px solid #d0d0d0;
+    font-size: 9px;
+    min-height: 16px;
 }
 
 /* pills */

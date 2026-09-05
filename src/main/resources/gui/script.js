@@ -217,14 +217,20 @@ function renderRepo(repoView, scanMap, container) {
     const update = findings.filter(f => f.status === "UPDATE").length;
     const ahead = findings.filter(f => f.status === "AHEAD").length;
     const add = findings.filter(f => f.status === "ADD").length;
+    const remove = findings.filter(f => f.status === "REMOVE").length;
 
     const hasActionable = findings.some(f =>
-        f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD"
+        f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD" || f.status === "REMOVE"
     );
 
     const addBadge =
         add > 0
             ? `<span class="badge add">${add} ADD</span>`
+            : "";
+
+    const removeBadge =
+        add > 0
+            ? `<span class="badge remove">${remove} REMOVE</span>`
             : "";
 
     const noteText = notes?.[repo]?.trim() || "";
@@ -237,7 +243,7 @@ function renderRepo(repoView, scanMap, container) {
     const untrackedCount = untrackedDependencies.length + untrackedPlugins.length;
     const untrackedBadge =
         untrackedCount > 0
-            ? `<span class="badge untracked">${untrackedCount} UNTRACK</span>`
+            ? `<span class="badge untracked">${untrackedCount} UNTRACKED</span>`
             : "";
 
     const el = document.createElement("div");
@@ -261,6 +267,7 @@ function renderRepo(repoView, scanMap, container) {
                             <span class="badge update ${update === 0 ? 'zero' : ''}">${update} UPDATE</span>
                             <span class="badge ahead ${ahead === 0 ? 'zero' : ''}">${ahead} AHEAD</span>
                             ${addBadge}
+                            ${removeBadge}
                             ${untrackedBadge}
                     `
             : isMissing
