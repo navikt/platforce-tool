@@ -80,15 +80,13 @@ class DependencyScanner(
         val store = userContext.targetVersionsStore.get()
 
         // To apply data from security scan:
-        val targetState = userContext.targetVersionsStore.get()
-        val securitySnapshot =
-            targetSecurityScanner.get(targetState)
-
-        val securityResult =
-            targetSecurityScanner
-                .get(targetState)
-                .takeIf { it.status == SecurityScanStatus.READY }
-                ?.result
+//        val targetState = userContext.targetVersionsStore.get()
+//
+//        val securityResult =
+//            targetSecurityScanner
+//                .get(targetState)
+//                .takeIf { it.status == SecurityScanStatus.READY }
+//                ?.result
 
         store.plugins.forEach { (plugin, target) ->
             val current = parsedBuildFile.plugins[plugin] ?: return@forEach
@@ -152,20 +150,21 @@ class DependencyScanner(
                     )
                 }
 
-        val enrichedFindings =
-            if (securityResult != null) {
-                enrichSecurityFindings(
-                    findings = findings,
-                    securityResult = securityResult,
-                )
-            } else {
-                findings
-            }
+        // Issue since this will be cached, cached should not be enriched
+//        val enrichedFindings =
+//            if (securityResult != null) {
+//                enrichSecurityFindings(
+//                    findings = findings,
+//                    securityResult = securityResult,
+//                )
+//            } else {
+//                findings
+//            }
 
         return RepositoryDependencyScan(
             repository = repository,
             scannedAt = Instant.now().toString(),
-            findings = enrichedFindings,
+            findings = findings,
             untrackedDependencies = untrackedDependencies,
             untrackedPlugins = untrackedPlugins,
         )
@@ -193,8 +192,7 @@ class DependencyScanner(
         val presentDependencies =
             findings
                 .filter {
-                    it.kind == DependencyKind.DEPENDENCY &&
-                        it.status != DependencyStatus.ADD
+                    it.kind == DependencyKind.DEPENDENCY
                 }.map { it.key }
                 .toSet()
 
@@ -244,17 +242,17 @@ class DependencyScanner(
             }
 
             // We are exactly on the target version.
-            log.info(
-                """
-                SECURITY ENRICH
-                  finding.key=${finding.key}
-                  finding.currentVersion=${finding.currentVersion}
-                  finding.targetVersion=${finding.targetVersion}
-                  targetResult.status=${targetResult.status}
-                  targetResult.overriddenBy=${targetResult.overriddenBy}
-                  presentDependencies=$presentDependencies
-                """.trimIndent(),
-            )
+//            log.info(
+//                """
+//                SECURITY ENRICH
+//                  finding.key=${finding.key}
+//                  finding.currentVersion=${finding.currentVersion}
+//                  finding.targetVersion=${finding.targetVersion}
+//                  targetResult.status=${targetResult.status}
+//                  targetResult.overriddenBy=${targetResult.overriddenBy}
+//                  presentDependencies=$presentDependencies
+//                """.trimIndent(),
+//            )
             when (targetResult.status) {
                 TargetSecurityStatus.OK -> {
                     enriched += finding
@@ -306,18 +304,18 @@ class DependencyScanner(
                             it.dependency in presentDependencies
                         }
 
-                    log.info(
-                        """
-                        OK_OVERRIDDEN
-                          finding=${finding.key}
-                          relatedTo=$relatedTo
-                          presentOverrides=$presentOverrides
-                          presentDependencies=$presentDependencies
-                        """.trimIndent(),
-                    )
+//                    log.info(
+//                        """
+//                        OK_OVERRIDDEN
+//                          finding=${finding.key}
+//                          relatedTo=$relatedTo
+//                          presentOverrides=$presentOverrides
+//                          presentDependencies=$presentDependencies
+//                        """.trimIndent(),
+//                    )
 
                     if (presentOverrides.isNotEmpty()) {
-                        log.info(" -> repository status = OK_OVERRIDDEN")
+//                        log.info(" -> repository status = OK_OVERRIDDEN")
                         enriched +=
                             finding.copy(
                                 status = DependencyStatus.OK_OVERRIDDEN,
@@ -331,7 +329,7 @@ class DependencyScanner(
                                     },
                             )
                     } else {
-                        log.info(" -> repository status = OK_WITH_ADD")
+//                        log.info(" -> repository status = OK_WITH_ADD")
                         // Target is safe in the global target set,
                         // but this repository does not contain the
                         // dependency that makes it safe.
