@@ -137,7 +137,7 @@ class DependencyPullRequestService(
                             }
 
                             DependencyStatus.REMOVE -> {
-                                appendLine("- DELETE ${finding.key}:${finding.targetVersion} (deprecated transitive override)")
+                                appendLine("- REMOVE ${finding.key}:${finding.targetVersion} (deprecated transitive override)")
                             }
 
                             else -> {

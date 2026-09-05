@@ -81,6 +81,7 @@ button:hover {
         80px    /* UPDATE */
         80px    /* AHEAD */
         80px   /* ADD (potential) */
+        80px   /* REMOVE (potential) */
         80px   /* UNTRACKED (potential) */
         30px    /* note icon*/
         100px;  /* padding */
@@ -145,8 +146,6 @@ button:hover {
     background: #eeeeee;
     color: #666;
     border: 1px solid #d0d0d0;
-    font-size: 9px;
-    min-height: 16px;
 }
 
 /* pills */
