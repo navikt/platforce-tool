@@ -875,6 +875,10 @@ function renderTable(containerId, entries, type) {
             statusButton.onclick = () => {
                 showSecurityDetails(securityTarget);
             };
+
+            statusButton.addEventListener("click", () => {
+                toggleTargetSecurityDetails(statusButton);
+            });
         }
         container.appendChild(row);
     });
@@ -946,7 +950,6 @@ function securityStatusHtml(security) {
         <button
             class="target-status-pill ${securityStatusClass(security.status)}"
             title="Show security details"
-            onclick="toggleTargetSecurityDetails(this)"
         >
             ${securityStatusLabel(security.status)}
         </button>
