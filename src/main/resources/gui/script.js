@@ -229,7 +229,7 @@ function renderRepo(repoView, scanMap, container) {
             : "";
 
     const removeBadge =
-        remove > 0
+        add > 0
             ? `<span class="badge remove">${remove} REMOVE</span>`
             : "";
 
@@ -347,10 +347,10 @@ function renderRepo(repoView, scanMap, container) {
                                 : `status-${status.toLowerCase()}`;
 
                     const hasDetails =
-                        (status === "OK_OVERRIDDEN" && f.overriddenBy?.length > 0) ||
-                        (status === "OK_WITH_ADD" && f.overriddenBy?.length > 0) ||
-                        (status === "OK_TRANSIENT" && f.overriddenBy?.length > 0) ||
-                        (status === "ADD" && f.overriddenBy?.length > 0);
+                        (status === "OK_OVERRIDDEN" && f.relatedTo?.length > 0) ||
+                        (status === "OK_WITH_ADD" && f.relatedTo?.length > 0) ||
+                        (status === "OK_TRANSIENT" && f.relatedTo?.length > 0) ||
+                        (status === "ADD" && f.relatedTo?.length > 0);
 
                 const details =
                     hasDetails
@@ -361,7 +361,7 @@ function renderRepo(repoView, scanMap, container) {
                                 ? `
                                 <strong>Vulnerability overridden by:</strong>
                                 <ul>
-                                    ${f.overriddenBy.map(r =>
+                                    ${f.relatedTo.map(r =>
                                     `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
                                 ).join("")}
                                 </ul>
@@ -370,7 +370,7 @@ function renderRepo(repoView, scanMap, container) {
                                     ? `
                                     <strong>Safe with added dependency:</strong>
                                     <ul>
-                                        ${f.overriddenBy.map(r =>
+                                        ${f.relatedTo.map(r =>
                                         `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
                                     ).join("")}
                                     </ul>
@@ -379,7 +379,7 @@ function renderRepo(repoView, scanMap, container) {
                                         ? `
                                         <strong>Transitive override for:</strong>
                                         <ul>
-                                            ${f.overriddenBy.map(r =>
+                                            ${f.relatedTo.map(r =>
                                             `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
                                         ).join("")}
                                         </ul>
@@ -388,7 +388,7 @@ function renderRepo(repoView, scanMap, container) {
                                         ? `
                                                         <strong>Transitive override for:</strong>
                                                         <ul>
-                                                            ${f.overriddenBy.map(r =>
+                                                            ${f.relatedTo.map(r =>
                                     `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
                                     ).join("")}
                                                         </ul>
@@ -898,267 +898,91 @@ function renderTable(containerId, entries, type) {
 
 function securityStatusHtml(security) {
     if (!security) {
-        return `<div></div>`;
+        return `<div> </div>`;
     }
-
-    const details = targetSecurityDetailsHtml(security);
 
     switch (security.status) {
         case "OK":
             return `
-                <div class="target-security-status">
-                    <button
-                        class="target-status-pill target-status-ok"
-                        title="No vulnerabilities"
-                        onclick="toggleTargetSecurityDetails(this)"
-                    >
-                        OK
-                    </button>
-
-                    <div class="target-security-details hidden">
-                        ${details}
-                    </div>
-                </div>
+                <button
+                    class="target-status-pill target-status-ok"
+                    title="No vulnerabilities"
+                >
+                    OK
+                </button>
             `;
 
         case "OK_TRANSIENT":
             return `
-                <div class="target-security-status">
-                    <button
-                        class="target-status-pill target-status-transient"
-                        title="Safe. This dependency is explicitly marked as a transient security override."
-                        onclick="toggleTargetSecurityDetails(this)"
-                    >
-                        OK
-                    </button>
-
-                    <div class="target-security-details hidden">
-                        ${details}
-                    </div>
-                </div>
+                <button
+                    class="target-status-pill target-status-transient"
+                    title="Safe. This dependency is explicitly marked as a transient security override."
+                >
+                    OK
+                </button>
             `;
 
-        case "OK_OVERRIDDEN": {
+        case "OK_OVERRIDDEN":
             const suggestedVersion =
                 security.overriddenBy
                     ?.find(reason => reason.suggestedVersion)
                     ?.suggestedVersion;
-
             return `
-                <div class="target-security-status">
-                    <button
-                        class="target-status-pill target-status-overridden"
-                        title="Safe because another target dependency overrides a vulnerable transitive dependency"
-                        onclick="toggleTargetSecurityDetails(this)"
-                    >
-                        OK *
-                    </button>
-
-                    ${
+                <button
+                    class="target-status-pill target-status-overridden"
+                    title="Safe because another target dependency overrides a vulnerable transitive dependency"
+                >
+                    OK *
+                </button>
+                
+                ${
                 suggestedVersion
                     ? `
                                 <button
                                     class="target-version-pill"
                                     title="Upgrade target to ${escapeHtml(suggestedVersion)}"
                                     onclick="applySecurityUpgrade(
-                                        this,
-                                        '${escapeHtml(security.key)}',
-                                        '${escapeHtml(suggestedVersion)}'
-                                    )"
+                                       this,
+                                     '${escapeHtml(security.key)}',
+                                     '${escapeHtml(suggestedVersion)}'
+                                     )"
                                 >
                                     → ${escapeHtml(suggestedVersion)}
                                 </button>
                             `
                     : ""
             }
-
-                    <div class="target-security-details hidden">
-                        ${details}
-                    </div>
-                </div>
             `;
-        }
 
         case "VULNERABLE":
             return `
-                <div class="target-security-status">
-                    <button
-                        class="target-status-pill target-status-vulnerable"
-                        title="Vulnerable"
-                        onclick="toggleTargetSecurityDetails(this)"
-                    >
-                        VULNERABLE
-                    </button>
-
-                    <div class="target-security-details hidden">
-                        ${details}
-                    </div>
-                </div>
+                <button
+                    class="target-status-pill target-status-vulnerable"
+                    title="Vulnerable"
+                >
+                    VULNERABLE
+                </button>
             `;
 
         case "TRANSIENT_UNUSED":
             return `
-                <div class="target-security-status">
-                    <button
-                        class="target-status-pill target-status-remove"
-                        title="This transient override is no longer needed and should be removed"
-                        onclick="toggleTargetSecurityDetails(this)"
-                    >
-                        REMOVE
-                    </button>
-
-                    <div class="target-security-details hidden">
-                        ${details}
-                    </div>
-                </div>
+                <button
+                    class="target-status-pill target-status-remove"
+                    title="This transient override is no longer needed and should be removed"
+                >
+                    REMOVE
+                </button>
             `;
 
         default:
             return `
-                <div class="target-security-status">
-                    <button
-                        class="target-status-pill target-status-unknown"
-                        onclick="toggleTargetSecurityDetails(this)"
-                    >
-                        ?
-                    </button>
-
-                    <div class="target-security-details hidden">
-                        ${details}
-                    </div>
-                </div>
+                <button
+                    class="target-status-pill target-status-unknown"
+                >
+                    ?
+                </button>
             `;
     }
-}
-
-function targetSecurityDetailsHtml(security) {
-    if (!security) {
-        return `
-            <div class="finding-details">
-                No security result available.
-            </div>
-        `;
-    }
-
-    let html = `
-        <div class="finding-details">
-    `;
-
-    switch (security.status) {
-        case "OK":
-            html += `
-                <div>
-                    No vulnerabilities found in the resolved dependency tree.
-                </div>
-            `;
-            break;
-
-        case "OK_TRANSIENT":
-            html += `
-                <div>
-                    This dependency is explicitly marked as a
-                    transient security override.
-                </div>
-            `;
-            break;
-
-        case "OK_OVERRIDDEN":
-            html += `
-                <div>
-                    <strong>
-                        Transitive vulnerability overridden by dependency resolution
-                    </strong>
-                </div>
-            `;
-
-            if (security.relatedTo?.length) {
-                html += `
-                    <div class="security-related">
-                        <strong>Related dependencies:</strong>
-                        <ul>
-                `;
-
-                security.relatedTo.forEach(reason => {
-                    html += `
-                        <li>
-                            ${escapeHtml(reason.dependency)}
-                            → ${escapeHtml(reason.targetVersion)}
-                        </li>
-                    `;
-                });
-
-                html += `
-                        </ul>
-                    </div>
-                `;
-            }
-
-            break;
-
-        case "VULNERABLE":
-            html += `
-                <div>
-                    <strong>
-                        Vulnerabilities found in the resolved dependency tree.
-                    </strong>
-                </div>
-            `;
-
-            if (security.vulnerabilities?.length) {
-                html += `
-                    <div class="security-related">
-                        <strong>Vulnerabilities:</strong>
-                        <ul>
-                `;
-
-                security.vulnerabilities.forEach(vulnerability => {
-                    html += `
-                        <li>
-                            <strong>
-                                ${escapeHtml(vulnerability.id)}
-                            </strong>
-                            ${
-                        vulnerability.summary
-                            ? ` — ${escapeHtml(vulnerability.summary)}`
-                            : ""
-                    }
-                        </li>
-                    `;
-                });
-
-                html += `
-                        </ul>
-                    </div>
-                `;
-            }
-
-            break;
-
-        case "TRANSIENT_UNUSED":
-            html += `
-                <div>
-                    <strong>
-                        This transient override is no longer required
-                        and should be removed.
-                    </strong>
-                </div>
-            `;
-            break;
-
-        default:
-            html += `
-                <div>
-                    No security details available.
-                </div>
-            `;
-            break;
-    }
-
-    html += `
-        </div>
-    `;
-
-    return html;
 }
 
 function showSecurityDetails(security) {
@@ -2040,23 +1864,6 @@ document.addEventListener("click", event => {
 
     details.classList.toggle("hidden");
 });
-
-function toggleTargetSecurityDetails(button) {
-    const container = button.closest(".target-security-status");
-
-    if (!container) {
-        return;
-    }
-
-    const details =
-        container.querySelector(".target-security-details");
-
-    if (!details) {
-        return;
-    }
-
-    details.classList.toggle("hidden");
-}
 
 async function loadSelectedTeam() {
     const response = await fetch("/internal/selectedTeam");
