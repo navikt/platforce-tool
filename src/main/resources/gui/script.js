@@ -46,6 +46,23 @@ let ignoredRepositories = [];
 
 let targetSecurityScan = null;
 
+function toggleTargetSecurityDetails(button) {
+    const row = button.closest(".target-row");
+
+    if (!row) return;
+
+    const details = row.querySelector(".target-security-details");
+
+    if (!details) return;
+
+    details.classList.toggle("hidden");
+
+    button.classList.toggle(
+        "expanded",
+        !details.classList.contains("hidden")
+    );
+}
+
 function securityResultForTarget(key) {
     if (!targetSecurityScan?.targets) {
         return null;
@@ -786,6 +803,7 @@ function renderTable(containerId, entries, type) {
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
         row.innerHTML = `
+        
             <input class="key" value="${key}" />
             <input class="version" value="${version}" />
             ${securityStatusHtml(securityTarget)}
@@ -803,6 +821,16 @@ function renderTable(containerId, entries, type) {
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>
+        
+        ${
+            securityTarget
+                ? `
+                <div class="target-security-details hidden">
+                    ${targetSecurityDetailsHtml(securityTarget)}
+                </div>
+            `
+                : ""
+        }
         `;
         if (type === "dependency") {
             row.querySelector(".transient-btn").onclick = () => {
@@ -874,12 +902,23 @@ function renderTable(containerId, entries, type) {
         const newRow = document.createElement("div");
         newRow.className = "target-row";
         newRow.innerHTML = `
+       
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
             ${securityStatusHtml(securityTarget)}
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>
+        
+        ${
+            securityTarget
+                ? `
+                <div class="target-security-details hidden">
+                    ${targetSecurityDetailsHtml(securityTarget)}
+                </div>
+            `
+                : ""
+        }
         `;
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
@@ -898,90 +937,200 @@ function renderTable(containerId, entries, type) {
 
 function securityStatusHtml(security) {
     if (!security) {
-        return `<div> </div>`;
+        return `<div></div>`;
     }
 
-    switch (security.status) {
+    return `
+        <button
+            class="target-status-pill ${securityStatusClass(security.status)}"
+            title="Show security details"
+            onclick="toggleTargetSecurityDetails(this)"
+        >
+            ${securityStatusLabel(security.status)}
+        </button>
+    `;
+}
+
+function securityStatusClass(status) {
+    switch (status) {
         case "OK":
-            return `
-                <button
-                    class="target-status-pill target-status-ok"
-                    title="No vulnerabilities"
-                >
-                    OK
-                </button>
-            `;
+            return "target-status-ok";
 
         case "OK_TRANSIENT":
-            return `
-                <button
-                    class="target-status-pill target-status-transient"
-                    title="Safe. This dependency is explicitly marked as a transient security override."
-                >
-                    OK
-                </button>
-            `;
+            return "target-status-transient";
 
         case "OK_OVERRIDDEN":
-            const suggestedVersion =
-                security.overriddenBy
-                    ?.find(reason => reason.suggestedVersion)
-                    ?.suggestedVersion;
-            return `
-                <button
-                    class="target-status-pill target-status-overridden"
-                    title="Safe because another target dependency overrides a vulnerable transitive dependency"
-                >
-                    OK *
-                </button>
-                
-                ${
-                suggestedVersion
-                    ? `
-                                <button
-                                    class="target-version-pill"
-                                    title="Upgrade target to ${escapeHtml(suggestedVersion)}"
-                                    onclick="applySecurityUpgrade(
-                                       this,
-                                     '${escapeHtml(security.key)}',
-                                     '${escapeHtml(suggestedVersion)}'
-                                     )"
-                                >
-                                    → ${escapeHtml(suggestedVersion)}
-                                </button>
-                            `
-                    : ""
-            }
-            `;
+            return "target-status-overridden";
 
         case "VULNERABLE":
-            return `
-                <button
-                    class="target-status-pill target-status-vulnerable"
-                    title="Vulnerable"
-                >
-                    VULNERABLE
-                </button>
-            `;
+            return "target-status-vulnerable";
 
         case "TRANSIENT_UNUSED":
-            return `
-                <button
-                    class="target-status-pill target-status-remove"
-                    title="This transient override is no longer needed and should be removed"
-                >
-                    REMOVE
-                </button>
-            `;
+            return "target-status-remove";
 
         default:
-            return `
-                <button
-                    class="target-status-pill target-status-unknown"
-                >
-                    ?
-                </button>
+            return "target-status-unknown";
+    }
+}
+
+function targetSecurityDetailsHtml(security) {
+    if (!security) {
+        return `
+            <div class="finding-details">
+                No security result available.
+            </div>
+        `;
+    }
+
+    let html = `
+        <div class="finding-details target-security-detail">
+    `;
+
+    if (security.status === "OK") {
+        html += `
+            <div>
+                No vulnerabilities found in the resolved dependency tree.
+            </div>
+        `;
+    }
+
+    if (security.status === "OK_TRANSIENT") {
+        html += `
+            <div>
+                <strong>
+                    Safe. This dependency is explicitly marked as a transient
+                    security override.
+                </strong>
+            </div>
+        `;
+    }
+
+    if (security.status === "OK_OVERRIDDEN") {
+        html += `
+            <div>
+                <strong>
+                    Transitive vulnerability overridden by dependency resolution
+                </strong>
+            </div>
+        `;
+
+        if (security.overriddenBy?.length) {
+            html += `
+                <div class="security-related">
+                    <strong>Overridden by:</strong>
+                    <ul>
             `;
+
+            security.overriddenBy.forEach(reason => {
+                html += `
+                    <li>
+                        ${escapeHtml(reason.dependency)}
+                        ${escapeHtml(reason.targetVersion)}
+                    </li>
+                `;
+            });
+
+            html += `
+                    </ul>
+                </div>
+            `;
+        }
+
+        const suggestedVersion =
+            security.overriddenBy
+                ?.find(reason => reason.suggestedVersion)
+                ?.suggestedVersion;
+
+        if (suggestedVersion) {
+            html += `
+                <div class="security-suggested-version">
+                    <button
+                        class="target-version-pill"
+                        title="Upgrade target to ${escapeHtml(suggestedVersion)}"
+                        onclick="applySecurityUpgrade(
+                            this,
+                            '${escapeHtml(security.key)}',
+                            '${escapeHtml(suggestedVersion)}'
+                        )"
+                    >
+                        → ${escapeHtml(suggestedVersion)}
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    if (security.status === "VULNERABLE") {
+        html += `
+            <div>
+                <strong>
+                    Vulnerabilities found in the resolved dependency tree.
+                </strong>
+            </div>
+        `;
+
+        if (security.vulnerabilities?.length) {
+            html += `
+                <div class="security-vulnerabilities">
+                    <ul>
+            `;
+
+            security.vulnerabilities.forEach(vulnerability => {
+                html += `
+                    <li>
+                        <strong>${escapeHtml(vulnerability.id)}</strong>
+                        ${
+                    vulnerability.summary
+                        ? ` — ${escapeHtml(vulnerability.summary)}`
+                        : ""
+                }
+                    </li>
+                `;
+            });
+
+            html += `
+                    </ul>
+                </div>
+            `;
+        }
+    }
+
+    if (security.status === "TRANSIENT_UNUSED") {
+        html += `
+            <div>
+                <strong>
+                    This transient override is no longer needed and should be removed.
+                </strong>
+            </div>
+        `;
+    }
+
+    html += `
+        </div>
+    `;
+
+    return html;
+}
+
+function securityStatusLabel(status) {
+    switch (status) {
+        case "OK":
+            return "OK";
+
+        case "OK_TRANSIENT":
+            return "OK";
+
+        case "OK_OVERRIDDEN":
+            return "OK *";
+
+        case "VULNERABLE":
+            return "VULNERABLE";
+
+        case "TRANSIENT_UNUSED":
+            return "REMOVE";
+
+        default:
+            return "?";
     }
 }
 

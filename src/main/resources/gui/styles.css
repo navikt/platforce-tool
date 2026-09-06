@@ -1038,3 +1038,42 @@ button:hover {
 .transient-btn.active:hover {
     opacity: 0.8;
 }
+
+.target-security-details {
+    grid-column: 1 / -1;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.target-security-details.hidden {
+    display: none;
+}
+
+.target-security-detail {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 4px 0 6px 0;
+    padding: 10px 14px;
+    border: 1px solid #d8dee8;
+    border-radius: 6px;
+    background: #f7f9fb;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.target-security-detail ul {
+    margin: 6px 0 0 18px;
+    padding: 0;
+}
+
+.security-related {
+    margin-top: 8px;
+}
+
+.security-vulnerabilities {
+    margin-top: 8px;
+}
+
+.security-suggested-version {
+    margin-top: 10px;
+}
