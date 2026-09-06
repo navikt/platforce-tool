@@ -1038,3 +1038,38 @@ button:hover {
 .transient-btn.active:hover {
     opacity: 0.8;
 }
+
+.target-security-status {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.target-security-details {
+    flex-basis: 100%;
+    margin-top: 6px;
+}
+
+.target-security-details.hidden {
+    display: none;
+}
+
+.target-security-details .finding-details {
+    padding: 10px 12px;
+    margin-top: 2px;
+    border-radius: 6px;
+    background: #f6f8fa;
+    border: 1px solid #e1e5e9;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.target-security-details ul {
+    margin: 6px 0 0 18px;
+    padding: 0;
+}
+
+.security-related {
+    margin-top: 8px;
+}
