@@ -229,7 +229,7 @@ function renderRepo(repoView, scanMap, container) {
             : "";
 
     const removeBadge =
-        add > 0
+        remove > 0
             ? `<span class="badge remove">${remove} REMOVE</span>`
             : "";
 
