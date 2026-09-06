@@ -1043,16 +1043,17 @@ button:hover {
     grid-column: 1 / -1;
     width: 100%;
     box-sizing: border-box;
+    padding: 0 0 8px 0;
 }
 
 .target-security-details.hidden {
-    display: none;
+    display: none !important;
 }
 
 .target-security-detail {
     width: 100%;
     box-sizing: border-box;
-    margin: 4px 0 6px 0;
+    margin-top: 6px;
     padding: 10px 14px;
     border: 1px solid #d8dee8;
     border-radius: 6px;
@@ -1076,4 +1077,8 @@ button:hover {
 
 .security-suggested-version {
     margin-top: 10px;
+}
+
+.target-status-pill.expanded {
+    filter: brightness(0.95);
 }

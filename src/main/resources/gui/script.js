@@ -47,6 +47,8 @@ let ignoredRepositories = [];
 let targetSecurityScan = null;
 
 function toggleTargetSecurityDetails(button) {
+
+    console.log("toggleTargetSecurityDetails triggered")
     const row = button.closest(".target-row");
 
     if (!row) return;
