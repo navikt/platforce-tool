@@ -237,6 +237,8 @@ function renderRepo(repoView, scanMap, container) {
     const ahead = findings.filter(f => f.status === "AHEAD").length;
     const add = findings.filter(f => f.status === "ADD").length;
     const remove = findings.filter(f => f.status === "REMOVE").length;
+    const vulnerable = findings.filter(f => f.status === "VULNERABLE").length;
+
 
     const hasActionable = findings.some(f =>
         f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD" || f.status === "REMOVE"
@@ -250,6 +252,11 @@ function renderRepo(repoView, scanMap, container) {
     const removeBadge =
         remove > 0
             ? `<span class="badge remove">${remove} REMOVE</span>`
+            : "";
+
+    const vulnerableBadge =
+        vulnerable > 0
+            ? `<span class="badge vulnerable">${vulnerable} VULNE</span>`
             : "";
 
     const noteText = notes?.[repo]?.trim() || "";
@@ -288,6 +295,7 @@ function renderRepo(repoView, scanMap, container) {
                             ${addBadge}
                             ${removeBadge}
                             ${untrackedBadge}
+                            ${vulnerableBadge}
                     `
             : isMissing
                 ? `<span class="badge missing">NOT INSTALLED</span>`
@@ -872,10 +880,6 @@ function renderTable(containerId, entries, type) {
         const statusButton =
             row.querySelector(".target-status-pill");
         if (statusButton) {
-            statusButton.onclick = () => {
-                showSecurityDetails(securityTarget);
-            };
-
             statusButton.addEventListener("click", () => {
                 toggleTargetSecurityDetails(statusButton);
             });
@@ -930,9 +934,9 @@ function renderTable(containerId, entries, type) {
         const statusButton =
             newRow.querySelector(".target-status-pill");
         if (statusButton) {
-            statusButton.onclick = () => {
-                showSecurityDetails(securityTarget);
-            };
+            statusButton.addEventListener("click", () => {
+                toggleTargetSecurityDetails(statusButton);
+            });
         }
         container.insertBefore(newRow, addRow);
         kInput.value = "";
@@ -1006,10 +1010,7 @@ function targetSecurityDetailsHtml(security) {
     if (security.status === "OK_TRANSIENT") {
         html += `
             <div>
-                <strong>
-                    Safe. This dependency is explicitly marked as a transient
-                    security override.
-                </strong>
+                No vulnerabilities found in the resolved dependency tree. (Marked as transient) 
             </div>
         `;
     }
@@ -1086,29 +1087,6 @@ function targetSecurityDetailsHtml(security) {
             </ul>
         `;
         }
-
-        /*const suggestedVersion =
-            security.overriddenBy
-                ?.find(reason => reason.suggestedVersion)
-                ?.suggestedVersion;
-
-        if (suggestedVersion) {
-            html += `
-                <div class="security-suggested-version">
-                    <button
-                        class="target-version-pill"
-                        title="Upgrade target to ${escapeHtml(suggestedVersion)}"
-                        onclick="applySecurityUpgrade(
-                            this,
-                            '${escapeHtml(security.key)}',
-                            '${escapeHtml(suggestedVersion)}'
-                        )"
-                    >
-                        → ${escapeHtml(suggestedVersion)}
-                    </button>
-                </div>
-            `;
-        }*/
     }
 
     if (security.status === "VULNERABLE") {

@@ -80,9 +80,10 @@ button:hover {
         80px    /* OK */
         80px    /* UPDATE */
         80px    /* AHEAD */
-        80px   /* ADD (potential) */
-        80px   /* REMOVE (potential) */
-        80px   /* UNTRACKED (potential) */
+        80px    /* ADD (potential) */
+        80px    /* REMOVE (potential) */
+        80px    /* VULNERABLE (potential) */
+        80px    /* UNTRACKED (potential) */
         30px    /* note icon*/
         100px;  /* padding */
     gap: 8px;
@@ -134,6 +135,11 @@ button:hover {
 .badge.remove {
     background: #fef7e9;
     color: #a87221;
+}
+
+.badge.vulnerable {
+    background: #ffebee;
+    color: #c62828
 }
 
 .badge.zero {
@@ -255,8 +261,9 @@ button:hover {
 }
 
 .status-ahead {
-    color: #2b5bbb;
-    background-color: #ede9fe;
+    color: #6b21a8;
+    background: #ede9fe;
+    border-color: rgba(107, 33, 168, 0.5);
 }
 
 .status-unknown {
@@ -562,11 +569,6 @@ button:hover {
 .status-pill.status-update {
     background: #fff4e5;
     border-color: #ffcc80;
-}
-
-.status-pill.status-ahead {
-    background: #e7f5ff;
-    border-color: #74c0fc;
 }
 
 .icon-btn {
