@@ -1023,12 +1023,12 @@ function targetSecurityDetailsHtml(security) {
             </div>
         `;
 
-        if (security.relatedTo?.length) {
+        if (security.overridenBy?.length) {
             html += `
                 <ul>
             `;
 
-            security.relatedTo.forEach(reason => {
+            security.overridenBy.forEach(reason => {
                 html += `
                     <li>
                         <strong>
