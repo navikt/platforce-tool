@@ -989,6 +989,10 @@ function targetSecurityDetailsHtml(security) {
 
     let html = `
         <div class="finding-details target-security-detail">
+        <h4>
+            ${escapeHtml(security.key)}
+            ${escapeHtml(security.targetVersion)}
+        </h4>
     `;
 
     if (security.status === "OK") {
@@ -1021,27 +1025,64 @@ function targetSecurityDetailsHtml(security) {
 
         if (security.overriddenBy?.length) {
             html += `
-                <div class="security-related">
-                    <strong>Overridden by:</strong>
-                    <ul>
-            `;
+            <ul>
+        `;
 
             security.overriddenBy.forEach(reason => {
                 html += `
-                    <li>
-                        ${escapeHtml(reason.dependency)}
-                        ${escapeHtml(reason.targetVersion)}
-                    </li>
+                <li>
+                    <strong>${escapeHtml(reason.dependency)}</strong>
+                    ${escapeHtml(reason.vulnerableVersion || "")}
+                    →
+                    ${escapeHtml(reason.resolvedVersion)}
+            `;
+
+                if (reason.causedBy?.length) {
+                    html += `
+                    <div>
+                        Resolved by:
+                        ${reason.causedBy
+                        .map(cause => escapeHtml(cause))
+                        .join(", ")}
+                    </div>
                 `;
+                }
+
+                if (reason.suggestedVersion) {
+                    html += `
+                    <div>
+                        <strong>
+                            Upgrade to ${escapeHtml(reason.suggestedVersion)}
+                            to avoid the vulnerability.
+                        </strong>
+                        <div class="security-suggested-version">
+                            <button
+                                class="target-version-pill"
+                                title="Upgrade target to ${escapeHtml(suggestedVersion)}"
+                                onclick="applySecurityUpgrade(
+                                    this,
+                                    '${escapeHtml(security.key)}',
+                                    '${escapeHtml(suggestedVersion)}'
+                                )"
+                               >
+                                → ${escapeHtml(suggestedVersion)}
+                            </button>
+                        </div>
+                    </div>
+                `;
+                }
+
+                html += `
+                </li>
+            `;
             });
 
             html += `
-                    </ul>
-                </div>
-            `;
+            </ul>
+        `;
         }
 
-        const suggestedVersion =
+        /*const suggestedVersion =
             security.overriddenBy
                 ?.find(reason => reason.suggestedVersion)
                 ?.suggestedVersion;
@@ -1062,7 +1103,7 @@ function targetSecurityDetailsHtml(security) {
                     </button>
                 </div>
             `;
-        }
+        }*/
     }
 
     if (security.status === "VULNERABLE") {
