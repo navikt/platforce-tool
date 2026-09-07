@@ -1117,7 +1117,6 @@ function targetSecurityDetailsHtml(security) {
 
         if (security.vulnerableDependencies?.length) {
             html += `
-            <h4>Vulnerable dependencies</h4>
         `;
 
             security.vulnerableDependencies.forEach(vulnerable => {
@@ -1242,6 +1241,8 @@ function securityStatusLabel(status) {
 }
 
 function showSecurityDetails(security) {
+
+    /*
     const container =
         document.getElementById("targetScanDetails");
 
@@ -1424,6 +1425,8 @@ function showSecurityDetails(security) {
     `;
 
     container.innerHTML = html;
+
+     */
 }
 
 function escapeHtml(value) {

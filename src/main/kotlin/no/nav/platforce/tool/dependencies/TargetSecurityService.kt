@@ -147,24 +147,24 @@ class TargetSecurityService(
                         null
                     } else {
                         val suggestedVersion =
-                            if (coordinateWithoutVersion(
-                                    dependency.group,
-                                    dependency.name,
-                                ) == targetKey
-                            ) {
-                                vulnerabilities
-                                    .flatMap { it.fixedVersions }
-                                    .filter {
-                                        ComparableVersion(it)
-                                            .compareTo(
-                                                ComparableVersion(dependency.version),
-                                            ) > 0
-                                    }.minWithOrNull(
-                                        compareBy { ComparableVersion(it) },
-                                    )
-                            } else {
-                                null
-                            }
+//                            if (coordinateWithoutVersion(
+//                                    dependency.group,
+//                                    dependency.name,
+//                                ) == targetKey
+//                            ) {
+                            vulnerabilities
+                                .flatMap { it.fixedVersions }
+                                .filter {
+                                    ComparableVersion(it)
+                                        .compareTo(
+                                            ComparableVersion(dependency.version),
+                                        ) > 0
+                                }.minWithOrNull(
+                                    compareBy { ComparableVersion(it) },
+                                )
+//                            } else {
+//                                null
+//                            }
                         VulnerableDependency(
                             dependency = dependency,
                             vulnerabilities = vulnerabilities,
