@@ -1444,10 +1444,15 @@ data class ResolvedDependencySecurity(
     val vulnerabilities: List<Vulnerability>,
 )
 
+data class VersionSuggestion(
+    val dependency: String, // group:name
+    val version: String,
+)
+
 data class VulnerableDependency(
     val dependency: ResolvedDependency,
     val vulnerabilities: List<Vulnerability>,
-    val suggestedVersion: String? = null,
+    val suggestedVersion: VersionSuggestion? = null,
 )
 
 enum class TargetSecurityStatus {

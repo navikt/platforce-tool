@@ -4,6 +4,7 @@ import no.nav.platforce.tool.OverrideReason
 import no.nav.platforce.tool.ResolvedDependencySecurity
 import no.nav.platforce.tool.TargetSecurityResult
 import no.nav.platforce.tool.TargetSecurityStatus
+import no.nav.platforce.tool.VersionSuggestion
 import no.nav.platforce.tool.Vulnerability
 import no.nav.platforce.tool.VulnerableDependency
 import org.apache.maven.artifact.versioning.ComparableVersion
@@ -161,7 +162,16 @@ class TargetSecurityService(
                                         ) > 0
                                 }.minWithOrNull(
                                     compareBy { ComparableVersion(it) },
-                                )
+                                )?.let { version ->
+                                    VersionSuggestion(
+                                        dependency =
+                                            coordinateWithoutVersion(
+                                                dependency.group,
+                                                dependency.name,
+                                            ),
+                                        version = version,
+                                    )
+                                }
 //                            } else {
 //                                null
 //                            }
@@ -174,9 +184,6 @@ class TargetSecurityService(
                 }
 
         if (vulnerableDependencies.isEmpty()) {
-            log.info {
-                "SECURITY RESULT target=$targetKey:$targetVersion status=OK vulnerableDependencies=0"
-            }
             return TargetSecurityResult(
                 key = targetKey,
                 targetVersion = targetVersion,
@@ -307,33 +314,6 @@ class TargetSecurityService(
                         overriddenBy = overrides,
                     )
             }
-        log.info {
-            """
-            SECURITY RESULT
-              target=$targetKey:$targetVersion
-              status=${result.status}
-              vulnerableDependencies=${
-                vulnerableDependencies.joinToString {
-                    "${it.dependency.group}:${it.dependency.name}:${it.dependency.version}" +
-                        " vulnerabilities=${it.vulnerabilities.map { vulnerability -> vulnerability.id }}"
-                }
-            }
-              overrides=${
-                overrides.joinToString {
-                    "${it.dependency} " +
-                        "targetVersion=${it.targetVersion} " +
-                        "resolvedVersion=${it.resolvedVersion} " +
-                        "vulnerableVersion=${it.vulnerableVersion}" +
-                        "causedBy=${it.causedBy}"
-                }
-            }
-              unresolved=${
-                unresolvedVulnerabilities.joinToString {
-                    "${it.dependency.group}:${it.dependency.name}:${it.dependency.version}"
-                }
-            }
-            """.trimIndent()
-        }
         return result
     }
 
