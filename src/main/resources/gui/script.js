@@ -1155,21 +1155,6 @@ function targetSecurityDetailsHtml(security) {
                         </div>
 
                         ${
-                    suggestion
-                        ? `
-                                    <div>
-                                        <strong>
-                                            Suggested:
-                                            ${escapeHtml(suggestion.dependency)}
-                                            →
-                                            ${escapeHtml(suggestion.version)}
-                                        </strong>
-                                    </div>
-                                `
-                        : ""
-                }
-
-                        ${
                     vulnerable.vulnerabilities?.length
                         ? `
                                     <div>
