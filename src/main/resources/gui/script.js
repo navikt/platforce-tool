@@ -1115,29 +1115,90 @@ function targetSecurityDetailsHtml(security) {
             </div>
         `;
 
-        if (security.vulnerabilities?.length) {
+        if (security.vulnerableDependencies?.length) {
             html += `
-                <div class="security-vulnerabilities">
-                    <ul>
-            `;
+            <h4>Vulnerable dependencies</h4>
+        `;
 
-            security.vulnerabilities.forEach(vulnerability => {
+            security.vulnerableDependencies.forEach(vulnerable => {
+                const dependency = vulnerable.dependency;
+                const suggestedVersion =
+                    vulnerable.suggestedVersion;
+
                 html += `
-                    <li>
-                        <strong>${escapeHtml(vulnerability.id)}</strong>
+                <div class="target-security-vulnerability">
+                    <div>
+                        <strong>
+                            ${escapeHtml(dependency.group)}:${escapeHtml(dependency.name)}
+                        </strong>
+                        <span>
+                            ${escapeHtml(dependency.version)}
+                        </span>
+
                         ${
-                    vulnerability.summary
-                        ? ` — ${escapeHtml(vulnerability.summary)}`
+                    suggestedVersion
+                        ? `
+                                    <button
+                                        class="target-version-pill"
+                                        title="Upgrade target to ${escapeHtml(suggestedVersion)}"
+                                        onclick="applySecurityUpgrade(
+                                            this,
+                                            '${escapeHtml(security.key)}',
+                                            '${escapeHtml(suggestedVersion)}'
+                                        )"
+                                    >
+                                        → ${escapeHtml(suggestedVersion)}
+                                    </button>
+                                `
                         : ""
                 }
-                    </li>
-                `;
-            });
+                    </div>
 
-            html += `
-                    </ul>
+                    ${
+                    vulnerable.vulnerabilities?.length
+                        ? `
+                                <div>
+                                    Fixed in:
+                                    ${escapeHtml(
+                            [...new Set(
+                                vulnerable.vulnerabilities
+                                    .flatMap(v => v.fixedVersions || [])
+                            )].sort((a, b) =>
+                                a.localeCompare(b, undefined, {
+                                    numeric: true,
+                                    sensitivity: "base"
+                                })
+                            ).join(", ")
+                        )}
+                                </div>
+                            `
+                        : ""
+                }
+
+                    <details>
+                        <summary>Vulnerability details</summary>
+
+                        ${
+                    vulnerable.vulnerabilities
+                        .map(vulnerability => `
+                                    <div>
+                                        <strong>
+                                            ${escapeHtml(vulnerability.id)}
+                                        </strong>
+
+                                        <div>
+                                            ${escapeHtml(
+                            vulnerability.summary || ""
+                        )}
+                                        </div>
+                                    </div>
+                                `)
+                        .join("")
+                }
+                    </details>
                 </div>
             `;
+            });
         }
     }
 
