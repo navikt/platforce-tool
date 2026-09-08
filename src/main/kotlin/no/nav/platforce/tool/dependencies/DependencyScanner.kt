@@ -249,7 +249,7 @@ class DependencyScanner(
 //                  finding.currentVersion=${finding.currentVersion}
 //                  finding.targetVersion=${finding.targetVersion}
 //                  targetResult.status=${targetResult.status}
-//                  targetResult.overriddenBy=${targetResult.overriddenBy}
+//                  targetResult.relatedTo=${targetResult.relatedTo}
 //                  presentDependencies=$presentDependencies
 //                """.trimIndent(),
 //            )
@@ -260,7 +260,7 @@ class DependencyScanner(
 
                 TargetSecurityStatus.OK_TRANSIENT -> {
 //                    val relatedTo =
-//                        targetResult.overriddenBy
+//                        targetResult.relatedTo
 //
 //                    val presentOverrides =
 //                        relatedTo.filter {
@@ -297,7 +297,7 @@ class DependencyScanner(
 
                 TargetSecurityStatus.OK_OVERRIDDEN -> {
                     val relatedTo =
-                        targetResult.overriddenBy
+                        targetResult.relatedTo
 
                     val presentOverrides =
                         relatedTo.filter {

@@ -256,7 +256,7 @@ function renderRepo(repoView, scanMap, container) {
 
     const vulnerableBadge =
         vulnerable > 0
-            ? `<span class="badge vulnerable">${vulnerable} VULNE</span>`
+            ? `<span class="badge vulnerable">${vulnerable} VULNER</span>`
             : "";
 
     const noteText = notes?.[repo]?.trim() || "";
@@ -361,7 +361,7 @@ function renderRepo(repoView, scanMap, container) {
                         status === "OK_OVERRIDDEN"
                             ? "OK *"
                             : status === "OK_TRANSIENT"
-                                ? "OK *"
+                                ? `OK ${BANDAGE_SVG}`
                                 : status === "OK_WITH_ADD"
                                     ? "OK +ADD"
                                     : status;
@@ -1010,7 +1010,7 @@ function targetSecurityDetailsHtml(security) {
     if (security.status === "OK_TRANSIENT") {
         html += `
             <div>
-                No vulnerabilities found in the resolved dependency tree. (Marked as transient) 
+                No vulnerabilities found in the resolved dependency tree. Marked as transient 
             </div>
         `;
     }
@@ -1024,12 +1024,12 @@ function targetSecurityDetailsHtml(security) {
             </div>
         `;
 
-        if (security.overriddenBy?.length) {
+        if (security.relatedTo?.length) {
             html += `
             <ul>
         `;
 
-            security.overriddenBy.forEach(reason => {
+            security.relatedTo.forEach(reason => {
                 html += `
                 <li>
                     <strong>${escapeHtml(reason.dependency)}</strong>
@@ -1187,11 +1187,26 @@ function targetSecurityDetailsHtml(security) {
     if (security.status === "TRANSIENT_UNUSED") {
         html += `
             <div>
-                <strong>
-                    This transient override is no longer needed and should be removed.
-                </strong>
+                This transient override is no longer needed and is marked for removal from repositories
             </div>
         `;
+        if (security.transientUsage?.length) {
+            html += `
+            <div>
+                Covers vulnerabilities for:
+                <ul>
+                    ${security.transientUsage.map(usage => `
+                        <li>
+                            <strong>
+                                ${escapeHtml(usage.dependency)}
+                            </strong>
+                            ${escapeHtml(usage.targetVersion)}
+                        </li>
+                    `).join("")}
+                </ul>
+            </div>
+        `;
+        }
     }
 
     html += `
@@ -1262,12 +1277,12 @@ function showSecurityDetails(security) {
         </div>
     `;
 
-        if (security.overriddenBy?.length) {
+        if (security.relatedTo?.length) {
             html += `
             <ul>
         `;
 
-            security.overriddenBy.forEach(reason => {
+            security.relatedTo.forEach(reason => {
                 html += `
                 <li>
                     <strong>${escapeHtml(reason.dependency)}</strong>

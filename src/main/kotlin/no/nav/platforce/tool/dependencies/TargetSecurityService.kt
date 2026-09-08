@@ -4,6 +4,7 @@ import no.nav.platforce.tool.OverrideReason
 import no.nav.platforce.tool.ResolvedDependencySecurity
 import no.nav.platforce.tool.TargetSecurityResult
 import no.nav.platforce.tool.TargetSecurityStatus
+import no.nav.platforce.tool.TransientDependencyUsage
 import no.nav.platforce.tool.VersionSuggestion
 import no.nav.platforce.tool.Vulnerability
 import no.nav.platforce.tool.VulnerableDependency
@@ -69,21 +70,39 @@ class TargetSecurityService(
         targets: List<TargetSecurityResult>,
         targetState: TargetVersionsState,
     ): List<TargetSecurityResult> {
-        val stillRequired =
+        val transientUsage =
             targets
                 .filter { it.status == TargetSecurityStatus.OK_OVERRIDDEN }
-                .flatMap { it.overriddenBy }
-                .map { it.dependency }
-                .toSet()
+                .flatMap { target ->
+                    target.relatedTo
+                        .filter {
+                            it.dependency in targetState.transientDependencies
+                        }.map {
+                            it.dependency to target
+                        }
+                }.groupBy(
+                    keySelector = { it.first },
+                    valueTransform = { it.second },
+                )
 
         return targets.map { target ->
             if (target.key !in targetState.transientDependencies) {
                 return@map target
             }
 
-            if (target.key in stillRequired) {
+            val protectedTargets =
+                transientUsage[target.key].orEmpty()
+
+            if (protectedTargets.isNotEmpty()) {
                 target.copy(
                     status = TargetSecurityStatus.OK_TRANSIENT,
+                    transientUsage =
+                        protectedTargets.map {
+                            TransientDependencyUsage(
+                                dependency = it.key,
+                                targetVersion = it.targetVersion,
+                            )
+                        },
                 )
             } else {
                 target.copy(
@@ -190,7 +209,7 @@ class TargetSecurityService(
                 status = TargetSecurityStatus.OK,
                 vulnerabilities = emptyList(),
                 vulnerableDependencies = emptyList(),
-                overriddenBy = emptyList(),
+                relatedTo = emptyList(),
             )
         }
 
@@ -298,7 +317,7 @@ class TargetSecurityService(
                                 .flatMap { it.vulnerabilities }
                                 .distinctBy { it.id },
                         vulnerableDependencies = unresolvedVulnerabilities,
-                        overriddenBy = overrides,
+                        relatedTo = overrides,
                     )
 
                 else ->
@@ -311,7 +330,7 @@ class TargetSecurityService(
                                 .flatMap { it.vulnerabilities }
                                 .distinctBy { it.id },
                         vulnerableDependencies = vulnerableDependencies,
-                        overriddenBy = overrides,
+                        relatedTo = overrides,
                     )
             }
         return result

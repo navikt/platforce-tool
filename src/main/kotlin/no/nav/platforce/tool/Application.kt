@@ -1469,13 +1469,19 @@ enum class TargetSecurityStatus {
     TRANSIENT_UNUSED,
 }
 
+data class TransientDependencyUsage(
+    val dependency: String,
+    val targetVersion: String,
+)
+
 data class TargetSecurityResult(
     val key: String,
     val targetVersion: String,
     val status: TargetSecurityStatus,
     val vulnerabilities: List<Vulnerability>,
     val vulnerableDependencies: List<VulnerableDependency>,
-    val overriddenBy: List<OverrideReason>,
+    val relatedTo: List<OverrideReason>,
+    val transientUsage: List<TransientDependencyUsage> = emptyList(),
 )
 
 data class OverrideReason(
