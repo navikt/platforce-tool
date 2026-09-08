@@ -1013,6 +1013,22 @@ function targetSecurityDetailsHtml(security) {
                 No vulnerabilities found in the resolved dependency tree. Marked as transient 
             </div>
         `;
+        if (security.transientUsage?.length) {
+            html += `
+            <div>
+                Covers vulnerabilities for:
+                <ul>
+                    ${security.transientUsage.map(usage => `
+                        <li>
+                            <strong>
+                                ${escapeHtml(usage.dependency)}
+                            </strong>
+                            ${escapeHtml(usage.targetVersion)}
+                        </li>
+                    `).join("")}
+                </ul>
+            </div>
+        `;
     }
 
     if (security.status === "OK_OVERRIDDEN") {
@@ -1190,22 +1206,6 @@ function targetSecurityDetailsHtml(security) {
                 This transient override is no longer needed and is marked for removal from repositories
             </div>
         `;
-        if (security.transientUsage?.length) {
-            html += `
-            <div>
-                Covers vulnerabilities for:
-                <ul>
-                    ${security.transientUsage.map(usage => `
-                        <li>
-                            <strong>
-                                ${escapeHtml(usage.dependency)}
-                            </strong>
-                            ${escapeHtml(usage.targetVersion)}
-                        </li>
-                    `).join("")}
-                </ul>
-            </div>
-        `;
         }
     }
 
@@ -1222,7 +1222,7 @@ function securityStatusLabel(status) {
             return "OK";
 
         case "OK_TRANSIENT":
-            return "OK";
+            return `OK ${BANDAGE_SVG}`;
 
         case "OK_OVERRIDDEN":
             return "OK *";
@@ -1236,195 +1236,6 @@ function securityStatusLabel(status) {
         default:
             return "?";
     }
-}
-
-function showSecurityDetails(security) {
-
-    /*
-    const container =
-        document.getElementById("targetScanDetails");
-
-    container.style.display = "block";
-
-    if (!security) {
-        container.innerHTML = `
-            <div>No security result available.</div>
-        `;
-
-        return;
-    }
-
-    let html = `
-        <div class="target-security-detail">
-            <h4>
-                ${escapeHtml(security.key)}
-                ${escapeHtml(security.targetVersion)}
-            </h4>
-    `;
-
-    if (security.status === "OK") {
-        html += `
-            <div>
-                No vulnerabilities found in the resolved dependency tree.
-            </div>
-        `;
-    }
-
-    if (security.status === "OK_OVERRIDDEN") {
-        html += `
-        <div>
-            <strong>Transitive vulnerability overridden by dependency resolution</strong>
-        </div>
-    `;
-
-        if (security.relatedTo?.length) {
-            html += `
-            <ul>
-        `;
-
-            security.relatedTo.forEach(reason => {
-                html += `
-                <li>
-                    <strong>${escapeHtml(reason.dependency)}</strong>
-                    ${escapeHtml(reason.vulnerableVersion || "")}
-                    →
-                    ${escapeHtml(reason.resolvedVersion)}
-            `;
-
-                if (reason.causedBy?.length) {
-                    html += `
-                    <div>
-                        Resolved by:
-                        ${reason.causedBy
-                        .map(cause => escapeHtml(cause))
-                        .join(", ")}
-                    </div>
-                `;
-                }
-
-                if (reason.suggestedVersion) {
-                    html += `
-                    <div>
-                        <strong>
-                            Upgrade to ${escapeHtml(reason.suggestedVersion)}
-                            to avoid the vulnerability.
-                        </strong>
-                    </div>
-                `;
-                }
-
-                html += `
-                </li>
-            `;
-            });
-
-            html += `
-            </ul>
-        `;
-        }
-    }
-
-    if (security.status === "VULNERABLE") {
-        html += `
-        <div>
-            <strong>Vulnerable</strong>
-        </div>
-    `;
-
-        if (security.vulnerableDependencies?.length) {
-            html += `
-            <h4>Vulnerable dependencies</h4>
-        `;
-
-            security.vulnerableDependencies.forEach(vulnerable => {
-                const dependency = vulnerable.dependency;
-                const suggestedVersion =
-                    vulnerable.suggestedVersion;
-
-                html += `
-                <div class="target-security-vulnerability">
-                    <div>
-                        <strong>
-                            ${escapeHtml(dependency.group)}:${escapeHtml(dependency.name)}
-                        </strong>
-                        <span>
-                            ${escapeHtml(dependency.version)}
-                        </span>
-
-                        ${
-                    suggestedVersion
-                        ? `
-                                    <button
-                                        class="target-version-pill"
-                                        title="Upgrade target to ${escapeHtml(suggestedVersion)}"
-                                        onclick="applySecurityUpgrade(
-                                            this,
-                                            '${escapeHtml(security.key)}',
-                                            '${escapeHtml(suggestedVersion)}'
-                                        )"
-                                    >
-                                        → ${escapeHtml(suggestedVersion)}
-                                    </button>
-                                `
-                        : ""
-                }
-                    </div>
-
-                    ${
-                    vulnerable.vulnerabilities?.length
-                        ? `
-                                <div>
-                                    Fixed in:
-                                    ${escapeHtml(
-                            [...new Set(
-                                vulnerable.vulnerabilities
-                                    .flatMap(v => v.fixedVersions || [])
-                            )].sort((a, b) =>
-                                a.localeCompare(b, undefined, {
-                                    numeric: true,
-                                    sensitivity: "base"
-                                })
-                            ).join(", ")
-                        )}
-                                </div>
-                            `
-                        : ""
-                }
-
-                    <details>
-                        <summary>Vulnerability details</summary>
-
-                        ${
-                    vulnerable.vulnerabilities
-                        .map(vulnerability => `
-                                    <div>
-                                        <strong>
-                                            ${escapeHtml(vulnerability.id)}
-                                        </strong>
-
-                                        <div>
-                                            ${escapeHtml(
-                            vulnerability.summary || ""
-                        )}
-                                        </div>
-                                    </div>
-                                `)
-                        .join("")
-                }
-                    </details>
-                </div>
-            `;
-            });
-        }
-    }
-
-    html += `
-        </div>
-    `;
-
-    container.innerHTML = html;
-
-     */
 }
 
 function escapeHtml(value) {
