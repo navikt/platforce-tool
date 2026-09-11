@@ -1032,6 +1032,7 @@ function targetSecurityDetailsHtml(security) {
                 </ul>
             </div>
         `;
+        }
     }
 
     if (security.status === "OK_OVERRIDDEN") {
@@ -1227,7 +1228,6 @@ function targetSecurityDetailsHtml(security) {
                 This transient override is no longer needed and is marked for removal from repositories
             </div>
         `;
-        }
     }
 
     html += `
