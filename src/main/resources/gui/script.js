@@ -48,7 +48,6 @@ let targetSecurityScan = null;
 
 function toggleTargetSecurityDetails(button) {
 
-    console.log("toggleTargetSecurityDetails triggered")
     const row = button.closest(".target-row");
 
     if (!row) return;
@@ -1032,6 +1031,10 @@ function targetSecurityDetailsHtml(security) {
     }
 
     if (security.status === "OK_OVERRIDDEN") {
+        if (security.key === "com.auth0:java-jwt") {
+            console.log("OK_OVERRIDDEN:", security);
+            console.log("relatedTo:", security.relatedTo);
+        }
         html += `
             <div>
                 <strong>
@@ -1040,76 +1043,83 @@ function targetSecurityDetailsHtml(security) {
             </div>
         `;
 
-            if (security.relatedTo?.length) {
-                html += `<ul>`;
+        if (security.key === "com.auth0:java-jwt") {
+            console.log("Done header");
+        }
 
-                security.relatedTo.forEach(reason => {
-                    html += `
-                <li>
-                    <strong>
-                        ${escapeHtml(reason.dependency)}
-                    </strong>
-                    ${escapeHtml(reason.vulnerableVersion || "")}
-                    →
-                    ${escapeHtml(reason.resolvedVersion)}
-            `;
+        if (security.relatedTo?.length) {
+            html += `<ul>`;
 
-                    if (reason.causedBy?.length) {
-                        html += `
-                    <div>
-                        Resolved by:
-                        ${reason.causedBy
-                            .map(cause => escapeHtml(cause))
-                            .join(", ")}
-                    </div>
-                `;
-                    }
-
-                    // suggestedVersion belongs to vulnerableDependencies,
-                    // not relatedTo.
-                    const vulnerableDependency =
-                        security.vulnerableDependencies?.find(
-                            vulnerable =>
-                                `${vulnerable.dependency.group}:${vulnerable.dependency.name}` ===
-                                reason.dependency
-                        );
-
-                    const suggestion =
-                        vulnerableDependency?.suggestedVersion;
-
-                    if (suggestion) {
-                        html += `
-                    <div>
+            security.relatedTo.forEach(reason => {
+                html += `
+                    <li>
                         <strong>
-                            Upgrade ${escapeHtml(suggestion.dependency)}
-                            to ${escapeHtml(suggestion.version)}
-                            to avoid the vulnerability.
+                            ${escapeHtml(reason.dependency)}
                         </strong>
-
-                        <div class="security-suggested-version">
-                            <button
-                                class="target-version-pill"
-                                title="Upgrade ${escapeHtml(suggestion.dependency)} to ${escapeHtml(suggestion.version)}"
-                                onclick="applySecurityUpgrade(
-                                    this,
-                                    '${escapeHtml(suggestion.dependency)}',
-                                    '${escapeHtml(suggestion.version)}'
-                                )"
-                            >
-                                → ${escapeHtml(suggestion.version)}
-                            </button>
-                        </div>
-                    </div>
+                        ${escapeHtml(reason.vulnerableVersion || "")}
+                        →
+                        ${escapeHtml(reason.resolvedVersion)}
                 `;
-                    }
 
+                if (reason.causedBy?.length) {
                     html += `
-                </li>
-            `;
-                });
+                        <div>
+                            Resolved by:
+                            ${reason.causedBy
+                        .map(cause => escapeHtml(cause))
+                        .join(", ")}
+                        </div>
+                    `;
+                }
 
-                html += `</ul>`;
-            }
+                // suggestedVersion belongs to vulnerableDependencies,
+                // not relatedTo.
+                const vulnerableDependency =
+                    security.vulnerableDependencies?.find(
+                        vulnerable =>
+                            `${vulnerable.dependency.group}:${vulnerable.dependency.name}` ===
+                            reason.dependency
+                    );
+
+                const suggestion =
+                    vulnerableDependency?.suggestedVersion;
+
+                if (suggestion) {
+                    html += `
+                                <div>
+                                    <strong>
+                                        Upgrade ${escapeHtml(suggestion.dependency)}
+                                        to ${escapeHtml(suggestion.version)}
+                                        to avoid the vulnerability.
+                                    </strong>
+            
+                                    <div class="security-suggested-version">
+                                        <button
+                                            class="target-version-pill"
+                                            title="Upgrade ${escapeHtml(suggestion.dependency)} to ${escapeHtml(suggestion.version)}"
+                                            onclick="applySecurityUpgrade(
+                                                this,
+                                                '${escapeHtml(suggestion.dependency)}',
+                                                '${escapeHtml(suggestion.version)}'
+                                            )"
+                                        >
+                                            → ${escapeHtml(suggestion.version)}
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                }
+
+                html += `
+                    </li>
+                `;
+            });
+
+            html += `</ul>`;
+        }
+        if (security.key === "com.auth0:java-jwt") {
+            console.log("Passed all");
+        }
     }
 
     if (security.status === "VULNERABLE") {
