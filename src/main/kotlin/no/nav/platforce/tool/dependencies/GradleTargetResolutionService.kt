@@ -940,7 +940,7 @@ class GradleTargetResolutionService(
         return TargetResolution(
             gradleVersion = gradleVersion,
             roots = file.roots,
-            individual = file.individual,
+            individual = file.individual.orEmpty(),
         )
     }
 
