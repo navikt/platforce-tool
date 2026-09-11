@@ -982,6 +982,10 @@ function securityStatusClass(status) {
 }
 
 function targetSecurityDetailsHtml(security) {
+    console.log("targetSecurityDetailsHtml CALLED:", security);
+    console.log("key:", security?.key);
+    console.log("status:", security?.status);
+    console.log("relatedTo:", security?.relatedTo);
     if (!security) {
         return `
             <div class="finding-details">
