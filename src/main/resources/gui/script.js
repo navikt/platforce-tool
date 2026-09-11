@@ -982,10 +982,6 @@ function securityStatusClass(status) {
 }
 
 function targetSecurityDetailsHtml(security) {
-    console.log("targetSecurityDetailsHtml CALLED:", security);
-    console.log("key:", security?.key);
-    console.log("status:", security?.status);
-    console.log("relatedTo:", security?.relatedTo);
     if (!security) {
         return `
             <div class="finding-details">
@@ -1036,10 +1032,6 @@ function targetSecurityDetailsHtml(security) {
     }
 
     if (security.status === "OK_OVERRIDDEN") {
-        if (security.key === "com.auth0:java-jwt") {
-            console.log("OK_OVERRIDDEN:", security);
-            console.log("relatedTo:", security.relatedTo);
-        }
         html += `
             <div>
                 <strong>
@@ -1047,10 +1039,6 @@ function targetSecurityDetailsHtml(security) {
                 </strong>
             </div>
         `;
-
-        if (security.key === "com.auth0:java-jwt") {
-            console.log("Done header");
-        }
 
         if (security.relatedTo?.length) {
             html += `<ul>`;
@@ -1086,6 +1074,7 @@ function targetSecurityDetailsHtml(security) {
                             reason.dependency
                     );
 
+                /*
                 const suggestion =
                     vulnerableDependency?.suggestedVersion;
 
@@ -1113,7 +1102,7 @@ function targetSecurityDetailsHtml(security) {
                                     </div>
                                 </div>
                             `;
-                }
+                }*/
 
                 html += `
                     </li>
@@ -1121,9 +1110,6 @@ function targetSecurityDetailsHtml(security) {
             });
 
             html += `</ul>`;
-        }
-        if (security.key === "com.auth0:java-jwt") {
-            console.log("Passed all");
         }
     }
 
