@@ -1040,69 +1040,76 @@ function targetSecurityDetailsHtml(security) {
             </div>
         `;
 
-        if (security.relatedTo?.length) {
-            html += `
-            <ul>
-        `;
+            if (security.relatedTo?.length) {
+                html += `<ul>`;
 
-            security.relatedTo.forEach(reason => {
-                html += `
+                security.relatedTo.forEach(reason => {
+                    html += `
                 <li>
-                    <strong>${escapeHtml(reason.dependency)}</strong>
+                    <strong>
+                        ${escapeHtml(reason.dependency)}
+                    </strong>
                     ${escapeHtml(reason.vulnerableVersion || "")}
                     →
                     ${escapeHtml(reason.resolvedVersion)}
             `;
 
-                if (reason.causedBy?.length) {
-                    html += `
+                    if (reason.causedBy?.length) {
+                        html += `
                     <div>
                         Resolved by:
                         ${reason.causedBy
-                        .map(cause => escapeHtml(cause))
-                        .join(", ")}
+                            .map(cause => escapeHtml(cause))
+                            .join(", ")}
                     </div>
                 `;
-                }
+                    }
 
-                if (reason.suggestedVersion) {
-                    const suggestion = reason.suggestedVersion;
-                    const version = suggestion.version
-                    const dependency = suggestion.dependency
-                    console.log(`Suggested version in ok overridden: ${dependency} ${version}`)
+                    // suggestedVersion belongs to vulnerableDependencies,
+                    // not relatedTo.
+                    const vulnerableDependency =
+                        security.vulnerableDependencies?.find(
+                            vulnerable =>
+                                `${vulnerable.dependency.group}:${vulnerable.dependency.name}` ===
+                                reason.dependency
+                        );
 
-                    html += `
+                    const suggestion =
+                        vulnerableDependency?.suggestedVersion;
+
+                    if (suggestion) {
+                        html += `
                     <div>
                         <strong>
-                            Upgrade to ${escapeHtml(version)}
+                            Upgrade ${escapeHtml(suggestion.dependency)}
+                            to ${escapeHtml(suggestion.version)}
                             to avoid the vulnerability.
                         </strong>
+
                         <div class="security-suggested-version">
                             <button
                                 class="target-version-pill"
-                                title="Upgrade target to ${escapeHtml(version)}"
+                                title="Upgrade ${escapeHtml(suggestion.dependency)} to ${escapeHtml(suggestion.version)}"
                                 onclick="applySecurityUpgrade(
                                     this,
-                                    '${escapeHtml(security.key)}',
-                                    '${escapeHtml(version)}'
+                                    '${escapeHtml(suggestion.dependency)}',
+                                    '${escapeHtml(suggestion.version)}'
                                 )"
-                               >
-                                → ${escapeHtml(version)}
+                            >
+                                → ${escapeHtml(suggestion.version)}
                             </button>
                         </div>
                     </div>
                 `;
-                }
+                    }
 
-                html += `
+                    html += `
                 </li>
             `;
-            });
+                });
 
-            html += `
-            </ul>
-        `;
-        }
+                html += `</ul>`;
+            }
     }
 
     if (security.status === "VULNERABLE") {
