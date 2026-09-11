@@ -51,6 +51,8 @@ class GradleTargetResolutionService(
                 ?: "/opt/gradle",
         ),
     private val gson: Gson = Gson(),
+    private val dependencyResolutionCache: DependencyResolutionCache =
+        DependencyResolutionCache(),
 ) {
     private val log = KotlinLogging.logger { }
 
@@ -92,33 +94,10 @@ class GradleTargetResolutionService(
                 StandardCopyOption.REPLACE_EXISTING,
             )
 
-            val gradleHome =
-                ensureGradleDistribution(
-                    // state.gradleVersion,
-                )
+            val gradleHome = ensureGradleDistribution()
 
             log.info {
                 "Using Gradle ${state.gradleVersion} from $gradleHome"
-            }
-
-            log.info {
-                "java.io.tmpdir=${System.getProperty("java.io.tmpdir")}"
-            }
-
-            log.info {
-                "user.home=${System.getProperty("user.home")}"
-            }
-
-            log.info {
-                "user.dir=${System.getProperty("user.dir")}"
-            }
-
-            log.info {
-                "TMPDIR=${System.getenv("TMPDIR")}"
-            }
-
-            log.info {
-                "GRADLE_USER_HOME=${System.getenv("GRADLE_USER_HOME")}"
             }
 
             runGradle(
@@ -139,9 +118,25 @@ class GradleTargetResolutionService(
                 "Gradle resolution produced ${json.length} bytes"
             }
 
-            return parseResult(
-                json = json,
-                gradleVersion = state.gradleVersion,
+            val aggregateResult =
+                parseResult(
+                    json = json,
+                    gradleVersion = state.gradleVersion,
+                )
+
+            val individual =
+                state.dependencies
+                    .toSortedMap()
+                    .mapValues { (dependency, version) ->
+                        resolveIndividual(
+                            dependency = dependency,
+                            version = version,
+                            gradleVersion = state.gradleVersion,
+                        ).roots
+                    }
+
+            return aggregateResult.copy(
+                individual = individual,
             )
         } finally {
             log.info {
@@ -172,6 +167,7 @@ class GradleTargetResolutionService(
         }
     }
 
+    /*
     private fun createBuildFile(state: TargetVersionsState): String =
         buildString {
             appendLine(
@@ -235,6 +231,227 @@ class GradleTargetResolutionService(
                         """.trimIndent(),
                     )
                 }
+
+            appendLine(
+                """
+                import groovy.json.JsonOutput
+
+                tasks.register("platforceResolve") {
+                    doLast {
+                        def unresolvedReport =
+                            file("/tmp/files/gradle-unresolved-dependencies.txt")
+
+                        unresolvedReport.parentFile.mkdirs()
+                        unresolvedReport.text = ""
+
+                        def reportUnresolved = { dependency, context ->
+                            def requested = dependency.requested
+
+                            unresolvedReport << "UNRESOLVED DEPENDENCY\n" +
+                                "Context: " + context + "\n" +
+                                "Group: " + requested.group + "\n" +
+                                "Module: " + requested.module + "\n" +
+                                "Version: " + requested.version + "\n" +
+                                "Display: " + requested.displayName + "\n" +
+                                "Reason: " + (dependency.failure?.message ?: "unknown") + "\n" +
+                                "----------------------------------------\n"
+                        }
+
+                        def buildNode
+
+                        buildNode = { component, requested, path ->
+                            def moduleVersion = component.moduleVersion
+
+                            def node = [
+                                group: moduleVersion?.group,
+                                name: moduleVersion?.name ?: component.id.displayName,
+                                version: moduleVersion?.version,
+                                requestedVersion: requested?.version,
+                                requested: requested?.displayName,
+                                dependencies: []
+                            ]
+
+                            def componentId = component.id.displayName
+
+                            if (path.contains(componentId)) {
+                                return node
+                            }
+
+                            def newPath = path + componentId
+
+                            component.dependencies.each { dependency ->
+                                if (dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult) {
+                                    node.dependencies << buildNode(
+                                        dependency.selected,
+                                        dependency.requested,
+                                        newPath
+                                    )
+                                } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
+                                    reportUnresolved(
+                                        dependency,
+                                        "dependency of ${'$'}{component.id.displayName}"
+                                    )
+
+                                    def unresolvedRequested = dependency.requested
+
+                                    node.dependencies << [
+                                        group: unresolvedRequested.group,
+                                        name: unresolvedRequested.module,
+                                        version: "<unresolved>",
+                                        requestedVersion: unresolvedRequested.version,
+                                        requested: unresolvedRequested.displayName,
+                                        dependencies: [],
+                                        unresolved: true
+                                    ]
+                                }
+                            }
+
+                            return node
+                        }
+
+                        def resolveConfiguration = { configuration ->
+                            def resolutionResult =
+                                configuration.incoming.resolutionResult
+
+                            def roots = []
+
+                            resolutionResult.root.dependencies.each { dependency ->
+                                if (dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult) {
+                                    roots << buildNode(
+                                        dependency.selected,
+                                        dependency.requested,
+                                        []
+                                    )
+                                } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
+                                    reportUnresolved(
+                                        dependency,
+                                        "root dependency in ${'$'}{configuration.name}"
+                                    )
+
+                                    def unresolvedRequested = dependency.requested
+
+                                    roots << [
+                                        group: unresolvedRequested.group,
+                                        name: unresolvedRequested.module,
+                                        version: "<unresolved>",
+                                        requestedVersion: unresolvedRequested.version,
+                                        requested: unresolvedRequested.displayName,
+                                        dependencies: [],
+                                        unresolved: true
+                                    ]
+                                }
+                            }
+
+                            return roots
+                        }
+
+                        def roots =
+                            resolveConfiguration(
+                                configurations.targetResolution
+                            )
+
+                        def individual = [:]
+
+                        configurations
+                            .findAll { configuration ->
+                                configuration.name.startsWith("targetResolution_")
+                            }
+                            .each { configuration ->
+                                def key =
+                                    configuration.ext.targetDependencyKey
+
+                                if (key != null) {
+                                    individual[key] =
+                                        resolveConfiguration(configuration)
+                                }
+                            }
+
+                        def result = [
+                            roots: roots,
+                            individual: individual
+                        ]
+
+                        file("${'$'}projectDir/resolution.json").text =
+                            JsonOutput.prettyPrint(
+                                JsonOutput.toJson(result)
+                            )
+                    }
+                }
+                """.trimIndent(),
+            )
+        }
+
+     */
+
+    private fun createBuildFile(state: TargetVersionsState): String =
+        buildString {
+            appendLine(
+                """
+                plugins {
+                    id 'java'
+                }
+
+                repositories {
+                    mavenCentral()
+                    maven {
+                        url = uri("https://packages.confluent.io/maven/")
+                    }
+                }
+
+                configurations {
+                    targetResolution
+                }
+
+                dependencies {
+                """.trimIndent(),
+            )
+
+            state.dependencies
+                .toSortedMap()
+                .forEach { (key, version) ->
+                    requireValidDependencyKey(key)
+
+                    appendLine(
+                        """    targetResolution "${escape(key)}:$version"""",
+                    )
+                }
+
+            appendLine(
+                """
+                }
+                """.trimIndent(),
+            )
+
+            /*
+            // Individual configurations are now resolved separately
+            // and will eventually be served from DependencyResolutionCache.
+            // Whole old function is actually commented since there is some remobal as well
+
+            state.dependencies
+                .toSortedMap()
+                .entries
+                .forEachIndexed { index, (key, version) ->
+                    requireValidDependencyKey(key)
+
+                    val configurationName =
+                        "targetResolution_$index"
+
+                    appendLine(
+                        """
+                        def $configurationName =
+                            configurations.create("$configurationName")
+
+                        $configurationName.ext.targetDependencyKey =
+                            "${escape(key)}"
+
+                        dependencies.add(
+                            "$configurationName",
+                            "${escape(key)}:$version"
+                        )
+                        """.trimIndent(),
+                    )
+                }
+             */
 
             appendLine(
                 """
@@ -354,25 +571,163 @@ class GradleTargetResolutionService(
                                 configurations.targetResolution
                             )
 
-                        def individual = [:]
+                        def result = [
+                            roots: roots
+                        ]
 
-                        configurations
-                            .findAll { configuration ->
-                                configuration.name.startsWith("targetResolution_")
+                        file("${'$'}projectDir/resolution.json").text =
+                            JsonOutput.prettyPrint(
+                                JsonOutput.toJson(result)
+                            )
+                    }
+                }
+                """.trimIndent(),
+            )
+        }
+
+    private fun createIndividualBuildFile(
+        key: String,
+        version: String,
+    ): String =
+        buildString {
+            requireValidDependencyKey(key)
+
+            appendLine(
+                """
+                plugins {
+                    id 'java'
+                }
+
+                repositories {
+                    mavenCentral()
+                    maven {
+                        url = uri("https://packages.confluent.io/maven/")
+                    }
+                }
+
+                configurations {
+                    targetResolution
+                }
+
+                dependencies {
+                    targetResolution "${escape(key)}:$version"
+                }
+                """.trimIndent(),
+            )
+
+            appendLine(
+                """
+                import groovy.json.JsonOutput
+
+                tasks.register("platforceResolve") {
+                    doLast {
+                        def unresolvedReport =
+                            file("/tmp/files/gradle-unresolved-dependencies.txt")
+                
+                        unresolvedReport.parentFile.mkdirs()
+                        unresolvedReport.text = ""
+                
+                        def reportUnresolved = { dependency, context ->
+                            def requested = dependency.requested
+                        
+                            unresolvedReport << "UNRESOLVED DEPENDENCY\n" +
+                                "Context: " + context + "\n" +
+                                "Group: " + requested.group + "\n" +
+                                "Module: " + requested.module + "\n" +
+                                "Version: " + requested.version + "\n" +
+                                "Display: " + requested.displayName + "\n" +
+                                "Reason: " + (dependency.failure?.message ?: "unknown") + "\n" +
+                                "----------------------------------------\n"
+                        }
+                    
+                        def buildNode
+
+                        buildNode = { component, requested, path ->
+                            def moduleVersion = component.moduleVersion
+
+                            def node = [
+                                group: moduleVersion?.group,
+                                name: moduleVersion?.name ?: component.id.displayName,
+                                version: moduleVersion?.version,
+                                requestedVersion: requested?.version,
+                                requested: requested?.displayName,
+                                dependencies: []
+                            ]
+
+                            def componentId = component.id.displayName
+
+                            if (path.contains(componentId)) {
+                                return node
                             }
-                            .each { configuration ->
-                                def key =
-                                    configuration.ext.targetDependencyKey
 
-                                if (key != null) {
-                                    individual[key] =
-                                        resolveConfiguration(configuration)
+                            def newPath = path + componentId
+
+                            component.dependencies.each { dependency ->
+                                if (dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult) {
+                                    node.dependencies << buildNode(
+                                        dependency.selected,
+                                        dependency.requested,
+                                        newPath
+                                    )
+                                } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
+                                    reportUnresolved(
+                                        dependency,
+                                        "dependency of ${'$'}{component.id.displayName}"
+                                    )
+                                    
+                                    def unresolvedRequested = dependency.requested
+                            
+                                    node.dependencies << [
+                                        group: unresolvedRequested.group,
+                                        name: unresolvedRequested.module,
+                                        version: "<unresolved>",
+                                        requestedVersion: unresolvedRequested.version,
+                                        requested: unresolvedRequested.displayName,
+                                        dependencies: [],
+                                        unresolved: true
+                                    ]
                                 }
                             }
 
+                            return node
+                        }
+
+                        def resolutionResult =
+                            configurations.targetResolution
+                                .incoming
+                                .resolutionResult
+
+                        def roots = []
+
+                        resolutionResult.root.dependencies.each { dependency ->
+                            if (dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult) {
+                                roots << buildNode(
+                                    dependency.selected,
+                                    dependency.requested,
+                                    []
+                                )
+                            } else if (dependency instanceof org.gradle.api.artifacts.result.UnresolvedDependencyResult) {
+                                reportUnresolved(
+                                    dependency,
+                                    "root dependency in targetResolution"
+                                )
+                                
+                                def unresolvedRequested = dependency.requested
+                    
+                                roots << [
+                                    group: unresolvedRequested.group,
+                                    name: unresolvedRequested.module,
+                                    version: "<unresolved>",
+                                    requestedVersion: unresolvedRequested.version,
+                                    requested: unresolvedRequested.displayName,
+                                    dependencies: [],
+                                    unresolved: true
+                                ]
+                            }
+                        }
+
                         def result = [
-                            roots: roots,
-                            individual: individual
+                            roots: roots
                         ]
 
                         file("${'$'}projectDir/resolution.json").text =
@@ -489,6 +844,85 @@ class GradleTargetResolutionService(
 
         log.info {
             "Gradle resolution completed successfully"
+        }
+    }
+
+    @OptIn(ExperimentalPathApi::class)
+    private fun resolveIndividual(
+        dependency: String,
+        version: String,
+        gradleVersion: String,
+    ): TargetResolution {
+        val cacheKey =
+            DependencyResolutionCacheKey(
+                dependency = dependency,
+                version = version,
+            )
+
+        dependencyResolutionCache.get(cacheKey)?.let {
+            log.info {
+                "Using cached resolution for $dependency:$version"
+            }
+
+            return it
+        }
+
+        log.info {
+            "Resolving individual dependency $dependency:$version"
+        }
+
+        val projectDir =
+            Files.createTempDirectory(
+                "platforce-gradle-resolution-individual-",
+            )
+
+        try {
+            projectDir.resolve("settings.gradle").writeText(
+                """
+                rootProject.name = "platforce-individual-resolution"
+                """.trimIndent(),
+            )
+
+            projectDir.resolve("build.gradle").writeText(
+                createIndividualBuildFile(
+                    key = dependency,
+                    version = version,
+                ),
+            )
+
+            val gradleHome =
+                ensureGradleDistribution()
+
+            runGradle(
+                gradleHome = gradleHome,
+                projectDir = projectDir,
+            )
+
+            val resultFile =
+                projectDir.resolve("resolution.json")
+
+            check(resultFile.exists()) {
+                "Gradle resolution completed without producing $resultFile"
+            }
+
+            val resolution =
+                parseResult(
+                    json = resultFile.readText(),
+                    gradleVersion = gradleVersion,
+                )
+
+            dependencyResolutionCache.put(
+                key = cacheKey,
+                resolution = resolution,
+            )
+
+            return resolution
+        } finally {
+            log.info {
+                "Deleting temporary individual Gradle project $projectDir"
+            }
+
+            projectDir.deleteRecursively()
         }
     }
 
