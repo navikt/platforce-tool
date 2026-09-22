@@ -219,15 +219,15 @@ button:hover {
     background-color: #f9fbfe;
 }
 
-.row.plugin-row:nth-child(odd) {
-    background-color: #eef5ff;
-}
-
 .row.dependency-row {
     background-color: #f9fffa;
 }
 
-.row.dependency-row:nth-child(odd) {
+.finding-container:nth-child(odd) .row.plugin-row {
+    background-color: #eef5ff;
+}
+
+.finding-container:nth-child(odd) .row.dependency-row {
     background-color: #eaf4ec;
 }
 
