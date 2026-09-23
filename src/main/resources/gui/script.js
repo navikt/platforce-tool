@@ -726,7 +726,7 @@ let targetState = {
     drafted: new Set()
 };
 
-function renderTargets(data) {
+async function renderTargets(data) {
     const drafted = targetState?.drafted ?? new Set();
 
     targetState = {
@@ -737,8 +737,9 @@ function renderTargets(data) {
         drafted
     };
 
+    await loadCachedTargetSecurity()
     renderTargetTables()
-    loadCachedTargetSecurity()
+
 }
 
 function renderTargetTables() {
@@ -1456,9 +1457,6 @@ async function applyTargetSecurityResult(snapshot) {
     }
 
     targetSecurityScan = snapshot.result;
-
-    renderTargetTables();
-    await loadData();
 }
 
 async function scanTargetSecurity() {
@@ -1585,6 +1583,8 @@ async function waitForResolution() {
             await response.json();
 
         if (snapshot.status === "READY") {
+            await applyTargetSecurityResult(snapshot);
+            renderTargetTables();
             return snapshot;
         }
 
@@ -1615,6 +1615,8 @@ async function startOrWaitForResolution() {
     let snapshot = await startResponse.json();
 
     if (snapshot.status === "READY") {
+        await applyTargetSecurityResult(snapshot);
+        renderTargetTables();
         return snapshot;
     }
 
@@ -1646,6 +1648,8 @@ async function startOrWaitForResolution() {
     }
 
     if (snapshot.status === "READY") {
+        await applyTargetSecurityResult(snapshot);
+        renderTargetTables();
         return snapshot;
     }
 
@@ -1734,7 +1738,7 @@ async function startOrWaitForSecurity() {
 
 async function initTargets() {
     const data = await fetchTargetVersions();
-    renderTargets(data);
+    await renderTargets(data);
 }
 
 async function ignoreRepository(repo) {
@@ -1979,7 +1983,7 @@ async function applySecurityUpgrade(button, key, version) {
 async function init() {
     selectedTeam = await loadSelectedTeam();
 
-    initTargets();
+    await initTargets();
     await loadData();
     startProgressPolling();
 }
