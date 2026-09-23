@@ -1436,6 +1436,11 @@ async function loadCachedTargetSecurity() {
 
         const snapshot = await response.json();
 
+        console.log(
+            "Cached target security snapshot:",
+            snapshot
+        );
+
         await applyTargetSecurityResult(snapshot)
     } catch (error) {
         console.warn(
@@ -1446,10 +1451,7 @@ async function loadCachedTargetSecurity() {
 }
 
 async function applyTargetSecurityResult(snapshot) {
-    if (
-        snapshot.status !== "READY" ||
-        !snapshot.result
-    ) {
+    if (!snapshot.result) {
         return;
     }
 

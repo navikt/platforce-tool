@@ -1025,7 +1025,7 @@ button:hover {
 
 .transient-btn {
     color: #202733;
-    opacity: 0.15;
+    opacity: 0.05;
     transition: opacity 0.15s ease;
 }
 
