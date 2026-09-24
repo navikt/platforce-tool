@@ -737,7 +737,7 @@ async function renderTargets(data) {
         drafted
     };
 
-    renderTargetTables()
+    //renderTargetTables()
 
 }
 
@@ -1448,11 +1448,6 @@ async function loadCachedTargetSecurity() {
 
         const snapshot = await response.json();
 
-        console.log(
-            "Cached target security snapshot:",
-            snapshot
-        );
-
         await applyTargetSecurityResult(snapshot)
     } catch (error) {
         console.warn(
@@ -1463,10 +1458,6 @@ async function loadCachedTargetSecurity() {
 }
 
 async function applyTargetSecurityResult(snapshot) {
-    console.log(
-        "APPLY SECURITY RESULT:",
-        snapshot.result?.targets?.length
-    );
     if (!snapshot.result) {
         return;
     }
@@ -1517,7 +1508,7 @@ async function scanTargetSecurity() {
             );
         }
 
-        targetSecurityScan = security;
+        // targetSecurityScan = security;
 
         console.log("TARGET SECURITY SCAN:", targetSecurityScan);
         console.log("TARGET SECURITY TARGETS:", targetSecurityScan?.result?.targets);
@@ -1579,7 +1570,7 @@ async function scanTargetSecurity() {
     }
 }
 
-async function waitForResolution() {
+/*async function waitForResolution() {
     while (true) {
         await new Promise(
             resolve => setTimeout(resolve, 1000)
@@ -1612,7 +1603,7 @@ async function waitForResolution() {
         // IDLE or RUNNING means we are not finished yet.
         // Normally RUNNING is expected here.
     }
-}
+}*/
 
 async function startOrWaitForResolution() {
     const startResponse =
@@ -1630,8 +1621,6 @@ async function startOrWaitForResolution() {
     let snapshot = await startResponse.json();
 
     if (snapshot.status === "READY") {
-        await applyTargetSecurityResult(snapshot);
-        renderTargetTables();
         return snapshot;
     }
 
@@ -1663,8 +1652,6 @@ async function startOrWaitForResolution() {
     }
 
     if (snapshot.status === "READY") {
-        await applyTargetSecurityResult(snapshot);
-        renderTargetTables();
         return snapshot;
     }
 
