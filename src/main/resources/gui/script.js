@@ -799,10 +799,14 @@ function renderTable(containerId, entries, type) {
             targetState.transientDependencies?.has(key);
         const securityTarget =
             type === "dependency"
-                ? targetSecurityScan?.result?.targets?.find(
+                ? targetSecurityScan?.targets?.find(
                     target => target.key === key
                 )
                 : null;
+                // ? targetSecurityScan?.result?.targets?.find(
+                //     target => target.key === key
+                // )
+                // : null;
 
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
@@ -1517,7 +1521,10 @@ async function scanTargetSecurity() {
         // targetSecurityScan = security;
 
         console.log("TARGET SECURITY SCAN:", targetSecurityScan);
-        console.log("TARGET SECURITY TARGETS:", targetSecurityScan?.result?.targets);
+        console.log(
+            "TARGET SECURITY TARGETS:",
+            targetSecurityScan?.targets
+        );
 
         updateScanStep(
             "scanStepOsv",
