@@ -323,6 +323,13 @@ class Application {
                         targetState = targetState,
                     )
 
+                log.info {
+                    "TARGET SECURITY CACHE: " +
+                        "status=${snapshot.status}, " +
+                        "fingerprint=${snapshot.targetFingerprint}, " +
+                        "targets=${snapshot.result?.targets?.size}"
+                }
+
                 val status =
                     when (snapshot.status) {
                         SecurityScanStatus.READY -> Status.OK

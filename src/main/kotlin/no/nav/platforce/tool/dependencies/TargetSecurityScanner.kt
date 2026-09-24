@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.dependencies
 
+import mu.KotlinLogging
 import no.nav.platforce.tool.application
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -91,16 +92,41 @@ class TargetSecurityScanner(
         }
     }
 
+    private val log = KotlinLogging.logger { }
+
     fun get(targetState: TargetVersionsState): SecurityScanSnapshot {
         val fingerprint = fingerprint(targetState)
+        log.info {
+            "TARGET SECURITY GET: " +
+                "fingerprint=$fingerprint"
+        }
         val current = snapshot.get()
+
+        log.info {
+            "TARGET SECURITY CACHE: " +
+                "status=${current.status}, " +
+                "fingerprint=${current.targetFingerprint}, " +
+                "targets=${current.result?.targets?.size}"
+        }
+
         if (current.targetFingerprint != fingerprint) {
+            log.info {
+                "TARGET SECURITY CACHE MISS: " +
+                    "requestedFingerprint=$fingerprint, " +
+                    "cachedFingerprint=${current.targetFingerprint}"
+            }
             return SecurityScanSnapshot(
                 status = SecurityScanStatus.IDLE,
                 targetFingerprint = fingerprint,
                 result = null,
                 error = null,
             )
+        }
+
+        log.info {
+            "TARGET SECURITY CACHE HIT: " +
+                "status=${current.status}, " +
+                "targets=${current.result?.targets?.size}"
         }
         return current
     }

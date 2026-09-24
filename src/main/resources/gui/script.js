@@ -64,16 +64,6 @@ function toggleTargetSecurityDetails(button) {
     );
 }
 
-function securityResultForTarget(key) {
-    if (!targetSecurityScan?.targets) {
-        return null;
-    }
-
-    return targetSecurityScan.targets.find(
-        target => target.key === key
-    ) || null;
-}
-
 async function fetchRepoView() {
     const res = await fetch("/internal/repos/view");
     return await res.json();
@@ -813,14 +803,7 @@ function renderTable(containerId, entries, type) {
                     target => target.key === key
                 )
                 : null;
-        console.log(
-            "TARGET SECURITY LOOKUP:",
-            {
-                key,
-                version,
-                securityTarget
-            }
-        );
+
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
         row.innerHTML = `
@@ -1448,6 +1431,16 @@ async function loadCachedTargetSecurity() {
 
         const snapshot = await response.json();
 
+        console.log(
+            "TARGET SECURITY HTTP RESPONSE (loadCachedTargetSecurity):",
+            {
+                status: snapshot.status,
+                fingerprint: snapshot.targetFingerprint,
+                targetCount: snapshot.result?.targets?.length,
+                snapshot
+            }
+        );
+
         await applyTargetSecurityResult(snapshot)
     } catch (error) {
         console.warn(
@@ -1458,11 +1451,24 @@ async function loadCachedTargetSecurity() {
 }
 
 async function applyTargetSecurityResult(snapshot) {
+    console.log(
+        "APPLY TARGET SECURITY:",
+        {
+            status: snapshot.status,
+            hasResult: !!snapshot.result,
+            targetCount: snapshot.result?.targets?.length
+        }
+    );
     if (!snapshot.result) {
         return;
     }
 
     targetSecurityScan = snapshot.result;
+
+    console.log(
+        "TARGET SECURITY STATE SET:",
+        targetSecurityScan?.targets?.length
+    );
 }
 
 async function scanTargetSecurity() {
