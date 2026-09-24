@@ -737,17 +737,6 @@ async function renderTargets(data) {
         drafted
     };
 
-    console.log(
-        "BEFORE cached security:",
-        targetSecurityScan?.targets?.length
-    );
-
-    await loadCachedTargetSecurity()
-
-    console.log(
-        "AFTER cached security:",
-        targetSecurityScan?.targets?.length
-    );
     renderTargetTables()
 
 }
@@ -1465,11 +1454,6 @@ async function loadCachedTargetSecurity() {
         );
 
         await applyTargetSecurityResult(snapshot)
-
-        console.log(
-            "AFTER applyTargetSecurityResult:",
-            targetSecurityScan?.targets?.length
-        );
     } catch (error) {
         console.warn(
             "Could not load cached target security result",
@@ -1488,11 +1472,6 @@ async function applyTargetSecurityResult(snapshot) {
     }
 
     targetSecurityScan = snapshot.result;
-
-    console.log(
-        "SET targetSecurityScan:",
-        targetSecurityScan?.targets?.length
-    );
 }
 
 async function scanTargetSecurity() {
@@ -2021,6 +2000,10 @@ async function init() {
 
     await initTargets();
     await loadData();
+
+    await loadCachedTargetSecurity();
+    renderTargetTables();
+
     startProgressPolling();
 }
 
