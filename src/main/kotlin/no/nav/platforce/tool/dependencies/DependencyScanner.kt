@@ -224,6 +224,79 @@ class DependencyScanner(
                     finding.targetVersion,
                 )
 
+            if (targetResult.status == TargetSecurityStatus.OK_OVERRIDDEN) {
+                val relatedTo = targetResult.relatedTo
+
+                val presentOverrides =
+                    relatedTo.filter {
+                        it.dependency in presentDependencies
+                    }
+
+                if (presentOverrides.isNotEmpty()) {
+                    enriched +=
+                        finding.copy(
+                            status =
+                                if (comparison < 0) {
+                                    DependencyStatus.UPDATE
+                                } else {
+                                    DependencyStatus.OK_OVERRIDDEN
+                                },
+                            relatedTo =
+                                presentOverrides.map {
+                                    DependencyReference(
+                                        kind = DependencyKind.DEPENDENCY,
+                                        key = it.dependency,
+                                        version = it.targetVersion,
+                                    )
+                                },
+                        )
+                } else {
+                    val missingOverrides =
+                        relatedTo.filter {
+                            it.dependency !in presentDependencies
+                        }
+
+                    enriched +=
+                        finding.copy(
+                            status =
+                                if (comparison < 0) {
+                                    DependencyStatus.UPDATE
+                                } else {
+                                    DependencyStatus.OK_WITH_ADD
+                                },
+                            relatedTo =
+                                missingOverrides.map {
+                                    DependencyReference(
+                                        kind = DependencyKind.DEPENDENCY,
+                                        key = it.dependency,
+                                        version = it.targetVersion,
+                                    )
+                                },
+                        )
+
+                    missingOverrides.forEach { override ->
+                        enriched +=
+                            DependencyFinding(
+                                kind = DependencyKind.DEPENDENCY,
+                                key = override.dependency,
+                                currentVersion = null,
+                                targetVersion = override.targetVersion,
+                                status = DependencyStatus.ADD,
+                                relatedTo =
+                                    listOf(
+                                        DependencyReference(
+                                            kind = DependencyKind.DEPENDENCY,
+                                            key = finding.key,
+                                            version = finding.targetVersion,
+                                        ),
+                                    ),
+                            )
+                    }
+                }
+
+                return@forEach
+            }
+
             // These always win over security status.
             if (comparison < 0) {
                 enriched +=
@@ -240,44 +313,15 @@ class DependencyScanner(
                     )
                 return@forEach
             }
-
-            // We are exactly on the target version.
-//            log.info(
-//                """
-//                SECURITY ENRICH
-//                  finding.key=${finding.key}
-//                  finding.currentVersion=${finding.currentVersion}
-//                  finding.targetVersion=${finding.targetVersion}
-//                  targetResult.status=${targetResult.status}
-//                  targetResult.relatedTo=${targetResult.relatedTo}
-//                  presentDependencies=$presentDependencies
-//                """.trimIndent(),
-//            )
             when (targetResult.status) {
                 TargetSecurityStatus.OK -> {
                     enriched += finding
                 }
 
                 TargetSecurityStatus.OK_TRANSIENT -> {
-//                    val relatedTo =
-//                        targetResult.relatedTo
-//
-//                    val presentOverrides =
-//                        relatedTo.filter {
-//                            it.dependency in presentDependencies
-//                        }
-
                     enriched +=
                         finding.copy(
                             status = DependencyStatus.OK_TRANSIENT,
-//                            relatedTo =
-//                                presentOverrides.map {
-//                                    DependencyReference(
-//                                        kind = DependencyKind.DEPENDENCY,
-//                                        key = it.dependency,
-//                                        version = it.targetVersion,
-//                                    )
-//                                },
                         )
                 }
 
@@ -293,83 +337,6 @@ class DependencyScanner(
                         finding.copy(
                             status = DependencyStatus.VULNERABLE,
                         )
-                }
-
-                TargetSecurityStatus.OK_OVERRIDDEN -> {
-                    val relatedTo =
-                        targetResult.relatedTo
-
-                    val presentOverrides =
-                        relatedTo.filter {
-                            it.dependency in presentDependencies
-                        }
-
-//                    log.info(
-//                        """
-//                        OK_OVERRIDDEN
-//                          finding=${finding.key}
-//                          relatedTo=$relatedTo
-//                          presentOverrides=$presentOverrides
-//                          presentDependencies=$presentDependencies
-//                        """.trimIndent(),
-//                    )
-
-                    if (presentOverrides.isNotEmpty()) {
-//                        log.info(" -> repository status = OK_OVERRIDDEN")
-                        enriched +=
-                            finding.copy(
-                                status = DependencyStatus.OK_OVERRIDDEN,
-                                relatedTo =
-                                    presentOverrides.map {
-                                        DependencyReference(
-                                            kind = DependencyKind.DEPENDENCY,
-                                            key = it.dependency,
-                                            version = it.targetVersion,
-                                        )
-                                    },
-                            )
-                    } else {
-//                        log.info(" -> repository status = OK_WITH_ADD")
-                        // Target is safe in the global target set,
-                        // but this repository does not contain the
-                        // dependency that makes it safe.
-                        val missingOverrides =
-                            relatedTo.filter {
-                                it.dependency !in presentDependencies
-                            }
-
-                        enriched +=
-                            finding.copy(
-                                status = DependencyStatus.OK_WITH_ADD,
-                                relatedTo =
-                                    missingOverrides.map {
-                                        DependencyReference(
-                                            kind = DependencyKind.DEPENDENCY,
-                                            key = it.dependency,
-                                            version = it.targetVersion,
-                                        )
-                                    },
-                            )
-
-                        missingOverrides.forEach { override ->
-                            enriched +=
-                                DependencyFinding(
-                                    kind = DependencyKind.DEPENDENCY,
-                                    key = override.dependency,
-                                    currentVersion = null,
-                                    targetVersion = override.targetVersion,
-                                    status = DependencyStatus.ADD,
-                                    relatedTo =
-                                        listOf(
-                                            DependencyReference(
-                                                kind = DependencyKind.DEPENDENCY,
-                                                key = finding.key,
-                                                version = finding.targetVersion,
-                                            ),
-                                        ),
-                                )
-                        }
-                    }
                 }
             }
         }
