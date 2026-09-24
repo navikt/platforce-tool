@@ -1465,6 +1465,11 @@ async function loadCachedTargetSecurity() {
         );
 
         await applyTargetSecurityResult(snapshot)
+
+        console.log(
+            "AFTER applyTargetSecurityResult:",
+            targetSecurityScan?.targets?.length
+        );
     } catch (error) {
         console.warn(
             "Could not load cached target security result",
@@ -1474,11 +1479,20 @@ async function loadCachedTargetSecurity() {
 }
 
 async function applyTargetSecurityResult(snapshot) {
+    console.log(
+        "APPLY SECURITY RESULT:",
+        snapshot.result?.targets?.length
+    );
     if (!snapshot.result) {
         return;
     }
 
     targetSecurityScan = snapshot.result;
+
+    console.log(
+        "SET targetSecurityScan:",
+        targetSecurityScan?.targets?.length
+    );
 }
 
 async function scanTargetSecurity() {
