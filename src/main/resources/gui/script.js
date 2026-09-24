@@ -824,6 +824,14 @@ function renderTable(containerId, entries, type) {
                     target => target.key === key
                 )
                 : null;
+        console.log(
+            "TARGET SECURITY LOOKUP:",
+            {
+                key,
+                version,
+                securityTarget
+            }
+        );
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
         row.innerHTML = `
