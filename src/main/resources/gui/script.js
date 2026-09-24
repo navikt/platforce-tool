@@ -737,12 +737,26 @@ async function renderTargets(data) {
         drafted
     };
 
+    console.log(
+        "BEFORE cached security:",
+        targetSecurityScan?.targets?.length
+    );
+
     await loadCachedTargetSecurity()
+
+    console.log(
+        "AFTER cached security:",
+        targetSecurityScan?.targets?.length
+    );
     renderTargetTables()
 
 }
 
 function renderTargetTables() {
+    console.log(
+        "RENDER TARGET TABLES:",
+        targetSecurityScan?.targets?.length
+    );
     renderTable("pluginsTable", Object.entries(targetState.plugins), "plugin");
     renderTable("depsTable", Object.entries(targetState.dependencies), "dependency");
     renderGradleVersion(targetState.gradleVersion);
