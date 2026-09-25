@@ -244,13 +244,13 @@ class DependencyScanner(
 
             val targetResult = securityByKey[finding.key]
 
-            log.info {
-                "SECURITY ENRICH DEBUG: " +
-                    "key=${finding.key}, " +
-                    "findingStatus=${finding.status}, " +
-                    "targetResult=${targetResult?.status}, " +
-                    "relatedTo=${targetResult?.relatedTo?.size}"
-            }
+//            log.info {
+//                "SECURITY ENRICH DEBUG: " +
+//                    "key=${finding.key}, " +
+//                    "findingStatus=${finding.status}, " +
+//                    "targetResult=${targetResult?.status}, " +
+//                    "relatedTo=${targetResult?.relatedTo?.size}"
+//            }
 
             if (targetResult == null) {
                 enriched += finding

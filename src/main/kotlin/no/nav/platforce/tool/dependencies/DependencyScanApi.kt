@@ -1,12 +1,15 @@
 package no.nav.platforce.tool.dependencies
 
 import com.google.gson.Gson
+import mu.KotlinLogging
 import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.routing.bind
 import org.http4k.routing.path
+
+val log = KotlinLogging.logger { }
 
 fun dependencyScanRoutes(
     cache: DependencyScanCache,
@@ -21,6 +24,20 @@ fun dependencyScanRoutes(
 
         val scans =
             dependencyScanViewService.get(targetState)
+
+        val finding =
+            scans
+                .firstOrNull { it.repository == "hot-crm-kafka" }
+                ?.findings
+                ?.firstOrNull {
+                    it.key == "net.logstash.logback:logstash-logback-encoder"
+                }
+
+        log.info {
+            "DEPENDENCY API RESULT: " +
+                "status=${finding?.status}, " +
+                "relatedTo=${finding?.relatedTo?.size}"
+        }
 
         Response(Status.OK)
             .header("Content-Type", "application/json")
