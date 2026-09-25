@@ -345,6 +345,14 @@ class DependencyScanner(
                     enriched +=
                         finding.copy(
                             status = DependencyStatus.OK_TRANSIENT,
+                            relatedTo =
+                                targetResult.transientUsage.map {
+                                    DependencyReference(
+                                        kind = DependencyKind.DEPENDENCY,
+                                        key = it.dependency,
+                                        version = it.targetVersion,
+                                    )
+                                },
                         )
                 }
 
