@@ -327,7 +327,7 @@ function renderRepo(repoView, scanMap, container) {
                 hasActionable
                     ? `<button
                                data-repo="${repo}"
-                               class="pr-button"
+                               class="pr-button create-pr-button"
                                onclick="event.stopPropagation(); createPr('${repo}')">
                                Create PR
                            </button>`
@@ -654,7 +654,7 @@ async function createPr(repo) {
 
     const button =
         document.querySelector(
-            `.pr-button[data-repo="${repo}"]`
+            `.create-pr-button[data-repo="${repo}"]`
         );
 
     if (!button) {
