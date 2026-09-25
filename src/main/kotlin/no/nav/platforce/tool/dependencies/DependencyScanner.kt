@@ -19,6 +19,8 @@ class DependencyScanner(
         cache: DependencyScanCache,
         userContext: UserContext,
     ): List<RepositoryDependencyScan> {
+        val scanStart = System.nanoTime()
+
         cache.setProgress(
             ScanProgress(
                 total = 0,
@@ -27,7 +29,17 @@ class DependencyScanner(
             ),
         )
 
+        val start = System.nanoTime()
+
         val repos = githubClient.listRepositories()
+
+        val durationMsListing =
+            (System.nanoTime() - start) / 1_000_000
+
+        log.info {
+            "Repository listing complete: " +
+                "duration=${durationMsListing}ms"
+        }
 
         cache.setProgress(
             ScanProgress(
@@ -40,8 +52,19 @@ class DependencyScanner(
         val results = mutableListOf<RepositoryDependencyScan>()
 
         repos.forEachIndexed { index, repo ->
+            val start = System.nanoTime()
+
             scanRepository(repo, userContext)?.let {
                 results += it
+            }
+
+            val durationMs =
+                (System.nanoTime() - start) / 1_000_000
+
+            log.info {
+                "Repository scan complete: " +
+                    "repo=$repo, " +
+                    "duration=${durationMs}ms"
             }
 
             cache.setProgress(
@@ -56,6 +79,16 @@ class DependencyScanner(
                 running = false,
             ),
         )
+
+        val durationMs =
+            (System.nanoTime() - scanStart) / 1_000_000
+
+        log.info {
+            "Repository dependency scan complete (FULL): " +
+                "repos=${repos.size}, " +
+                "results=${results.size}, " +
+                "duration=${durationMs}ms"
+        }
 
         return results
     }
