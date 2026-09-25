@@ -19,7 +19,7 @@ interface GithubClient {
         repo: String,
         path: String,
         branch: String,
-    ): String
+    ): String?
 
     fun getBranchHeadSha(
         owner: String,

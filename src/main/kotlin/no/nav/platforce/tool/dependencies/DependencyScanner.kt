@@ -19,6 +19,9 @@ class DependencyScanner(
         cache: DependencyScanCache,
         userContext: UserContext,
     ): List<RepositoryDependencyScan> {
+        var cachedCount = 0
+        var scannedCount = 0
+
         cache.setProgress(
             ScanProgress(
                 total = 0,
@@ -40,8 +43,34 @@ class DependencyScanner(
         val results = mutableListOf<RepositoryDependencyScan>()
 
         repos.forEachIndexed { index, repo ->
-            scanRepository(repo, userContext)?.let {
-                results += it
+            val (buildFileSha, wrapperFileSha) =
+                getRepositoryFileShas(repo)
+
+            val cached =
+                cache.getRepositoryScan(repo)
+
+            if (
+                cached != null &&
+                cached.buildFileSha == buildFileSha &&
+                cached.wrapperFileSha == wrapperFileSha
+            ) {
+                cachedCount++
+                results += cached.scan
+            } else {
+                scanRepository(repo, userContext)?.let { scan ->
+                    scannedCount++
+                    results += scan
+
+                    cache.putRepositoryScan(
+                        repository = repo,
+                        entry =
+                            RepositoryDependencyScanCacheEntry(
+                                buildFileSha = buildFileSha,
+                                wrapperFileSha = wrapperFileSha,
+                                scan = scan,
+                            ),
+                    )
+                }
             }
 
             cache.setProgress(
@@ -49,6 +78,13 @@ class DependencyScanner(
                     done = index + 1,
                 ),
             )
+        }
+
+        log.info {
+            "Repository dependency scan complete: " +
+                "repos=${repos.size}, " +
+                "cached=$cachedCount, " +
+                "scanned=$scannedCount"
         }
 
         cache.setProgress(
@@ -59,6 +95,57 @@ class DependencyScanner(
 
         return results
     }
+
+    private fun getRepositoryFileShas(repository: String): Pair<String?, String?> {
+        val owner = repository.substringBefore("/")
+        val repo = repository.substringAfter("/")
+
+        val branch =
+            githubClient.getDefaultBranch(
+                owner,
+                repo,
+            )
+
+        val buildFileSha =
+            tryGetFileSha(
+                owner = owner,
+                repo = repo,
+                path = "build.gradle",
+                branch = branch,
+            ) ?: tryGetFileSha(
+                owner = owner,
+                repo = repo,
+                path = "build.gradle.kts",
+                branch = branch,
+            )
+
+        val wrapperFileSha =
+            tryGetFileSha(
+                owner = owner,
+                repo = repo,
+                path = "gradle/wrapper/gradle-wrapper.properties",
+                branch = branch,
+            )
+
+        return buildFileSha to wrapperFileSha
+    }
+
+    private fun tryGetFileSha(
+        owner: String,
+        repo: String,
+        path: String,
+        branch: String,
+    ): String? =
+        try {
+            githubClient.getFileSha(
+                owner = owner,
+                repo = repo,
+                path = path,
+                branch = branch,
+            )
+        } catch (e: Exception) {
+            null
+        }
 
     private fun scanRepository(
         repository: String,

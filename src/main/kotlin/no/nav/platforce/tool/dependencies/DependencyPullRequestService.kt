@@ -78,7 +78,7 @@ class DependencyPullRequestService(
                 repo,
                 filePath,
                 updatedContent,
-                fileSha,
+                fileSha!!,
                 branchName,
                 "chore: update Gradle dependencies",
             )
@@ -102,7 +102,7 @@ class DependencyPullRequestService(
                 repo,
                 filePathWrapper,
                 updatedContentWrapper,
-                wrapperSha,
+                wrapperSha!!,
                 branchName,
                 "chore: update Gradle version",
             )

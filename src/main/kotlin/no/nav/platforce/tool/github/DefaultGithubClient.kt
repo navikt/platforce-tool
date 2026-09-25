@@ -74,7 +74,7 @@ class DefaultGithubClient(
         repo: String,
         path: String,
         branch: String,
-    ): String {
+    ): String? {
         log.info { "Fetching file sha with owner $owner/$repo at $path with branch $branch" }
         val request =
             authenticatedRequest(
@@ -83,6 +83,8 @@ class DefaultGithubClient(
 
         httpClient.newCall(request).execute().use { response ->
             val body = response.body.string()
+
+            if (response.code == 404) return null
 
             if (!response.isSuccessful) {
                 error("Failed to get file sha: $body")
