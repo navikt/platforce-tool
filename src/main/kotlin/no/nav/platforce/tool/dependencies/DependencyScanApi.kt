@@ -27,7 +27,7 @@ fun dependencyScanRoutes(
 
         val finding =
             scans
-                .firstOrNull { it.repository == "hot-crm-kafka" }
+                .firstOrNull { it.repository == "navikt/kafka-hot-crm" }
                 ?.findings
                 ?.firstOrNull {
                     it.key == "net.logstash.logback:logstash-logback-encoder"
