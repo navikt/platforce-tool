@@ -289,7 +289,7 @@ class DependencyScanner(
                                 DependencyStatus.OK_OVERRIDDEN
                             },
                         relatedTo =
-                            missingOverrides.map {
+                            relatedTo.map {
                                 DependencyReference(
                                     kind = DependencyKind.DEPENDENCY,
                                     key = it.dependency,
@@ -362,6 +362,18 @@ class DependencyScanner(
                         )
                 }
             }
+        }
+
+        log.info {
+            "SECURITY ENRICH RESULT: " +
+                enriched
+                    .filter {
+                        it.key == "net.logstash.logback:logstash-logback-encoder"
+                    }.joinToString {
+                        "key=${it.key}, " +
+                            "status=${it.status}, " +
+                            "relatedTo=${it.relatedTo.size}"
+                    }
         }
 
         return enriched
