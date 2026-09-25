@@ -31,6 +31,23 @@ fun dependencyScanRoutes(
         cache.update(result)
         Response(Status.OK).body("Refreshed")
     },
+    "/internal/api/dependency-scan/refresh/{owner}/{repo}" bind Method.POST to { request ->
+        val owner = request.path("owner")!!
+        val repo = request.path("repo")!!
+
+        val result =
+            scanner.scanRepository(
+                repository = "$owner/$repo",
+                userContext = request.userContext(),
+            )
+
+        if (result != null) {
+            cache.updateRepository(result)
+            Response(Status.OK)
+        } else {
+            Response(Status.NOT_FOUND)
+        }
+    },
     "/internal/api/dependency-scan/progress" bind Method.GET to {
         Response(Status.OK)
             .header("Content-Type", "application/json")

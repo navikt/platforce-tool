@@ -13,6 +13,26 @@ class DependencyScanCache {
         this.scans = scans
     }
 
+    fun updateRepository(scan: RepositoryDependencyScan) {
+        val existing =
+            scans.any {
+                it.repository == scan.repository
+            }
+
+        scans =
+            if (existing) {
+                scans.map {
+                    if (it.repository == scan.repository) {
+                        scan
+                    } else {
+                        it
+                    }
+                }
+            } else {
+                scans + scan
+            }
+    }
+
     fun getProgress(): ScanProgress = progress
 
     fun setProgress(progress: ScanProgress) {

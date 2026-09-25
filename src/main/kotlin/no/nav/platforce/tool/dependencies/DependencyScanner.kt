@@ -93,7 +93,7 @@ class DependencyScanner(
         return results
     }
 
-    private fun scanRepository(
+    fun scanRepository(
         repository: String,
         userContext: UserContext,
     ): RepositoryDependencyScan? {

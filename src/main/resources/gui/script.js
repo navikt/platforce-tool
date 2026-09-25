@@ -315,12 +315,25 @@ function renderRepo(repoView, scanMap, container) {
 >
     Grant App Access
 </button>`
-            : hasActionable
-                ? `<button data-repo="${repo}" class="pr-button"
-                                           onclick="event.stopPropagation(); createPr('${repo}')">
-                                        Create PR
-                                   </button>`
-                : `<span class="pr-button disabled">Create PR</span>`
+            : `
+                <button
+                    data-repo="${repo}"
+                    class="pr-button refresh-button"
+                    onclick="event.stopPropagation(); refreshRepository('${repo}', this)">
+                    Refresh
+                </button>
+
+                ${
+                hasActionable
+                    ? `<button
+                               data-repo="${repo}"
+                               class="pr-button"
+                               onclick="event.stopPropagation(); createPr('${repo}')">
+                               Create PR
+                           </button>`
+                    : `<span class="pr-button disabled">Create PR</span>`
+            }
+            `
     }
 
                     ${isScanned ? `<div class="repo-toggle">▼</div>` : ``}
@@ -1993,6 +2006,47 @@ async function saveSelectedTeam(team) {
 async function applySecurityUpgrade(button, key, version) {
     addDraftTarget("DEPENDENCY", key, version);
     button.remove();
+}
+
+async function refreshRepository(repo, button) {
+    const [owner, repository] = repo.split("/", 2);
+
+    button.textContent = "Scanning...";
+    button.disabled = true;
+
+    try {
+        const response =
+            await fetch(
+                `/internal/api/dependency-scan/refresh/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`,
+                {
+                    method: "POST"
+                }
+            );
+
+        if (response.status === 404) {
+            throw new Error(
+                `Repository ${repo} could not be scanned`
+            );
+        }
+
+        if (!response.ok) {
+            const body = await response.text();
+
+            throw new Error(
+                `Failed to scan ${repo}: ${response.status} ${body}`
+            );
+        }
+
+        await loadData();
+    } catch (error) {
+        console.error(
+            `Failed to refresh repository ${repo}`,
+            error
+        );
+
+        button.textContent = "Refresh";
+        button.disabled = false;
+    }
 }
 
 async function init() {
