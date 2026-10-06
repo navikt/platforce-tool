@@ -361,45 +361,15 @@ class TargetSecurityService(
         version: String,
         vulnerability: Vulnerability,
     ): Boolean {
-        vulnerability.affectedRanges.forEach { range ->
-            var affected = false
+        val candidate =
+            ComparableVersion(version)
 
-            range.events.forEach { event ->
-                when {
-                    event.introduced != null -> {
-                        affected = true
-                    }
-
-                    event.fixed != null -> {
-                        if (
-                            ComparableVersion(version)
-                                .compareTo(
-                                    ComparableVersion(event.fixed),
-                                ) >= 0
-                        ) {
-                            affected = false
-                        }
-                    }
-
-                    event.lastAffected != null -> {
-                        if (
-                            ComparableVersion(version)
-                                .compareTo(
-                                    ComparableVersion(event.lastAffected),
-                                ) <= 0
-                        ) {
-                            affected = true
-                        }
-                    }
-                }
+        return vulnerability.fixedVersions
+            .none { fixedVersion ->
+                candidate.compareTo(
+                    ComparableVersion(fixedVersion),
+                ) >= 0
             }
-
-            if (affected) {
-                return true
-            }
-        }
-
-        return false
     }
 
     private fun hasOverride(
