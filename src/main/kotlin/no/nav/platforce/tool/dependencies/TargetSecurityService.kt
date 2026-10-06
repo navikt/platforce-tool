@@ -425,17 +425,21 @@ class TargetSecurityService(
                     }
 
                     event.fixed != null -> {
-                        affected =
-                            candidate.compareTo(
-                                ComparableVersion(event.fixed),
-                            ) < 0
+                        if (affected) {
+                            affected =
+                                candidate.compareTo(
+                                    ComparableVersion(event.fixed),
+                                ) < 0
+                        }
                     }
 
                     event.lastAffected != null -> {
-                        affected =
-                            candidate.compareTo(
-                                ComparableVersion(event.lastAffected),
-                            ) <= 0
+                        if (affected) {
+                            affected =
+                                candidate.compareTo(
+                                    ComparableVersion(event.lastAffected),
+                                ) <= 0
+                        }
                     }
                 }
             }
