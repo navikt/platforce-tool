@@ -13,11 +13,11 @@ class DependencyScanViewService(
         val securitySnapshot =
             targetSecurityScanner.get(targetState)
 
-        log.info {
-            "DEPENDENCY VIEW SECURITY: " +
-                "status=${securitySnapshot.status}, " +
-                "hasResult=${securitySnapshot.result != null}"
-        }
+//        log.info {
+//            "DEPENDENCY VIEW SECURITY: " +
+//                "status=${securitySnapshot.status}, " +
+//                "hasResult=${securitySnapshot.result != null}"
+//        }
 
         val securityResult =
             targetSecurityScanner

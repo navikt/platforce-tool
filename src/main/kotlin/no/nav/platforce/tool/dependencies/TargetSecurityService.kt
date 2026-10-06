@@ -42,6 +42,7 @@ class TargetSecurityService(
             applyTransientStatus(
                 targets = targets,
                 targetState = targetState,
+                resolution = resolution,
             )
 
         val securityDependencies =
@@ -69,21 +70,25 @@ class TargetSecurityService(
     private fun applyTransientStatus(
         targets: List<TargetSecurityResult>,
         targetState: TargetVersionsState,
+        resolution: TargetResolution,
     ): List<TargetSecurityResult> {
         val transientUsage =
-            targets
-                .filter { it.status == TargetSecurityStatus.OK_OVERRIDDEN }
-                .flatMap { target ->
-                    target.relatedTo
-                        .filter {
-                            it.dependency in targetState.transientDependencies
-                        }.map {
-                            it.dependency to target
+            targetState.transientDependencies
+                .associateWith { transientKey ->
+                    targets
+                        .filter { target ->
+                            target.key != transientKey &&
+                                flatten(
+                                    resolution.individual[target.key]
+                                        ?: emptyList(),
+                                ).any { dependency ->
+                                    coordinateWithoutVersion(
+                                        dependency.group,
+                                        dependency.name,
+                                    ) == transientKey
+                                }
                         }
-                }.groupBy(
-                    keySelector = { it.first },
-                    valueTransform = { it.second },
-                )
+                }
 
         return targets.map { target ->
             if (target.key !in targetState.transientDependencies) {

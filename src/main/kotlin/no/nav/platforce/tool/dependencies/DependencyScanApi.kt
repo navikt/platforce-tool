@@ -33,11 +33,11 @@ fun dependencyScanRoutes(
                     it.key == "net.logstash.logback:logstash-logback-encoder"
                 }
 
-        log.info {
-            "DEPENDENCY API RESULT: " +
-                "status=${finding?.status}, " +
-                "relatedTo=${finding?.relatedTo?.size}"
-        }
+//        log.info {
+//            "DEPENDENCY API RESULT: " +
+//                "status=${finding?.status}, " +
+//                "relatedTo=${finding?.relatedTo?.size}"
+//        }
 
         Response(Status.OK)
             .header("Content-Type", "application/json")

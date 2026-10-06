@@ -219,11 +219,11 @@ class DependencyScanner(
         findings: List<DependencyFinding>,
         securityResult: TargetSecurityScan,
     ): List<DependencyFinding> {
-        log.info {
-            "SECURITY ENRICH DEBUG: " +
-                "findingCount=${findings.size}, " +
-                "securityTargetCount=${securityResult.targets.size}"
-        }
+//        log.info {
+//            "SECURITY ENRICH DEBUG: " +
+//                "findingCount=${findings.size}, " +
+//                "securityTargetCount=${securityResult.targets.size}"
+//        }
         val securityByKey =
             securityResult.targets.associateBy { it.key }
 
@@ -372,7 +372,7 @@ class DependencyScanner(
             }
         }
 
-        log.info {
+/*        log.info {
             "SECURITY ENRICH RESULT: " +
                 enriched
                     .filter {
@@ -382,7 +382,7 @@ class DependencyScanner(
                             "status=${it.status}, " +
                             "relatedTo=${it.relatedTo.size}"
                     }
-        }
+        }*/
 
         return enriched
     }
