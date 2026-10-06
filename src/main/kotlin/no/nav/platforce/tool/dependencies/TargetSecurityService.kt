@@ -199,6 +199,12 @@ class TargetSecurityService(
                                 }.distinct()
                                 .sortedWith(compareBy { ComparableVersion(it) })
                                 .firstOrNull { candidate ->
+                                    val isJacksonDatabind =
+                                        coordinateWithoutVersion(
+                                            dependency.group,
+                                            dependency.name,
+                                        ) == "tools.jackson.core:jackson-databind"
+
                                     val safe =
                                         vulnerabilities.none { vulnerability ->
                                             val affected =
@@ -207,38 +213,41 @@ class TargetSecurityService(
                                                     vulnerability = vulnerability,
                                                 )
 
-                                            if (
-                                                coordinateWithoutVersion(
-                                                    dependency.group,
-                                                    dependency.name,
-                                                ) == "tools.jackson.core:jackson-databind"
-                                            ) {
-                                                log.info {
-                                                    "VERSION SUGGESTION CHECK: " +
-                                                        "dependency=${dependency.group}:${dependency.name}:${dependency.version}, " +
-                                                        "candidate=$candidate, " +
-                                                        "vulnerability=${vulnerability.id}, " +
-                                                        "fixedVersions=${vulnerability.fixedVersions}, " +
-                                                        "affected=$affected, " +
-                                                        "ranges=${vulnerability.affectedRanges}"
-                                                }
+                                            if (isJacksonDatabind) {
+                                                debugSuggestion(
+                                                    buildString {
+                                                        append("candidate=$candidate")
+                                                        append(" | vulnerability=${vulnerability.id}")
+                                                        append(" | affected=$affected")
+                                                        append(" | fixed=${vulnerability.fixedVersions}")
+                                                        append(" | ranges=")
+
+                                                        vulnerability.affectedRanges.forEach { range ->
+                                                            append("[")
+                                                            range.events.forEach { event ->
+                                                                append(
+                                                                    "introduced=${event.introduced},",
+                                                                )
+                                                                append(
+                                                                    "fixed=${event.fixed},",
+                                                                )
+                                                                append(
+                                                                    "lastAffected=${event.lastAffected};",
+                                                                )
+                                                            }
+                                                            append("]")
+                                                        }
+                                                    },
+                                                )
                                             }
 
                                             affected
                                         }
 
-                                    if (
-                                        coordinateWithoutVersion(
-                                            dependency.group,
-                                            dependency.name,
-                                        ) == "tools.jackson.core:jackson-databind"
-                                    ) {
-                                        log.info {
-                                            "VERSION SUGGESTION RESULT: " +
-                                                "dependency=${dependency.group}:${dependency.name}:${dependency.version}, " +
-                                                "candidate=$candidate, " +
-                                                "safe=$safe"
-                                        }
+                                    if (isJacksonDatabind) {
+                                        debugSuggestion(
+                                            "RESULT candidate=$candidate | safe=$safe",
+                                        )
                                     }
 
                                     safe

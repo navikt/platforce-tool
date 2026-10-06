@@ -2,9 +2,26 @@ package no.nav.platforce.tool.dependencies
 
 import mu.KotlinLogging
 import no.nav.platforce.tool.application
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
+
+private val suggestionDebugFile =
+    Path.of("/tmp/files/jackson-databind-suggestions.log")
+
+fun debugSuggestion(message: String) {
+    Files.createDirectories(suggestionDebugFile.parent)
+
+    Files.writeString(
+        suggestionDebugFile,
+        message + System.lineSeparator(),
+        StandardOpenOption.CREATE,
+        StandardOpenOption.APPEND,
+    )
+}
 
 enum class SecurityScanStatus {
     IDLE,
