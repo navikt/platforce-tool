@@ -98,7 +98,18 @@ class TargetSecurityService(
             val protectedTargets =
                 transientUsage[target.key].orEmpty()
 
-            if (protectedTargets.isNotEmpty()) {
+            // Detecting vulnerability does preceed other judgement
+            if (target.status == TargetSecurityStatus.VULNERABLE) {
+                target.copy(
+                    transientUsage =
+                        protectedTargets.map {
+                            TransientDependencyUsage(
+                                dependency = it.key,
+                                targetVersion = it.targetVersion,
+                            )
+                        },
+                )
+            } else if (protectedTargets.isNotEmpty()) {
                 target.copy(
                     status = TargetSecurityStatus.OK_TRANSIENT,
                     transientUsage =
