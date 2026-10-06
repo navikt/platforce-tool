@@ -1441,6 +1441,18 @@ data class Vulnerability(
     val aliases: List<String>,
     val references: List<String>,
     val fixedVersions: List<String>,
+    val affectedRanges: List<VulnerabilityRange> = emptyList(),
+)
+
+data class VulnerabilityRange(
+    val type: String?,
+    val events: List<VulnerabilityEvent>,
+)
+
+data class VulnerabilityEvent(
+    val introduced: String?,
+    val fixed: String?,
+    val lastAffected: String?,
 )
 
 data class ResolvedDependencySecurity(

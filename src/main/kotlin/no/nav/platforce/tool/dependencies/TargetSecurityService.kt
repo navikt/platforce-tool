@@ -169,7 +169,13 @@ class TargetSecurityService(
          */
         val vulnerableDependencies =
             standaloneDependencies
-                .mapNotNull { dependency ->
+                .distinctBy {
+                    coordinate(
+                        it.group,
+                        it.name,
+                        it.version,
+                    )
+                }.mapNotNull { dependency ->
                     val vulnerabilities =
                         vulnerabilityMap[
                             coordinate(
@@ -183,11 +189,6 @@ class TargetSecurityService(
                         null
                     } else {
                         val suggestedVersion =
-//                            if (coordinateWithoutVersion(
-//                                    dependency.group,
-//                                    dependency.name,
-//                                ) == targetKey
-//                            ) {
                             vulnerabilities
                                 .flatMap { it.fixedVersions }
                                 .filter {
@@ -195,9 +196,16 @@ class TargetSecurityService(
                                         .compareTo(
                                             ComparableVersion(dependency.version),
                                         ) > 0
-                                }.minWithOrNull(
-                                    compareBy { ComparableVersion(it) },
-                                )?.let { version ->
+                                }.distinct()
+                                .sortedWith(compareBy { ComparableVersion(it) })
+                                .firstOrNull { candidate ->
+                                    vulnerabilities.none { vulnerability ->
+                                        isAffectedByVulnerability(
+                                            version = candidate,
+                                            vulnerability = vulnerability,
+                                        )
+                                    }
+                                }?.let { version ->
                                     VersionSuggestion(
                                         dependency =
                                             coordinateWithoutVersion(
@@ -207,9 +215,6 @@ class TargetSecurityService(
                                         version = version,
                                     )
                                 }
-//                            } else {
-//                                null
-//                            }
                         VulnerableDependency(
                             dependency = dependency,
                             vulnerabilities = vulnerabilities,
@@ -350,6 +355,51 @@ class TargetSecurityService(
                     )
             }
         return result
+    }
+
+    private fun isAffectedByVulnerability(
+        version: String,
+        vulnerability: Vulnerability,
+    ): Boolean {
+        vulnerability.affectedRanges.forEach { range ->
+            var affected = false
+
+            range.events.forEach { event ->
+                when {
+                    event.introduced != null -> {
+                        affected = true
+                    }
+
+                    event.fixed != null -> {
+                        if (
+                            ComparableVersion(version)
+                                .compareTo(
+                                    ComparableVersion(event.fixed),
+                                ) >= 0
+                        ) {
+                            affected = false
+                        }
+                    }
+
+                    event.lastAffected != null -> {
+                        if (
+                            ComparableVersion(version)
+                                .compareTo(
+                                    ComparableVersion(event.lastAffected),
+                                ) <= 0
+                        ) {
+                            affected = true
+                        }
+                    }
+                }
+            }
+
+            if (affected) {
+                return true
+            }
+        }
+
+        return false
     }
 
     private fun hasOverride(
