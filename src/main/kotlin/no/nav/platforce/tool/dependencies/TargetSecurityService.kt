@@ -199,12 +199,49 @@ class TargetSecurityService(
                                 }.distinct()
                                 .sortedWith(compareBy { ComparableVersion(it) })
                                 .firstOrNull { candidate ->
-                                    vulnerabilities.none { vulnerability ->
-                                        isAffectedByVulnerability(
-                                            version = candidate,
-                                            vulnerability = vulnerability,
-                                        )
+                                    val safe =
+                                        vulnerabilities.none { vulnerability ->
+                                            val affected =
+                                                isAffectedByVulnerability(
+                                                    version = candidate,
+                                                    vulnerability = vulnerability,
+                                                )
+
+                                            if (
+                                                coordinateWithoutVersion(
+                                                    dependency.group,
+                                                    dependency.name,
+                                                ) == "tools.jackson.core:jackson-databind"
+                                            ) {
+                                                log.info {
+                                                    "VERSION SUGGESTION CHECK: " +
+                                                        "dependency=${dependency.group}:${dependency.name}:${dependency.version}, " +
+                                                        "candidate=$candidate, " +
+                                                        "vulnerability=${vulnerability.id}, " +
+                                                        "fixedVersions=${vulnerability.fixedVersions}, " +
+                                                        "affected=$affected, " +
+                                                        "ranges=${vulnerability.affectedRanges}"
+                                                }
+                                            }
+
+                                            affected
+                                        }
+
+                                    if (
+                                        coordinateWithoutVersion(
+                                            dependency.group,
+                                            dependency.name,
+                                        ) == "tools.jackson.core:jackson-databind"
+                                    ) {
+                                        log.info {
+                                            "VERSION SUGGESTION RESULT: " +
+                                                "dependency=${dependency.group}:${dependency.name}:${dependency.version}, " +
+                                                "candidate=$candidate, " +
+                                                "safe=$safe"
+                                        }
                                     }
+
+                                    safe
                                 }?.let { version ->
                                     VersionSuggestion(
                                         dependency =
