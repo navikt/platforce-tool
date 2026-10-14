@@ -1,6 +1,36 @@
 # platforce-tool [<img align="right" src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" width="18" alt="GitHub repository" />](https://github.com/navikt/platforce-tool)
 Selfservice console for operating on Salesforce middleware apps
 
+## Code structure
+
+`Application.kt` constructs services and composes routes; `Bootstrap.kt` is the
+entry point. Feature code lives under `src/main/kotlin/no/nav/platforce/tool`:
+
+| Package | Responsibility |
+| --- | --- |
+| `repositories` | Repo inventory, comparisons, scanner views, cache and API |
+| `targets` | Target defaults, state, persistence, fingerprints and API |
+| `resolution` | Gradle project generation, execution, results, timings and debug files |
+| `security` | OSV integration, target security evaluation, scan results and API |
+| `pullrequests` | Build/wrapper updates and GitHub PR orchestration |
+| `gradle` | Build and wrapper file parsing |
+| `nais`, `github` | External clients and GitHub App authentication |
+| `scanning` | Shared user-isolated asynchronous scan jobs |
+| `user`, `notes`, `ignore` | User context, selected team, notes and ignored repos |
+| `internal`, `config`, `db` | Operational routes, configuration and database tables |
+
+Services receive collaborators explicitly rather than accessing a global
+Application instance. Domain and API model classes live alongside their feature.
+Cross-feature regression scenarios and test doubles live in `src/test/kotlin`
+under `workflows`; focused client, route and view tests use matching packages.
+
+Frontend features live in `resources/gui/js`: `api`, `state`, `shared`, `scanner`,
+`targets`, `target-security`, `scan-status`, `ignored` and `bootstrap`. `index.html`
+loads these as ordered classic scripts, sharing state and preserving existing
+inline handlers without a build tool; bootstrap runs last.
+
+## Application behavior
+
 The GUI at `/internal/gui` lists repositories from NAIS Console, compares their
 Gradle dependencies with user-maintained targets, scans target versions using
 Gradle resolution and OSV, and creates dependency update pull requests.

@@ -1,10 +1,7 @@
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
-const { resolve } = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
-
-const script = readFileSync(resolve(__dirname, "../../main/resources/gui/script.js"), "utf8");
+const { loadGuiScripts } = require("./gui-scripts");
 
 function gui() {
     const elements = new Map();
@@ -43,7 +40,7 @@ function gui() {
         // Leave automatic page initialization pending; each test drives the real flow explicitly.
         fetch: () => new Promise(() => {})
     });
-    vm.runInContext(script, context);
+    loadGuiScripts(context);
     context.renderTargetTables = () => targetRenders++;
     context.render = data => rendered.push(data);
     context.renderIgnoredRepositories = () => {};
