@@ -38,8 +38,6 @@ let isRefreshing = false;
 let hasActiveScan = false;
 let isStartingScan = false;
 
-let refreshEpoch = 0;
-
 let lastLoadedData = [];
 
 let ignoredRepositories = [];
@@ -87,20 +85,6 @@ async function fetchIgnoredRepositories() {
     return await res.json();
 }
 
-function groupByRepo(data) {
-    const map = new Map();
-
-    (data || []).forEach(item => {
-        if (!item?.repository) return;
-
-        if (!map.has(item.repository)) {
-            map.set(item.repository, []);
-        }
-        map.get(item.repository).push(item);
-    });
-
-    return map;
-}
 let selectedTeam = null;
 
 function render({ repos, scans }) {
@@ -1596,41 +1580,6 @@ async function scanTargetSecurity() {
     }
 }
 
-/*async function waitForResolution() {
-    while (true) {
-        await new Promise(
-            resolve => setTimeout(resolve, 1000)
-        );
-
-        const response =
-            await fetch("/internal/api/target-resolution");
-
-        if (!response.ok) {
-            throw new Error(
-                `Target resolution lookup failed: HTTP ${response.status}`
-            );
-        }
-
-        const snapshot =
-            await response.json();
-
-        if (snapshot.status === "READY") {
-            await applyTargetSecurityResult(snapshot);
-            renderTargetTables();
-            return snapshot;
-        }
-
-        if (snapshot.status === "FAILED") {
-            throw new Error(
-                snapshot.error || "Target resolution failed"
-            );
-        }
-
-        // IDLE or RUNNING means we are not finished yet.
-        // Normally RUNNING is expected here.
-    }
-}*/
-
 async function startOrWaitForResolution() {
     const startResponse =
         await fetch(
@@ -1690,12 +1639,6 @@ async function startOrWaitForResolution() {
 
     throw new Error(
         `Unexpected target resolution status: ${snapshot.status}`
-    );
-}
-
-function sleep(milliseconds) {
-    return new Promise(
-        resolve => setTimeout(resolve, milliseconds)
     );
 }
 

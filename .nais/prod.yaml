@@ -51,7 +51,6 @@ spec:
     outbound:
       external:
         - host: console.nav.cloud.nais.io
-        - host: api.deps.dev
         - host: repo.maven.apache.org
         - host: packages.confluent.io
         - host: api.osv.dev

@@ -1,5 +1,5 @@
 package no.nav.platforce.tool.dependencies
-import mu.KotlinLogging
+
 import no.nav.platforce.tool.OverrideReason
 import no.nav.platforce.tool.ResolvedDependencySecurity
 import no.nav.platforce.tool.TargetSecurityResult
@@ -14,8 +14,6 @@ import kotlin.collections.isNotEmpty
 class TargetSecurityService(
     private val vulnerabilityService: VulnerabilityService,
 ) {
-    private val log = KotlinLogging.logger { }
-
     fun scan(
         resolution: TargetResolution,
         targetState: TargetVersionsState,
@@ -199,58 +197,12 @@ class TargetSecurityService(
                                 }.distinct()
                                 .sortedWith(compareBy { ComparableVersion(it) })
                                 .firstOrNull { candidate ->
-                                    val isJacksonDatabind =
-                                        coordinateWithoutVersion(
-                                            dependency.group,
-                                            dependency.name,
-                                        ) == "tools.jackson.core:jackson-databind"
-
-                                    val safe =
-                                        vulnerabilities.none { vulnerability ->
-                                            val affected =
-                                                isAffectedByVulnerability(
-                                                    version = candidate,
-                                                    vulnerability = vulnerability,
-                                                )
-
-                                            if (isJacksonDatabind) {
-                                                debugSuggestion(
-                                                    buildString {
-                                                        append("candidate=$candidate")
-                                                        append(" | vulnerability=${vulnerability.id}")
-                                                        append(" | affected=$affected")
-                                                        append(" | fixed=${vulnerability.fixedVersions}")
-                                                        append(" | ranges=")
-
-                                                        vulnerability.affectedRanges.forEach { range ->
-                                                            append("[")
-                                                            range.events.forEach { event ->
-                                                                append(
-                                                                    "introduced=${event.introduced},",
-                                                                )
-                                                                append(
-                                                                    "fixed=${event.fixed},",
-                                                                )
-                                                                append(
-                                                                    "lastAffected=${event.lastAffected};",
-                                                                )
-                                                            }
-                                                            append("]")
-                                                        }
-                                                    },
-                                                )
-                                            }
-
-                                            affected
-                                        }
-
-                                    if (isJacksonDatabind) {
-                                        debugSuggestion(
-                                            "RESULT candidate=$candidate | safe=$safe",
+                                    vulnerabilities.none { vulnerability ->
+                                        isAffectedByVulnerability(
+                                            version = candidate,
+                                            vulnerability = vulnerability,
                                         )
                                     }
-
-                                    safe
                                 }?.let { version ->
                                     VersionSuggestion(
                                         dependency =
@@ -461,17 +413,6 @@ class TargetSecurityService(
             it.dependency == key
         }
     }
-
-    private fun findResolvedVersion(
-        roots: List<ResolvedDependency>,
-        group: String?,
-        name: String,
-    ): String? =
-        flatten(roots)
-            .firstOrNull {
-                it.group == group &&
-                    it.name == name
-            }?.version
 
     private fun allDependencies(resolution: TargetResolution): List<ResolvedDependency> =
         resolution.individual.values

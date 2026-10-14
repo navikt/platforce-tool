@@ -112,15 +112,6 @@ class DependencyScanner(
 
         val store = userContext.targetVersionsStore.get()
 
-        // To apply data from security scan:
-//        val targetState = userContext.targetVersionsStore.get()
-//
-//        val securityResult =
-//            targetSecurityScanner
-//                .get(targetState)
-//                .takeIf { it.status == SecurityScanStatus.READY }
-//                ?.result
-
         store.plugins.forEach { (plugin, target) ->
             val current = parsedBuildFile.plugins[plugin] ?: return@forEach
 
@@ -183,17 +174,6 @@ class DependencyScanner(
                     )
                 }
 
-        // Issue since this will be cached, cached should not be enriched
-//        val enrichedFindings =
-//            if (securityResult != null) {
-//                enrichSecurityFindings(
-//                    findings = findings,
-//                    securityResult = securityResult,
-//                )
-//            } else {
-//                findings
-//            }
-
         return RepositoryDependencyScan(
             repository = repository,
             scannedAt = Instant.now().toString(),
@@ -219,11 +199,6 @@ class DependencyScanner(
         findings: List<DependencyFinding>,
         securityResult: TargetSecurityScan,
     ): List<DependencyFinding> {
-//        log.info {
-//            "SECURITY ENRICH DEBUG: " +
-//                "findingCount=${findings.size}, " +
-//                "securityTargetCount=${securityResult.targets.size}"
-//        }
         val securityByKey =
             securityResult.targets.associateBy { it.key }
 
@@ -243,14 +218,6 @@ class DependencyScanner(
             }
 
             val targetResult = securityByKey[finding.key]
-
-//            log.info {
-//                "SECURITY ENRICH DEBUG: " +
-//                    "key=${finding.key}, " +
-//                    "findingStatus=${finding.status}, " +
-//                    "targetResult=${targetResult?.status}, " +
-//                    "relatedTo=${targetResult?.relatedTo?.size}"
-//            }
 
             if (targetResult == null) {
                 enriched += finding
@@ -371,18 +338,6 @@ class DependencyScanner(
                 }
             }
         }
-
-/*        log.info {
-            "SECURITY ENRICH RESULT: " +
-                enriched
-                    .filter {
-                        it.key == "net.logstash.logback:logstash-logback-encoder"
-                    }.joinToString {
-                        "key=${it.key}, " +
-                            "status=${it.status}, " +
-                            "relatedTo=${it.relatedTo.size}"
-                    }
-        }*/
 
         return enriched
     }
