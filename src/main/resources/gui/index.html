@@ -1,51 +1,59 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <link rel="shortcut icon" type="image/x-icon" href="/internal/gui/platforce.png">
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dependency Scanner</title>
     <link rel="stylesheet" href="/internal/gui/styles.css">
 </head>
 
 <body>
 
-<div class="tabs">
-    <div
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="app-header">
+    <span class="app-name">Platforce</span>
+    <span class="app-description">Dependency management</span>
+</header>
+<main id="main" tabindex="-1">
+<h1 class="visually-hidden">Dependency management</h1>
+<nav class="tabs" aria-label="Main views">
+    <button type="button" aria-pressed="true" aria-controls="scannerTab" id="scannerView"
             class="tab active"
             data-tab="scanner">
         Dependency Scanner
-    </div>
-    <div
+    </button>
+    <button type="button" aria-pressed="false" aria-controls="targetsTab" id="targetsView"
             class="tab"
             data-tab="targets">
         Target Versions
-    </div>
-    <div
+    </button>
+    <button type="button" aria-pressed="false" aria-controls="ignoredTab" id="ignoredView"
             class="tab"
             data-tab="ignored">
         Ignored
-    </div>
-</div>
+    </button>
+</nav>
 
-<div id="scannerTab">
+<section id="scannerTab" aria-labelledby="scannerView">
 
     <div class="toolbar">
         <button id="refreshBtn">Refresh scan</button>
 
         <div id="progressWrapper">
-            <div id="progressText">Idle</div>
-            <div class="bar">
+            <div id="progressText" role="status" aria-live="polite">Idle</div>
+            <div class="bar" aria-hidden="true">
                 <div id="progressBar"></div>
             </div>
         </div>
     </div>
 
-    <div id="teamTabs" class="team-tabs"></div>
+    <nav id="teamTabs" class="team-tabs" aria-label="Teams"></nav>
 
     <div id="container"></div>
-</div>
+</section>
 
-<div id="targetsTab" style="display:none">
+<section id="targetsTab" aria-labelledby="targetsView" style="display:none">
 
     <div id="targetVersionsCard" class="repo open">
 
@@ -58,9 +66,9 @@
                     <div class="target-section plugins">
 
                         <div class="target-section-header">
-                        <span class="section-pill plugin-pill">
+                        <h2 class="section-pill plugin-pill">
                             Plugins
-                        </span>
+                        </h2>
                         </div>
                         <div id="pluginsTable"></div>
                     </div>
@@ -68,9 +76,9 @@
                     <div class="target-section gradle">
 
                         <div class="target-section-header">
-                        <span class="section-pill gradle-pill">
+                        <h2 class="section-pill gradle-pill">
                             Gradle
-                        </span>
+                        </h2>
                         </div>
                         <div id="gradleTable"></div>
                     </div>
@@ -79,12 +87,12 @@
 
                 <div class="target-section dependencies">
                     <div class="target-section-header">
-                        <span class="section-pill dependency-pill">
+                        <h2 class="section-pill dependency-pill">
                             Dependencies
-                        </span>
+                        </h2>
 
                         <button id="scanTargets"
-                                class="btn-danger"
+                                class="btn-secondary"
                                 type="button">
                             SCAN
                         </button>
@@ -105,12 +113,6 @@
 
                 <div class="target-section target-actions-section">
 
-<!--                    <div class="target-section-header">
-                        <span class="section-pill">
-                            Actions
-                        </span>
-                    </div>-->
-
                     <div class="target-actions">
                         <button id="saveTargets"
                                 class="btn-primary">
@@ -125,17 +127,17 @@
         </div>
 
     </div>
-</div>
+</section>
 
-<div id="ignoredTab" style="display:none">
+<section id="ignoredTab" aria-labelledby="ignoredView" style="display:none">
     <div id="ignoredCard" class="repo open">
         <div class="ignore-content">
             <div class="target-grid">
                 <div class="target-section ignored">
                     <div class="target-section-header">
-                        <span class="section-pill dependency-pill">
+                        <h2 class="section-pill dependency-pill">
                             Ignored Repositories
-                        </span>
+                        </h2>
                     </div>
                     <div id="ignoredReposTable"></div>
                 </div>
@@ -147,7 +149,8 @@
             </div>
         </div>
     </div>
-</div>
+</section>
+</main>
 
 <script src="/internal/gui/js/state.js"></script>
 <script src="/internal/gui/js/shared.js"></script>

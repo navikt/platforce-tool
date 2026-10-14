@@ -11,6 +11,8 @@ function browser(fetch) {
     const tabs = ["scanner", "targets", "ignored"].map(tab => ({
         dataset: { tab },
         classList: { add() {}, remove() {} },
+        attributes: {},
+        setAttribute(name, value) { this.attributes[name] = value; },
         listeners: {},
         addEventListener(event, listener) { this.listeners[event] = listener; }
     }));
@@ -100,6 +102,8 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
 
     for (const tab of app.tabs) {
         tab.listeners.click();
+        assert.equal(tab.attributes["aria-pressed"], "true");
+        assert.ok(app.tabs.filter(t => t !== tab).every(t => t.attributes["aria-pressed"] === "false"));
         for (const name of ["scanner", "targets", "ignored"]) {
             assert.equal(app.element(`${name}Tab`).style.display,
                 name === tab.dataset.tab ? "block" : "none");
@@ -124,6 +128,7 @@ test("bootstrap preserves startup order, selected team, cached security and unca
         calls.push([url, options]);
         return { ok: true, json: async () => data[url] };
     });
+
     loadGuiScripts(app.context);
     const renders = [];
     app.context.render = () => renders.push("scanner");
@@ -143,4 +148,46 @@ test("bootstrap preserves startup order, selected team, cached security and unca
     assert.equal(vm.runInContext("ignoredRepositories[0]", app.context), "ignored/repo");
     assert.equal(vm.runInContext("targetSecurityScan", app.context), security);
     assert.equal(vm.runInContext("progressInterval", app.context), 1);
+});
+
+test("native disclosure controls keep their expanded state in sync with visible details", () => {
+    const app = browser(() => new Promise(() => {}));
+    loadGuiScripts(app.context);
+    function classes(initial = []) {
+        const values = new Set(initial);
+        return {
+            contains: value => values.has(value),
+            toggle(value) {
+                if (values.has(value)) values.delete(value);
+                else values.add(value);
+            }
+        };
+    }
+    const section = { classList: classes() };
+    const attributes = {};
+    const toggle = {
+        closest: () => section,
+        setAttribute: (key, value) => { attributes[key] = value; }
+    };
+    const untrackedListener = app.documentListeners[1][1];
+    const event = { target: { closest: () => toggle }, stopPropagation() {} };
+    untrackedListener(event);
+    assert.equal(attributes["aria-expanded"], "true");
+    assert.ok(section.classList.contains("open"));
+    untrackedListener(event);
+    assert.equal(attributes["aria-expanded"], "false");
+
+    const details = { classList: classes(["hidden"]) };
+    const status = {
+        classList: classes(),
+        closest: () => ({ querySelector: () => details }),
+        setAttribute: (key, value) => { attributes[key] = value; }
+    };
+    app.documentListeners[2][1]({ target: { closest: () => status } });
+    assert.equal(attributes["aria-expanded"], "true");
+    assert.ok(!details.classList.contains("hidden"));
+    app.documentListeners[2][1]({ target: { closest: () => status } });
+    assert.equal(attributes["aria-expanded"], "false");
+    app.context.toggleTargetSecurityDetails(status);
+    assert.equal(attributes["aria-expanded"], "true");
 });

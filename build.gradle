@@ -74,6 +74,15 @@ test {
     testLogging {
         events "passed", "skipped", "failed"
     }
+
+    tasks.register('runLocalFrontend', JavaExec) {
+        group = 'application'
+        description = 'Serve the GUI on localhost:8080 with synthetic in-memory API data.'
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = 'no.nav.platforce.tool.localdev.LocalFrontendMainKt'
+        workingDir = projectDir
+    }
 }
 
 sourceSets {

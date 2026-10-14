@@ -15,6 +15,7 @@ document.addEventListener("click", e => {
     pill.classList.remove("status-unknown", "status-ahead");
     pill.classList.add("status-drafted");
     pill.classList.add("disabled");
+    pill.disabled = true;
 });
 
 document.getElementById("saveTargets")
@@ -31,9 +32,13 @@ document
 
             document
                 .querySelectorAll(".tab")
-                .forEach(t => t.classList.remove("active"));
+                .forEach(t => {
+                    t.classList.remove("active");
+                    t.setAttribute("aria-pressed", "false");
+                });
 
             tab.classList.add("active");
+            tab.setAttribute("aria-pressed", "true");
 
             const selected =
                 tab.dataset.tab;
@@ -84,6 +89,7 @@ document.addEventListener("click", (e) => {
     if (!section) return;
 
     section.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", String(section.classList.contains("open")));
 });
 
 document.addEventListener("click", event => {
@@ -97,6 +103,7 @@ document.addEventListener("click", event => {
     if (!details) return;
 
     details.classList.toggle("hidden");
+    status.setAttribute("aria-expanded", String(!details.classList.contains("hidden")));
 });
 
 async function init() {

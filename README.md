@@ -29,7 +29,42 @@ Frontend features live in `resources/gui/js`: `api`, `state`, `shared`, `scanner
 loads these as ordered classic scripts, sharing state and preserving existing
 inline handlers without a build tool; bootstrap runs last.
 
+The plain HTML/CSS interface uses Aksel-inspired controls, focus treatment and
+spacing, with a compact layout and text-labelled status colours retained.
+`styles.css` centralizes a light palette based on the Aksel `--ax-*` token
+values (https://aksel.nav.no/grunnleggende/styling/design-tokens) under local
+`--ui-*` variables. It does not load Aksel React components, fonts or CDN assets;
+Source Sans is used if installed, otherwise the system font. This is an
+Aksel-aligned application stylesheet, not the official component library or a
+claim of full accessibility compliance.
+
 ## Application behavior
+
+### Local frontend development
+
+Run `main` in
+`src/test/kotlin/no/nav/platforce/tool/localdev/LocalFrontendMain.kt` using the
+green arrow in IntelliJ, or run `./gradlew runLocalFrontend`. Open
+http://localhost:8080/internal/gui. The server binds only to IPv4 loopback;
+an optional first program argument selects another port in IntelliJ.
+
+This entry point does not construct `Application`, use authentication or a
+database, or call GitHub, NAIS, Gradle or OSV. It is test-source code and is
+excluded from the production artifact. Demo repositories include multiple teams,
+missing app access, an unscanned repository, untracked dependencies, version
+differences, synthetic vulnerabilities and transitive overrides. The security
+data is illustrative, not a real security assessment.
+
+Targets, notes, ignored repositories and selected team are stored in memory
+until restart. Refresh updates synthetic inventories, SCAN simulates polling
+through RUNNING to READY, and Create PR opens a local confirmation page without
+creating anything externally. Repository comparison and security enrichment
+reuse the production logic. Fixtures live in `LocalFrontendFixtures.kt`.
+HTML, CSS and JavaScript are read directly from `src/main/resources/gui`:
+edit and reload the browser without rebuilding. The local entry point finds
+that directory from the working directory or its ancestors.
+
+### Production behavior
 
 The GUI at `/internal/gui` lists repositories from NAIS Console, compares their
 Gradle dependencies with user-maintained targets, scans target versions using

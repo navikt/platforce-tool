@@ -62,6 +62,8 @@ function renderTeamTabs(teams) {
                 : "");
 
         tab.textContent = team;
+        tab.type = "button";
+        tab.setAttribute("aria-pressed", String(team === selectedTeam));
 
         tab.addEventListener("click", () => {
 
@@ -170,12 +172,12 @@ function renderRepo(repoView, scanMap, container) {
         isScanned
             ? (
                 noteExists
-                    ? `<span class="note-icon" data-has-note="true" data-repo="${repo}">
+                    ? `<button type="button" class="note-icon" data-has-note="true" data-repo="${repo}" aria-label="Edit note for ${repo}">
                         ${EDIT_NOTE_SVG}
-                   </span>`
-                    : `<span class="note-icon" data-repo="${repo}">
+                   </button>`
+                    : `<button type="button" class="note-icon" data-repo="${repo}" aria-label="Add note for ${repo}">
                         ${CREATE_NOTE_SVG}
-                   </span>`
+                   </button>`
             )
             : ''
     }
@@ -207,12 +209,12 @@ function renderRepo(repoView, scanMap, container) {
                                onclick="event.stopPropagation(); createPr('${repo}')">
                                Create PR
                            </button>`
-                    : `<span class="pr-button disabled">Create PR</span>`
+                    : `<button type="button" class="pr-button" disabled>Create PR</button>`
             }
             `
     }
 
-                    ${isScanned ? `<div class="repo-toggle">▼</div>` : ``}
+                    ${isScanned ? `<button type="button" class="repo-toggle" aria-expanded="false" aria-label="Details for ${repo}"><span aria-hidden="true">▼</span></button>` : ``}
                 </div>
             </div>
 
@@ -223,7 +225,7 @@ function renderRepo(repoView, scanMap, container) {
     }
 
             <div class="repo-note-editor hidden">
-                <textarea>${noteText}</textarea>
+                <textarea aria-label="Note for ${repo}">${noteText}</textarea>
                 <button class="save-note-btn">Save</button>
             </div>
 
@@ -323,14 +325,15 @@ function renderRepo(repoView, scanMap, container) {
                                 </div>
                 
                                 <div>
-                                    <span
+                                    <${hasDetails || status === "AHEAD" ? 'button type="button"' : "span"}
                                         class="status-pill ${statusClass} ${status === "AHEAD" ? "target-draft-pill" : ""}"
                                         data-kind="${f.kind}"
                                         data-key="${f.key}"
                                         data-version="${f.currentVersion || ""}"
-                                        ${hasDetails ? 'data-toggle-details="true"' : ""}>
+                                        ${hasDetails ? 'data-toggle-details="true" aria-expanded="false"' : ""}
+                                        ${status === "AHEAD" ? `aria-label="Draft ${f.key} at ${f.currentVersion}"` : ""}>
                                         ${displayStatus}
-                                    </span>
+                                    </${hasDetails || status === "AHEAD" ? "button" : "span"}>
                                 </div>
                             </div>
                             ${details}
@@ -343,9 +346,9 @@ function renderRepo(repoView, scanMap, container) {
                 (untrackedDependencies.length || untrackedPlugins.length)
                     ? `
                         <div class="untracked-section">
-                            <div class="untracked-toggle">
+                            <button type="button" class="untracked-toggle" aria-expanded="false">
                                 Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length})
-                            </div>
+                            </button>
                         
                             <div class="untracked-content">
                                 <div class="compact-table">
@@ -361,12 +364,13 @@ function renderRepo(repoView, scanMap, container) {
                                         </div>
 
                                         <div>
-                                            <span class="status-pill status-unknown target-draft-pill"
+                                            <button type="button" class="status-pill status-unknown target-draft-pill"
+                                                aria-label="Draft ${plugin.key} at ${plugin.version}"
                                                 data-kind="PLUGIN"
                                                 data-key="${plugin.key}"
                                                 data-version="${plugin.version}">
                                                 UNTRACKED
-                                            </span>
+                                            </button>
                                         </div>
                                     </div>
                                 `).join("")}
@@ -383,12 +387,13 @@ function renderRepo(repoView, scanMap, container) {
                                         </div>
 
                                         <div>
-                                            <span class="status-pill status-unknown target-draft-pill"
+                                            <button type="button" class="status-pill status-unknown target-draft-pill"
+                                                aria-label="Draft ${dep.key} at ${dep.version}"
                                                 data-kind="DEPENDENCY"
                                                 data-key="${dep.key}"
                                                 data-version="${dep.version}">
                                                 UNTRACKED
-                                            </span>
+                                            </button>
                                         </div>
                                     </div>
                                 `).join("")}
@@ -412,6 +417,7 @@ function renderRepo(repoView, scanMap, container) {
         noteIcon.addEventListener("click", e => {
             e.stopPropagation();
             el.classList.add("open");
+            el.querySelector(".repo-toggle")?.setAttribute("aria-expanded", "true");
             el.querySelector(".repo-note-editor").classList.toggle("hidden");
         });
     }
@@ -426,8 +432,12 @@ function renderRepo(repoView, scanMap, container) {
         render(lastLoadedData);
     });
 
-    el.querySelector(".repo-header").addEventListener("click", () => {
-        if (isScanned) el.classList.toggle("open");
+    el.querySelector(".repo-header").addEventListener("click", event => {
+        if (event.target.closest("a, button") && !event.target.closest(".repo-toggle")) return;
+        if (isScanned) {
+            el.classList.toggle("open");
+            el.querySelector(".repo-toggle")?.setAttribute("aria-expanded", String(el.classList.contains("open")));
+        }
     });
 
     container.appendChild(el);

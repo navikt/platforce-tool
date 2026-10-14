@@ -41,9 +41,9 @@ function renderIgnoredRepositories() {
                 "target-row";
 
             row.innerHTML = `
-                <input class="key" value="${repo}"/>
+                <input class="key" value="${repo}" aria-label="Ignored repository ${escapeHtml(repo)}"/>
 
-                <button class="icon-btn remove">
+                <button class="icon-btn remove" aria-label="Stop ignoring ${escapeHtml(repo)}">
                     ${TRASH_SVG}
                 </button>
             `;
@@ -77,9 +77,10 @@ function renderIgnoredRepositories() {
     <input
         class="key new-ignore-input"
         placeholder="owner/repo"
+        aria-label="Repository to ignore"
     />
 
-    <button class="icon-btn add-btn">
+    <button class="icon-btn add-btn" aria-label="Ignore repository">
         ${ADD_SVG}
     </button>
 `;

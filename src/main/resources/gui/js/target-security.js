@@ -14,16 +14,20 @@ function toggleTargetSecurityDetails(button) {
         "expanded",
         !details.classList.contains("hidden")
     );
+    button.setAttribute("aria-expanded", String(!details.classList.contains("hidden")));
 }
 
 function securityStatusHtml(security) {
     if (!security) {
-        return `<div></div>`;
+        return "";
     }
 
     return `
         <button
             class="target-status-pill ${securityStatusClass(security.status)}"
+            type="button"
+            aria-expanded="false"
+            aria-label="${escapeHtml(security.key)}: ${escapeHtml(security.status)}. Show security details"
             title="Show security details"
         >
             ${securityStatusLabel(security.status)}

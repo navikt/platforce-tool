@@ -61,10 +61,13 @@ function renderGradleVersion(version) {
     const keyInput = document.createElement("input");
     keyInput.className = "key";
     keyInput.value = "gradle-wrapper";
+    keyInput.setAttribute("aria-label", "Gradle wrapper");
+    keyInput.readOnly = true;
 
     const versionInput = document.createElement("input");
     versionInput.className = "version";
     versionInput.value = version;
+    versionInput.setAttribute("aria-label", "Gradle target version");
 
     row.replaceChildren(keyInput, versionInput);
 
@@ -91,21 +94,23 @@ function renderTable(containerId, entries, type) {
         row.className = `target-row${drafted ? " drafted" : ""}`;
         row.innerHTML = `
         
-            <input class="key" value="${key}" />
-            <input class="version" value="${version}" />
+            <input class="key" value="${key}" aria-label="${escapeHtml(type)} key: ${escapeHtml(key)}" />
+            <input class="version" value="${version}" aria-label="Target version for ${escapeHtml(key)}" />
             ${securityStatusHtml(securityTarget)}
             ${
             type === "dependency"
                 ? `
                     <button
                         class="icon-btn transient-btn ${isTransient ? "active" : ""}"
+                        aria-label="Transient override for ${escapeHtml(key)}"
+                        aria-pressed="${isTransient}"
                         title="${isTransient ? "Transient dependency" : "Mark as transient"}">
                         ${BANDAGE_SVG}
                     </button>
                 `
                 : ""
         }
-            <button class="icon-btn remove-btn" title="Remove">
+            <button class="icon-btn remove-btn" title="Remove" aria-label="Remove ${escapeHtml(key)}">
                 ${TRASH_SVG}
             </button>
         
@@ -140,6 +145,7 @@ function renderTable(containerId, entries, type) {
                     "active",
                     nowTransient
                 );
+                button.setAttribute("aria-pressed", String(nowTransient));
 
                 button.title =
                     nowTransient
@@ -166,9 +172,9 @@ function renderTable(containerId, entries, type) {
     const addRow = document.createElement("div");
     addRow.className = "target-row";
     addRow.innerHTML = `
-        <input class="key" placeholder="group:name or plugin.id" />
-        <input class="version" placeholder="version" />
-        <button class="icon-btn add-btn" title="add">
+        <input class="key" placeholder="group:name or plugin.id" aria-label="New ${type} key" />
+        <input class="version" placeholder="version" aria-label="New ${type} version" />
+        <button class="icon-btn add-btn" title="Add" aria-label="Add ${type}">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12.75 5.5C12.75 5.08579 12.4142 4.75 12 4.75C11.5858 4.75 11.25 5.08579 11.25 5.5V11.25H5.5C5.08579 11.25 4.75 11.5858 4.75 12C4.75 12.4142 5.08579 12.75 12.75 12.75H11.25V18.5C11.25 18.9142 11.5858 19.25 12 19.25C12.4142 19.25 12.75 18.9142 12.75 18.5V12.75H18.5C18.9142 12.75 19.25 12.4142 19.25 12C19.25 11.5858 18.9142 11.25 18.5 11.25H12.75V5.5Z" fill="currentColor"/>
             </svg>
@@ -190,10 +196,10 @@ function renderTable(containerId, entries, type) {
         newRow.className = "target-row";
         newRow.innerHTML = `
        
-            <input class="key" value="${k}" />
-            <input class="version" value="${v}" />
+            <input class="key" value="${k}" aria-label="${escapeHtml(type)} key: ${escapeHtml(k)}" />
+            <input class="version" value="${v}" aria-label="Target version for ${escapeHtml(k)}" />
             ${securityStatusHtml(securityTarget)}
-            <button class="icon-btn remove-btn" title="Remove">
+            <button class="icon-btn remove-btn" title="Remove" aria-label="Remove ${escapeHtml(k)}">
                 ${TRASH_SVG}
             </button>
         
