@@ -20,6 +20,9 @@ document.addEventListener("click", e => {
 document.getElementById("saveTargets")
     .addEventListener("click", saveTargets);
 
+document.getElementById("closeTargetSaveMessage")
+    .addEventListener("click", closeTargetSaveMessage);
+
 document.getElementById("refreshBtn")
     .addEventListener("click", refresh);
 

@@ -273,11 +273,44 @@ async function applySecurityUpgrade(button, key, version) {
     button.remove();
 }
 
+let targetSaveMessageTimer = null;
+let targetSaveMessageHideTimer = null;
+
+function closeTargetSaveMessage(immediate = false) {
+    clearTimeout(targetSaveMessageTimer);
+    clearTimeout(targetSaveMessageHideTimer);
+    targetSaveMessageTimer = null;
+    targetSaveMessageHideTimer = null;
+    const message = document.getElementById("targetSaveMessage");
+    const finish = () => {
+        message.hidden = true;
+        document.getElementById("targetSaveMessageText").textContent = "";
+        targetSaveMessageHideTimer = null;
+    };
+    if (immediate === true || message.hidden) {
+        finish();
+    } else {
+        message.style.setProperty("--save-banner-height", `${message.scrollHeight}px`);
+        message.classList.add("save-banner-leaving");
+        targetSaveMessageHideTimer = setTimeout(finish, 300);
+    }
+}
+
+function showTargetSaveMessage(text, success) {
+    closeTargetSaveMessage(true);
+    const message = document.getElementById("targetSaveMessage");
+    message.className = `save-banner ${success ? "save-banner-success" : "save-banner-error"}`;
+    document.getElementById("targetSaveMessageText").textContent = text;
+    message.hidden = false;
+    message.style.setProperty("--save-banner-height", `${message.scrollHeight}px`);
+    if (success) {
+        targetSaveMessageTimer = setTimeout(closeTargetSaveMessage, 6000);
+    }
+}
+
 async function saveTargets() {
     const payload = readTargetInputs();
-    const message = document.getElementById("targetSaveMessage");
-    message.hidden = true;
-    message.textContent = "";
+    closeTargetSaveMessage(true);
     let saved = false;
     try {
         const response = await fetch("/internal/api/target-versions/update", {
@@ -305,15 +338,11 @@ async function saveTargets() {
 
         renderTargetTables();
         await loadData();
-        message.className = "save-banner save-banner-success";
-        message.textContent = "Target versions updated";
-        message.hidden = false;
+        showTargetSaveMessage("Target versions updated", true);
     } catch (error) {
         console.error("Could not save target versions", error);
-        message.className = "save-banner save-banner-error";
-        message.textContent = saved
+        showTargetSaveMessage(saved
             ? `Target versions saved, but repository data could not be refreshed: ${error.message}`
-            : error.message;
-        message.hidden = false;
+            : error.message, false);
     }
 }

@@ -47,7 +47,10 @@
 
 <div id="targetsTab" style="display:none">
 
-    <div id="targetSaveMessage" class="save-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+    <div id="targetSaveMessage" class="save-banner" hidden>
+        <span id="targetSaveMessageText" role="status" aria-live="polite" aria-atomic="true"></span>
+        <button id="closeTargetSaveMessage" class="save-banner-close" type="button" aria-label="Dismiss notification">&times;</button>
+    </div>
 
     <div id="targetVersionsCard" class="repo open">
 

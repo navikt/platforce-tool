@@ -10,13 +10,15 @@ function gui() {
     const steps = [];
     const calls = [];
     const rows = new Map();
+    const timers = new Map();
+    let timerId = 0;
     let targetRenders = 0;
 
     function element(id) {
         if (!elements.has(id)) {
             elements.set(id, {
                 listeners: {},
-                style: {},
+                style: { setProperty() {} },
                 classList: { add() {}, remove() {}, toggle() {} },
                 addEventListener(event, listener) { this.listeners[event] = listener; },
                 insertAdjacentHTML() {}
@@ -34,7 +36,18 @@ function gui() {
         },
         console: { log() {}, warn() {}, error() {} },
         alert: message => alerts.push(message),
-        setTimeout: callback => callback(),
+        setTimeout: (callback, delay) => {
+            if (delay === 6000 || delay === 300) {
+                const id = ++timerId;
+                timers.set(id, () => {
+                    timers.delete(id);
+                    callback();
+                });
+                return id;
+            }
+            callback();
+        },
+        clearTimeout: id => timers.delete(id),
         setInterval: () => 1,
         clearInterval() {},
         // Leave automatic page initialization pending; each test drives the real flow explicitly.
@@ -61,7 +74,7 @@ function gui() {
     }
 
     return {
-        context, calls, alerts, rendered, steps, rows, element, responses,
+        context, calls, alerts, rendered, steps, rows, element, responses, timers,
         targetRenders: () => targetRenders,
         value: expression => vm.runInContext(expression, context)
     };
@@ -170,7 +183,7 @@ test("saving targets clears old security and reloads comparisons", async () => {
     assert.equal(app.value("targetScanGeneration"), 1);
     assert.equal(app.rendered.length, 1);
     assert.deepEqual(app.alerts, []);
-    assert.equal(app.element("targetSaveMessage").textContent, "Target versions updated");
+    assert.equal(app.element("targetSaveMessageText").textContent, "Target versions updated");
     assert.equal(app.element("targetSaveMessage").className, "save-banner save-banner-success");
     assert.equal(app.element("targetSaveMessage").hidden, false);
 });
@@ -185,7 +198,7 @@ test("failed target save retains existing security and does not report success",
     assert.equal(app.value("targetScanGeneration"), 0);
     assert.equal(app.rendered.length, 0);
     assert.deepEqual(app.alerts, []);
-    assert.equal(app.element("targetSaveMessage").textContent, "Failed to save target versions: HTTP 500");
+    assert.equal(app.element("targetSaveMessageText").textContent, "Failed to save target versions: HTTP 500");
     assert.equal(app.element("targetSaveMessage").className, "save-banner save-banner-error");
     assert.equal(app.element("targetSaveMessage").hidden, false);
 });
@@ -196,22 +209,60 @@ test("successful save followed by failed repository reload reports partial succe
     await app.context.saveTargets();
     assert.equal(app.value("targetScanGeneration"), 1);
     assert.equal(app.element("targetSaveMessage").className, "save-banner save-banner-error");
-    assert.match(app.element("targetSaveMessage").textContent, /^Target versions saved, but repository data could not be refreshed:/);
+    assert.match(app.element("targetSaveMessageText").textContent, /^Target versions saved, but repository data could not be refreshed:/);
     assert.deepEqual(app.alerts, []);
 });
 
 test("new save clears stale feedback until the response arrives", async () => {
     const app = gui();
-    app.element("targetSaveMessage").textContent = "Previous success";
+    app.element("targetSaveMessageText").textContent = "Previous success";
     let finish;
     app.context.fetch = () => new Promise(resolve => { finish = resolve; });
     const pending = app.context.saveTargets();
     assert.equal(app.element("targetSaveMessage").hidden, true);
-    assert.equal(app.element("targetSaveMessage").textContent, "");
+    assert.equal(app.element("targetSaveMessageText").textContent, "");
     finish({ ok: false, status: 400 });
     await pending;
     assert.equal(app.element("targetSaveMessage").hidden, false);
-    assert.match(app.element("targetSaveMessage").textContent, /HTTP 400/);
+    assert.match(app.element("targetSaveMessageText").textContent, /HTTP 400/);
+});
+
+test("success banner expires after six seconds and errors stay until dismissed", () => {
+    const app = gui();
+    app.context.showTargetSaveMessage("Saved", true);
+    assert.equal(app.timers.size, 1);
+    const expire = [...app.timers.values()][0];
+    expire();
+    assert.equal(app.element("targetSaveMessage").hidden, false);
+    [...app.timers.values()][0]();
+    assert.equal(app.element("targetSaveMessage").hidden, true);
+    app.context.showTargetSaveMessage("Failed", false);
+    assert.equal(app.timers.size, 0);
+    assert.equal(app.element("targetSaveMessage").hidden, false);
+    app.element("closeTargetSaveMessage").listeners.click();
+    assert.equal(app.element("targetSaveMessage").hidden, false);
+    [...app.timers.values()][0]();
+    assert.equal(app.element("targetSaveMessage").hidden, true);
+});
+
+test("new feedback cancels a pending exit animation timeout", () => {
+    const app = gui();
+    app.context.showTargetSaveMessage("Saved", true);
+    app.context.closeTargetSaveMessage();
+    assert.equal(app.timers.size, 1);
+    app.context.showTargetSaveMessage("New error", false);
+    assert.equal(app.timers.size, 0);
+    assert.equal(app.element("targetSaveMessage").hidden, false);
+    assert.equal(app.element("targetSaveMessageText").textContent, "New error");
+});
+
+test("replacing a success banner cancels its timeout so a new error remains visible", () => {
+    const app = gui();
+    app.context.showTargetSaveMessage("Saved", true);
+    app.context.showTargetSaveMessage("Failed", false);
+    assert.equal(app.timers.size, 0);
+    assert.equal(app.element("targetSaveMessageText").textContent, "Failed");
+    assert.equal(app.element("targetSaveMessage").hidden, false);
 });
 
 test("capturing drafts preserves unsaved target inputs before a scan rerenders the table", () => {
