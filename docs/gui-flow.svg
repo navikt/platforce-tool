@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1420" role="img" aria-labelledby="gui-title gui-description">
+  <title id="gui-title">GUI JavaScript files and user interaction flow</title>
+  <desc id="gui-description">Index loads ordered classic scripts sharing state and helpers. Bootstrap initializes targets, repository data and cached security. Scanner renders repositories; targets handles editing and drafts; scan-status orchestrates polling and security refresh; target-security renders security details; ignored manages exclusions; api wraps common HTTP calls.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8295b0"/></marker>
+    <marker id="green-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#62d29a"/></marker>
+    <style>
+      .bg { fill: #0b1120; }
+      .title { font: 700 27px system-ui, sans-serif; fill: #edf3ff; text-anchor: middle; }
+      .subtitle { font: 15px system-ui, sans-serif; fill: #9eafc8; text-anchor: middle; }
+      .card { fill: #151e2e; stroke: #34445c; stroke-width: 1.5; }
+      .auth { fill: #14243a; stroke: #42658f; }
+      .cache { fill: #14271f; stroke: #397858; }
+      .decision { fill: #282315; stroke: #80642e; }
+      .text { font: 600 17px system-ui, sans-serif; fill: #e7eefb; }
+      .file { font: 600 14px ui-monospace, monospace; fill: #8fbeff; }
+      .detail { font: 14px system-ui, sans-serif; fill: #a5b4ca; }
+      .connector { fill: none; stroke: #8295b0; stroke-width: 2; marker-end: url(#arrow); }
+      .green { fill: none; stroke: #62d29a; stroke-width: 2; marker-end: url(#green-arrow); }
+      .label { font: 700 11px system-ui, sans-serif; fill: #a5b4ca; letter-spacing: 1px; }
+    </style>
+  </defs>
+  <rect class="bg" width="1120" height="1420" rx="20"/>
+  <text class="title" x="560" y="46">Inside the original GUI</text>
+  <text class="subtitle" x="560" y="73">Files under src/main/resources/gui/js and their roles in the user journey</text>
+
+  <rect class="card" x="240" y="106" width="640" height="130" rx="15"/>
+  <text class="text" x="262" y="138">index.html loads ordered classic scripts</text>
+  <text class="detail" x="262" y="164">state → shared → api → scanner → targets → target-security</text>
+  <text class="detail" x="262" y="188">→ scan-status → ignored → bootstrap</text>
+  <text class="detail" x="262" y="213">Shared browser scope, not ES modules; styles.css controls presentation</text>
+  <path class="connector" d="M560 236V278"/>
+
+  <rect class="card cache" x="25" y="284" width="320" height="130" rx="15"/>
+  <text class="file" x="45" y="316">state.js</text>
+  <text class="detail" x="45" y="343">DOM references and shared mutable state:</text>
+  <text class="detail" x="45" y="365">targets, drafts, security, selected team,</text>
+  <text class="detail" x="45" y="387">notes, ignores and polling flags</text>
+  <rect class="card auth" x="380" y="284" width="360" height="130" rx="15"/>
+  <text class="file" x="400" y="316">bootstrap.js</text>
+  <text class="detail" x="400" y="343">Registers tab/button/delegated click handlers</text>
+  <text class="detail" x="400" y="365">init(): team → targets → repo data →</text>
+  <text class="detail" x="400" y="387">cached security → target render → polling</text>
+  <rect class="card" x="775" y="284" width="320" height="130" rx="15"/>
+  <text class="file" x="795" y="316">shared.js</text>
+  <text class="detail" x="795" y="343">Shared SVG icons and escapeHtml()</text>
+  <text class="detail" x="795" y="365">Used by feature renderers</text>
+  <text class="detail" x="795" y="387">No startup or network side effects</text>
+  <path class="connector" d="M345 349H374"/>
+  <path class="connector" d="M775 349H746"/>
+  <path class="connector" d="M560 414V455H195V485"/>
+  <path class="connector" d="M560 455V485"/>
+  <path class="connector" d="M560 455H925V485"/>
+  <text class="label" x="581" y="449">USER INTERACTIONS</text>
+
+  <rect class="card auth" x="25" y="491" width="340" height="184" rx="15"/>
+  <text class="file" x="45" y="522">scanner.js</text>
+  <text class="text" x="45" y="548">Dependency Scanner</text>
+  <text class="detail" x="45" y="575">loadData(): repos + scans + notes + ignores</text>
+  <text class="detail" x="45" y="597">Groups teams; renders repository findings</text>
+  <text class="detail" x="45" y="619">Refresh one repo, edit notes, create PR</text>
+  <text class="detail" x="45" y="641">Ahead/untracked pills draft target versions</text>
+  <text class="detail" x="45" y="663">Repo/details toggles and version arrows</text>
+
+  <rect class="card decision" x="390" y="491" width="340" height="184" rx="15"/>
+  <text class="file" x="410" y="522">targets.js</text>
+  <text class="text" x="410" y="548">Target Versions</text>
+  <text class="detail" x="410" y="575">Edit plugins, dependencies and wrapper</text>
+  <text class="detail" x="410" y="597">Add/remove rows; toggle transient flags</text>
+  <text class="detail" x="410" y="619">Capture unsaved drafts before rerender</text>
+  <text class="detail" x="410" y="641">Save clears security and reloads repo data</text>
+  <text class="detail" x="410" y="663">Apply suggested security upgrades</text>
+
+  <rect class="card" x="755" y="491" width="340" height="184" rx="15"/>
+  <text class="file" x="775" y="522">ignored.js</text>
+  <text class="text" x="775" y="548">Ignored Repositories</text>
+  <text class="detail" x="775" y="575">Add/remove ignored repository entries</text>
+  <text class="detail" x="775" y="597">Persist via api.js</text>
+  <text class="detail" x="775" y="619">Reload/rerender the scanner after changes</text>
+  <text class="detail" x="775" y="641">scanner.js filters the ignored names</text>
+  <path class="connector" d="M195 675V704H560V741"/>
+  <path class="connector" d="M560 675V741"/>
+  <text class="label" x="579" y="728">REFRESH SCAN / SCAN TARGETS</text>
+
+  <rect class="card auth" x="240" y="747" width="640" height="160" rx="15"/>
+  <text class="file" x="262" y="778">scan-status.js</text>
+  <text class="text" x="262" y="806">Orchestration, progress and security lifecycle</text>
+  <text class="detail" x="262" y="832">refresh(): start repository refresh → reload → finish progress polling</text>
+  <text class="detail" x="262" y="854">scanTargetSecurity(): resolve targets → security scan → poll until READY</text>
+  <text class="detail" x="262" y="876">Generation/fingerprint checks reject stale results; failures update scan steps</text>
+  <text class="detail" x="262" y="898">On READY: preserve drafts → render targets → loadData() enriches repo view</text>
+  <path class="green" d="M880 827H919"/>
+  <path class="green" d="M240 827H195V681"/>
+  <text class="label" x="85" y="809">READY: RELOAD</text>
+  <rect class="card cache" x="925" y="745" width="170" height="127" rx="13"/>
+  <text class="text" x="942" y="776">Repo enrichment</text>
+  <text class="detail" x="942" y="801">Backend read uses</text>
+  <text class="detail" x="942" y="823">cached inventory +</text>
+  <text class="detail" x="942" y="845">matching security</text>
+
+  <path class="connector" d="M560 907V949"/>
+  <rect class="card cache" x="240" y="955" width="640" height="124" rx="15"/>
+  <text class="file" x="262" y="986">target-security.js</text>
+  <text class="text" x="262" y="1013">Presentation of target security results</text>
+  <text class="detail" x="262" y="1037">Status labels/classes, expandable vulnerabilities and override explanations</text>
+  <text class="detail" x="262" y="1059">Used by targets.js; upgrade controls call applySecurityUpgrade() in targets.js</text>
+  <path class="connector" d="M560 1079V1121"/>
+
+  <rect class="card auth" x="240" y="1127" width="640" height="140" rx="15"/>
+  <text class="file" x="262" y="1158">api.js + feature-specific fetch calls</text>
+  <text class="text" x="262" y="1185">Existing backend HTTP contracts</text>
+  <text class="detail" x="262" y="1209">api.js: common data reads, notes, ignored repositories and selected team</text>
+  <text class="detail" x="262" y="1231">scanner.js: PR + individual refresh; targets.js: target save</text>
+  <text class="detail" x="262" y="1253">scan-status.js: refresh-all + resolution/security start and polling</text>
+  <path class="green" d="M560 1267V1309"/>
+
+  <rect class="card cache" x="240" y="1315" width="640" height="73" rx="15"/>
+  <text class="text" x="560" y="1344" text-anchor="middle">Same GUI, real backend or local mock server</text>
+  <text class="detail" x="560" y="1368" text-anchor="middle">The files share state and calls; arrows show responsibilities, not module imports</text>
+</svg>

@@ -29,7 +29,59 @@ Frontend features live in `resources/gui/js`: `api`, `state`, `shared`, `scanner
 loads these as ordered classic scripts, sharing state and preserving existing
 inline handlers without a build tool; bootstrap runs last.
 
+### Typical user flow
+
+#### GUI files
+
+![GUI files and their roles in startup, editing, scanning and rendering](docs/gui-flow.svg)
+
+The GUI scripts share browser scope. `bootstrap.js` wires interactions and
+startup, `state.js` holds shared state, and the feature files own rendering and
+user actions. `api.js` contains common requests; scan orchestration, PR creation,
+individual refresh and target saving also make requests in their feature files.
+The diagram shows responsibilities rather than an ES-module dependency graph.
+
+`styles.css` is grouped into page/navigation, common controls, repository cards,
+summary badges, findings/untracked rows, target editing, scan progress, security
+details and visibility utilities. Existing rule overrides retain their order.
+
+#### Backend packages
+
+![Package flow from dependency scan through security enrichment to pull request](docs/user-flow.svg)
+
+The diagram follows **Refresh scan → Target Versions SCAN → enriched repository
+view → Create PR**. Repository inventories are cached per user; comparison and
+security enrichment happen on reads, not by rewriting the inventory cache.
+Security scanning resolves the saved target dependencies, not each repository's
+build. When it completes, the GUI reloads repository data without another
+GitHub file scan. PR creation uses that same current comparison/enrichment path.
+
+Saving targets invalidates that user's resolution and security results. A
+matching completed Gradle resolution can be reused, while an explicit security
+scan refreshes OSV findings. The diagram shows the successful journey; scan
+failures are exposed to the GUI and obsolete jobs cannot publish results.
+
 ## Application behavior
+
+### Local mock GUI
+
+Run `main` in
+`src/test/kotlin/no/nav/platforce/tool/localdev/LocalFrontendMain.kt` using the
+green arrow in IntelliJ, or run `./gradlew runLocalFrontend`. Open
+http://localhost:8080/internal/gui. An optional first program argument selects
+a different port. The server binds only to IPv4 loopback.
+
+This serves the original HTML, CSS and JavaScript directly from
+`src/main/resources/gui`; edit and reload without rebuilding. No React, Node
+build, credentials, database or external API access is required. Mock data
+includes multiple teams, version differences, missing app access, unscanned
+repositories, synthetic vulnerabilities and transitive overrides.
+
+Targets, notes, ignored repositories and selected team are kept in memory until
+restart. Refresh and security scanning are simulated; Create PR opens a local
+confirmation page without contacting GitHub. Fixtures live in
+`LocalFrontendFixtures.kt`. This test-source entry point is excluded from the
+production artifact and does not modify production routing or authentication.
 
 The GUI at `/internal/gui` lists repositories from NAIS Console, compares their
 Gradle dependencies with user-maintained targets, scans target versions using
@@ -38,50 +90,4 @@ Gradle resolution and OSV, and creates dependency update pull requests.
 The HTTP surface consists of the GUI and its API calls, operational endpoints
 (`/internal/isAlive`, `/internal/isReady`, `/internal/metrics`, `/internal/hello`,
 `/internal/files`), and database administration (`/internal/clearDb`,
-`/internal/initDb`, `/internal/add-transient`). Experimental debug, Dependabot,
-SBOM and deps.dev endpoints are no longer exposed. User authentication for the
-GUI is handled by the NAIS Wonderwall sidecar.
-
-Repository inventories, refresh progress, target resolution and security scan
-results are cached separately for each authenticated `preferred_username`.
-Repository comparisons are calculated from the cached inventory and the user's
-current targets on every read. Completing a security scan reloads the repository
-view immediately; it does not require another repository scan.
-
-Target changes invalidate only that user's resolution and security results.
-Fingerprints include dependency, plugin and Gradle versions as well as transient
-dependency flags. Obsolete scan jobs cannot publish results after invalidation.
-Explicitly running SCAN again refreshes OSV information even when targets have
-not changed; ordinary reads reuse the latest matching result. Caches are
-in-memory and reset on deployment. The GitHub App installation token and Gradle
-distribution/artifact downloads are infrastructure resources, not user scan
-results.
-
-Run backend regression tests with `./gradlew test` and GUI flow tests with
-`node --test src/test/js/*.test.js`. Neither requires Wonderwall or live services.
-
-`/internal/files` shows debug artifacts from the signed-in user's latest
-executed Gradle resolution. Each run has a separate directory under
-`/tmp/files/<hashed-user>/<run-id>`; the browser cannot access other users'
-directories. These files are ephemeral and disappear on deployment.
-
-The artifacts include the generated `build.gradle`,
-`gradle-unresolved-dependencies.txt` (requested coordinates, context and failure
-reason), `gradle-output.txt`, and `gradle-resolution-report.json`. The JSON report
-records status, timestamps, target fingerprint, configured and executed Gradle
-versions, total wall-clock time, project generation, Gradle process and parsing
-times. It also contains the combined configuration and each individual
-dependency's resolution/graph traversal time, in execution order. The separate
-`gradle-configuration-timings.json` contains the Gradle task measurements.
-`gradleOutsideTaskMs` measures process time outside the measured task, including
-startup, configuration and shutdown.
-
-Times are milliseconds and exclude queue wait, OSV scanning and temporary
-project cleanup. Each execution currently uses a fresh `GRADLE_USER_HOME`, and
-later configurations may benefit from downloads made by the combined resolution.
-Failed executions retain available artifacts and a failure report. An empty
-unresolved file means the task found no unresolved dependencies; a placeholder
-indicates the task never started. Cached resolution reuse does not generate a
-new report: the files still describe the latest actual execution. Old run
-directories remain on disk for the lifetime of the pod, but the browser exposes
-only the latest run.
+`/internal/initDb`, `/internal/add-transient`).

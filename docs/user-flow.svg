@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 2040" role="img" aria-labelledby="flow-title flow-description">
+  <title id="flow-title">Platforce user flow and code packages</title>
+  <desc id="flow-description">An authenticated user refreshes repository inventories, sees comparisons against saved targets, runs Gradle resolution and OSV security scanning, receives enriched comparisons without rescanning repositories, and creates a GitHub pull request. Inventories and jobs are user-isolated; changing targets invalidates resolution and security results.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#8295b0"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#62d29a"/>
+    </marker>
+    <style>
+      .bg { fill: #0b1120; }
+      .title { font: 700 27px system-ui, sans-serif; fill: #edf3ff; text-anchor: middle; }
+      .subtitle { font: 15px system-ui, sans-serif; fill: #9eafc8; text-anchor: middle; }
+      .card { fill: #151e2e; stroke: #34445c; stroke-width: 1.5; }
+      .auth { fill: #14243a; stroke: #42658f; }
+      .decision { fill: #282315; stroke: #80642e; }
+      .cache { fill: #14271f; stroke: #397858; }
+      .text { font: 600 17px system-ui, sans-serif; fill: #e7eefb; }
+      .detail { font: 14px system-ui, sans-serif; fill: #a5b4ca; }
+      .package { font: 600 13px ui-monospace, monospace; fill: #8fbeff; }
+      .step { fill: #315c91; }
+      .number { font: 700 13px system-ui, sans-serif; fill: white; text-anchor: middle; }
+      .connector { fill: none; stroke: #8295b0; stroke-width: 2; marker-end: url(#arrow); }
+      .green { fill: none; stroke: #62d29a; stroke-width: 2; marker-end: url(#arrow-green); }
+      .branch { font: 700 11px system-ui, sans-serif; fill: #a5b4ca; letter-spacing: 1px; }
+      .phase { font: 700 12px system-ui, sans-serif; fill: #9eafc8; letter-spacing: 1px; }
+    </style>
+  </defs>
+  <rect class="bg" width="1120" height="2040" rx="20"/>
+  <text class="title" x="560" y="46">From repository inventory to pull request</text>
+  <text class="subtitle" x="560" y="73">Typical GUI journey and the packages behind each step</text>
+  <text class="subtitle" x="560" y="96">Backend packages are relative to no.nav.platforce.tool</text>
+
+  <text class="phase" x="35" y="155">IDENTITY</text>
+  <rect class="card auth" x="280" y="120" width="560" height="112" rx="15"/>
+  <circle class="step" cx="311" cy="176" r="17"/><text class="number" x="311" y="181">1</text>
+  <text class="text" x="341" y="151">Open GUI through Wonderwall</text>
+  <text class="package" x="341" y="176">user / Application.kt</text>
+  <text class="detail" x="341" y="198">Wonderwall authenticates; userContext() reads preferred_username</text>
+  <text class="detail" x="341" y="218">Application wires services and routes; user API replies are no-store</text>
+  <path class="connector" d="M560 232V270"/>
+
+  <rect class="card" x="280" y="276" width="560" height="110" rx="15"/>
+  <circle class="step" cx="311" cy="331" r="17"/><text class="number" x="311" y="336">2</text>
+  <text class="text" x="341" y="306">Show the user's repositories and teams</text>
+  <text class="package" x="341" y="331">nais / github / repositories</text>
+  <text class="detail" x="341" y="353">NAIS inventory + GitHub App access + current scan view</text>
+  <text class="detail" x="341" y="375">SCANNED / NOT_SCANNED / NOT_IN_GITHUB</text>
+  <path class="connector" d="M560 386V425"/>
+
+  <text class="phase" x="35" y="465">DEPENDENCY</text>
+  <text class="phase" x="35" y="483">SCAN</text>
+  <rect class="card auth" x="280" y="431" width="560" height="112" rx="15"/>
+  <circle class="step" cx="311" cy="487" r="17"/><text class="number" x="311" y="492">3</text>
+  <text class="text" x="341" y="461">Click Refresh scan (or refresh one repository)</text>
+  <text class="package" x="341" y="486">repositories / github / gradle</text>
+  <text class="detail" x="341" y="508">DependencyScanner reads build.gradle and wrapper properties</text>
+  <text class="detail" x="341" y="530">Gradle parsers extract plugins, dependencies and wrapper version</text>
+  <path class="connector" d="M560 543V581"/>
+
+  <rect class="card cache" x="280" y="587" width="560" height="110" rx="15"/>
+  <circle class="step" cx="311" cy="642" r="17"/><text class="number" x="311" y="647">4</text>
+  <text class="text" x="341" y="617">Cache raw inventories, not final statuses</text>
+  <text class="package" x="341" y="642">repositories: DependencyScanCache</text>
+  <text class="detail" x="341" y="664">Inventories, refresh locks and progress are keyed by username</text>
+  <text class="detail" x="341" y="686">The GUI reloads comparisons after the refresh</text>
+  <path class="connector" d="M560 697V735"/>
+
+  <rect class="card decision" x="280" y="741" width="560" height="120" rx="15"/>
+  <circle class="step" cx="311" cy="801" r="17"/><text class="number" x="311" y="806">5</text>
+  <text class="text" x="341" y="773">Compare inventory with the user's saved targets</text>
+  <text class="package" x="341" y="798">repositories / targets</text>
+  <text class="detail" x="341" y="821">DependencyScanViewService recalculates comparisons on every read</text>
+  <text class="detail" x="341" y="843">OK / UPDATE / AHEAD + untracked entries; enrich if security is READY</text>
+  <path class="connector" d="M560 861V910"/>
+
+  <rect class="card decision" x="20" y="735" width="232" height="140" rx="13"/>
+  <text class="text" x="36" y="764">Maintain target versions</text>
+  <text class="package" x="36" y="789">targets / db</text>
+  <text class="detail" x="36" y="812">Save plugins, dependencies,</text>
+  <text class="detail" x="36" y="832">Gradle and transient flags.</text>
+  <text class="detail" x="36" y="855">Save invalidates both scans.</text>
+  <path class="connector" d="M252 801H274"/>
+
+  <text class="phase" x="35" y="951">SECURITY</text>
+  <text class="phase" x="35" y="969">SCAN</text>
+  <rect class="card auth" x="280" y="916" width="560" height="120" rx="15"/>
+  <circle class="step" cx="311" cy="976" r="17"/><text class="number" x="311" y="981">6</text>
+  <text class="text" x="341" y="948">Click SCAN on Target Versions</text>
+  <text class="package" x="341" y="973">resolution / scanning / targets</text>
+  <text class="detail" x="341" y="997">GUI starts resolution and polls; matching READY resolution is reused</text>
+  <text class="detail" x="341" y="1019">Jobs use username + target fingerprint and captured target inputs</text>
+  <path class="connector" d="M560 1036V1074"/>
+
+  <rect class="card" x="280" y="1080" width="560" height="120" rx="15"/>
+  <circle class="step" cx="311" cy="1140" r="17"/><text class="number" x="311" y="1145">7</text>
+  <text class="text" x="341" y="1112">Resolve target dependency trees with Gradle</text>
+  <text class="package" x="341" y="1137">resolution</text>
+  <text class="detail" x="341" y="1161">Generate temporary build; resolve all targets together and individually</text>
+  <text class="detail" x="341" y="1183">Produces resolved versions and transitive graphs, not repo builds</text>
+  <path class="connector" d="M560 1200V1238"/>
+
+  <rect class="card cache" x="868" y="1082" width="232" height="116" rx="13"/>
+  <text class="text" x="884" y="1110">Debug artifacts</text>
+  <text class="package" x="884" y="1135">resolution / internal</text>
+  <text class="detail" x="884" y="1158">Build, unresolved entries,</text>
+  <text class="detail" x="884" y="1180">output and timing reports</text>
+  <path class="green" d="M840 1140H862"/>
+
+  <rect class="card auth" x="280" y="1244" width="560" height="120" rx="15"/>
+  <circle class="step" cx="311" cy="1304" r="17"/><text class="number" x="311" y="1309">8</text>
+  <text class="text" x="341" y="1276">Query OSV and evaluate target security</text>
+  <text class="package" x="341" y="1301">security / scanning</text>
+  <text class="detail" x="341" y="1325">TargetSecurityService checks combined and standalone graphs</text>
+  <text class="detail" x="341" y="1347">Find vulnerabilities, override relationships and unused transient targets</text>
+  <path class="green" d="M560 1364V1413"/>
+
+  <rect class="card cache" x="868" y="1247" width="232" height="114" rx="13"/>
+  <text class="text" x="884" y="1275">User-isolated results</text>
+  <text class="package" x="884" y="1300">scanning: UserScanJobs</text>
+  <text class="detail" x="884" y="1323">Obsolete jobs cannot publish.</text>
+  <text class="detail" x="884" y="1345">Explicit SCAN refreshes OSV.</text>
+  <path class="green" d="M840 1304H862"/>
+
+  <text class="phase" x="35" y="1457">ENRICHMENT</text>
+  <rect class="card cache" x="280" y="1419" width="560" height="134" rx="15"/>
+  <circle class="step" cx="311" cy="1486" r="17"/><text class="number" x="311" y="1491">9</text>
+  <text class="text" x="341" y="1451">READY: reload and enrich repository comparisons</text>
+  <text class="package" x="341" y="1476">gui/js/scan-status.js / repositories / security</text>
+  <text class="detail" x="341" y="1500">GUI reloads repo view + scans; cached inventories are compared again</text>
+  <text class="detail" x="341" y="1522">Matching security adds ADD / REMOVE / VULNERABLE / OK variants</text>
+  <text class="detail" x="341" y="1543">No new GitHub file scan; enriched statuses are not written to cache</text>
+  <path class="green" d="M560 1553V1601"/>
+
+  <text class="phase" x="35" y="1644">CREATE PR</text>
+  <rect class="card decision" x="280" y="1607" width="560" height="120" rx="15"/>
+  <circle class="step" cx="311" cy="1667" r="17"/><text class="number" x="311" y="1672">10</text>
+  <text class="text" x="341" y="1639">Click Create PR on a repository</text>
+  <text class="package" x="341" y="1664">repositories API / pullrequests</text>
+  <text class="detail" x="341" y="1688">DependencyPullRequestService reads the current enriched scan view</text>
+  <text class="detail" x="341" y="1710">Select UPDATE / AHEAD / ADD / REMOVE findings</text>
+  <path class="connector" d="M560 1727V1765"/>
+
+  <rect class="card auth" x="280" y="1771" width="560" height="120" rx="15"/>
+  <circle class="step" cx="311" cy="1831" r="17"/><text class="number" x="311" y="1836">11</text>
+  <text class="text" x="341" y="1803">Create branch, update files and open pull request</text>
+  <text class="package" x="341" y="1828">pullrequests / github</text>
+  <text class="detail" x="341" y="1852">Build/wrapper updaters edit freshly fetched file contents</text>
+  <text class="detail" x="341" y="1874">GitHub client writes commits and creates PR; GUI opens returned URL</text>
+  <path class="green" d="M560 1891V1929"/>
+
+  <rect class="card cache" x="280" y="1935" width="560" height="72" rx="15"/>
+  <text class="text" x="560" y="1965" text-anchor="middle">Review and merge in GitHub</text>
+  <text class="detail" x="560" y="1989" text-anchor="middle">Refresh the repository afterward to fetch its updated inventory</text>
+
+  <rect class="card" x="868" y="1610" width="232" height="114" rx="13"/>
+  <text class="text" x="884" y="1638">No actionable findings?</text>
+  <text class="detail" x="884" y="1664">No branch or PR is created.</text>
+  <text class="detail" x="884" y="1686">Normal GUI disables the</text>
+  <text class="detail" x="884" y="1708">Create PR action.</text>
+  <path class="connector" d="M840 1667H862"/>
+</svg>

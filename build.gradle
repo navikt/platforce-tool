@@ -81,6 +81,15 @@ sourceSets {
     test.kotlin.srcDirs += 'src/test/kotlin'
 }
 
+tasks.register('runLocalFrontend', JavaExec) {
+    group = 'application'
+    description = 'Serve the original GUI on localhost:8080 with synthetic in-memory API data.'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'no.nav.platforce.tool.localdev.LocalFrontendMainKt'
+    workingDir = projectDir
+}
+
 kotlin {
     jvmToolchain(21)
 }
