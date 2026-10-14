@@ -6,10 +6,10 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutorService
 
 class GradleTargetResolutionScanner(
-    resolve: (TargetVersionsState) -> TargetResolution,
+    resolve: (String, TargetVersionsState) -> TargetResolution,
     executor: ExecutorService = scanExecutor("gradle-target-resolution"),
 ) {
-    private val jobs = UserScanJobs(executor) { _: String, state: TargetVersionsState -> resolve(state) }
+    private val jobs = UserScanJobs(executor, resolve)
 
     fun start(
         username: String,

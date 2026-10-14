@@ -70,6 +70,7 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    systemProperty 'platforce.tests.gradleHome', gradle.gradleHomeDir.absolutePath
     testLogging {
         events "passed", "skipped", "failed"
     }

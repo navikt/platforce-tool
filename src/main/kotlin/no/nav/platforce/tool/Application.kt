@@ -11,6 +11,7 @@ import no.nav.platforce.tool.dependencies.GradleTargetResolutionScanner
 import no.nav.platforce.tool.dependencies.GradleTargetResolutionService
 import no.nav.platforce.tool.dependencies.OsvVulnerabilityService
 import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
+import no.nav.platforce.tool.dependencies.ResolutionDebugFiles
 import no.nav.platforce.tool.dependencies.ResolutionStatus
 import no.nav.platforce.tool.dependencies.ResolvedDependency
 import no.nav.platforce.tool.dependencies.SecurityScanStatus
@@ -84,7 +85,9 @@ class Application {
 
     val dependencyScanCache = DependencyScanCache()
 
-    val gradleTargetResolutionService = GradleTargetResolutionService()
+    private val resolutionDebugFiles = ResolutionDebugFiles()
+
+    val gradleTargetResolutionService = GradleTargetResolutionService(debugFiles = resolutionDebugFiles)
 
     val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService::resolve)
 
@@ -108,8 +111,8 @@ class Application {
             "/internal/isReady" bind Method.GET to { Response(OK) },
             "/internal/metrics" bind Method.GET to Metrics.metricsHttpHandler,
             "/internal/hello" bind Method.GET to { Response(OK).body("Hello!") },
-            "/internal/files" bind Method.GET to filesHandler(File("/tmp/files")),
-            "/internal/files/{path:.*}" bind Method.GET to filesHandler(File("/tmp/files")),
+            "/internal/files" bind Method.GET to userFilesHandler,
+            "/internal/files/{path:.*}" bind Method.GET to userFilesHandler,
             "/internal/add-transient" bind Method.GET to { _ ->
                 try {
                     PostgresDatabase.expandTargetVersionsWithTransient()
@@ -298,6 +301,12 @@ class Application {
         val dir = File("/tmp/files")
         dir.mkdirs()
         apiServer(8080).start()
+    }
+
+    private val userFilesHandler: HttpHandler = { request ->
+        val context = request.userContext()
+        filesHandler(resolutionDebugFiles.latestDirectory(context.username).toFile())(request)
+            .header("Cache-Control", "no-store")
     }
 
     fun parsePrivateKey(pem: String): RSAPrivateKey {

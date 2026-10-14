@@ -5,6 +5,8 @@ import com.google.gson.reflect.TypeToken
 import mu.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.time.Instant
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteRecursively
@@ -50,11 +52,18 @@ class GradleTargetResolutionService(
                 ?: "/opt/gradle",
         ),
     private val gson: Gson = Gson(),
+    private val debugFiles: ResolutionDebugFiles = ResolutionDebugFiles(),
 ) {
     private val log = KotlinLogging.logger { }
 
     @OptIn(ExperimentalPathApi::class)
-    fun resolve(state: TargetVersionsState): TargetResolution {
+    fun resolve(
+        username: String,
+        state: TargetVersionsState,
+    ): TargetResolution {
+        val startedAt = Instant.now()
+        val started = System.nanoTime()
+        val timings = linkedMapOf<String, Double>()
         require(
             state.gradleVersion.matches(
                 Regex("""\d+\.\d+(\.\d+)?([.-].+)?"""),
@@ -67,25 +76,47 @@ class GradleTargetResolutionService(
             "No target dependencies configured"
         }
 
+        val debugDir = debugFiles.start(username)
         val projectDir =
             Files.createTempDirectory(
                 "platforce-gradle-resolution-",
             )
+        var failure: Exception? = null
+        var status = "RUNNING"
+
+        fun <T> timed(
+            name: String,
+            action: () -> T,
+        ): T {
+            val start = System.nanoTime()
+            try {
+                return action()
+            } finally {
+                timings[name] = (System.nanoTime() - start) / 1_000_000.0
+            }
+        }
 
         log.info {
             "Created temporary Gradle project at $projectDir"
         }
 
         try {
-            writeProject(
-                projectDir = projectDir,
-                state = state,
+            debugDir.resolve("gradle-resolution-report.json").writeText(
+                gson.toJson(mapOf("status" to status, "startedAt" to startedAt.toString(), "targetFingerprint" to fingerprint(state))),
+            )
+            timed("projectGenerationMs") {
+                writeProject(
+                    projectDir = projectDir,
+                    state = state,
+                )
+            }
+            Files.copy(projectDir.resolve("build.gradle"), debugDir.resolve("build.gradle"), StandardCopyOption.REPLACE_EXISTING)
+            projectDir.resolve("gradle-unresolved-dependencies.txt").writeText(
+                "Gradle resolution task has not started. See gradle-output.txt and gradle-resolution-report.json if execution fails.\n",
             )
 
             val gradleHome =
-                ensureGradleDistribution(
-                    // state.gradleVersion,
-                )
+                timed("gradleDistributionCheckMs") { ensureGradleDistribution() }
 
             log.info {
                 "Using Gradle ${state.gradleVersion} from $gradleHome"
@@ -111,10 +142,12 @@ class GradleTargetResolutionService(
                 "GRADLE_USER_HOME=${System.getenv("GRADLE_USER_HOME")}"
             }
 
-            runGradle(
-                gradleHome = gradleHome,
-                projectDir = projectDir,
-            )
+            timed("gradleProcessMs") {
+                runGradle(
+                    gradleHome = gradleHome,
+                    projectDir = projectDir,
+                )
+            }
 
             val resultFile =
                 projectDir.resolve("resolution.json")
@@ -129,16 +162,65 @@ class GradleTargetResolutionService(
                 "Gradle resolution produced ${json.length} bytes"
             }
 
-            return parseResult(
-                json = json,
-                gradleVersion = state.gradleVersion,
-            )
+            val result =
+                timed("resultParsingMs") {
+                    parseResult(
+                        json = json,
+                        gradleVersion = state.gradleVersion,
+                    )
+                }
+            status = "READY"
+            return result
+        } catch (e: Exception) {
+            failure = e
+            status = "FAILED"
+            throw e
         } finally {
-            log.info {
-                "Deleting temporary Gradle project $projectDir"
+            try {
+                for (name in listOf("gradle-unresolved-dependencies.txt", "gradle-output.txt", "gradle-configuration-timings.json")) {
+                    val source = projectDir.resolve(name)
+                    if (source.exists()) {
+                        Files.copy(source, debugDir.resolve(name), StandardCopyOption.REPLACE_EXISTING)
+                    }
+                }
+                val configurationReport = projectDir.resolve("gradle-configuration-timings.json")
+                val report =
+                    linkedMapOf<String, Any>(
+                        "status" to status,
+                        "startedAt" to startedAt.toString(),
+                        "finishedAt" to Instant.now().toString(),
+                        "targetFingerprint" to fingerprint(state),
+                        "configuredGradleVersion" to state.gradleVersion,
+                        "gradleExecutable" to gradleBaseDir.resolve("bin/gradle").toString(),
+                        "totalMs" to (System.nanoTime() - started) / 1_000_000.0,
+                        "phasesMs" to timings,
+                        "measurementNotes" to
+                            "Wall-clock milliseconds. Total excludes queue wait, OSV and temporary directory cleanup. Configuration times include dependency resolution and graph traversal, in execution order. Each execution uses a fresh GRADLE_USER_HOME.",
+                    )
+                if (configurationReport.exists()) {
+                    val task =
+                        com.google.gson.JsonParser
+                            .parseString(configurationReport.readText())
+                            .asJsonObject
+                    report["gradleTask"] = task
+                    timings["gradleOutsideTaskMs"] =
+                        (timings.getValue("gradleProcessMs") - task["taskElapsedMs"].asDouble).coerceAtLeast(0.0)
+                }
+                failure?.let { report["error"] = it.message ?: it.javaClass.simpleName }
+                debugDir.resolve("gradle-resolution-report.json").writeText(
+                    com.google.gson
+                        .GsonBuilder()
+                        .setPrettyPrinting()
+                        .create()
+                        .toJson(report),
+                )
+            } catch (e: Exception) {
+                log.error(e) { "Could not publish Gradle debug artifacts" }
+                if (failure != null) failure.addSuppressed(e) else throw e
+            } finally {
+                log.info { "Deleting temporary Gradle project $projectDir" }
+                projectDir.deleteRecursively()
             }
-
-            projectDir.deleteRecursively()
         }
     }
 
@@ -232,6 +314,16 @@ class GradleTargetResolutionService(
 
                 tasks.register("platforceResolve") {
                     doLast {
+                        def taskStarted = System.nanoTime()
+                        def configurationTimings = []
+                        def timingReport = file("gradle-configuration-timings.json")
+                        def writeTimings = {
+                            timingReport.text = JsonOutput.prettyPrint(JsonOutput.toJson([
+                                taskElapsedMs: (System.nanoTime() - taskStarted) / 1000000.0,
+                                executedGradleVersion: gradle.gradleVersion,
+                                configurations: configurationTimings
+                            ]))
+                        }
                         def unresolvedReport =
                             file("gradle-unresolved-dependencies.txt")
                 
@@ -304,6 +396,10 @@ class GradleTargetResolutionService(
                         }
 
                         def resolveConfiguration = { configuration ->
+                            def configurationStarted = System.nanoTime()
+                            def configurationStatus = "FAILED"
+                            def rootCount = 0
+                            try {
                             def resolutionResult =
                                 configuration.incoming.resolutionResult
                         
@@ -336,7 +432,20 @@ class GradleTargetResolutionService(
                                 }
                             }
                         
+                            rootCount = roots.size()
+                            configurationStatus = "READY"
                             return roots
+                            } finally {
+                                configurationTimings << [
+                                    configuration: configuration.name,
+                                    kind: configuration.name == "targetResolution" ? "combined" : "individual",
+                                    dependency: configuration.name == "targetResolution" ? null : configuration.ext.targetDependencyKey,
+                                    durationMs: (System.nanoTime() - configurationStarted) / 1000000.0,
+                                    rootCount: rootCount,
+                                    status: configurationStatus
+                                ]
+                                writeTimings()
+                            }
                         }
 
                         def roots =
@@ -369,6 +478,7 @@ class GradleTargetResolutionService(
                             JsonOutput.prettyPrint(
                                 JsonOutput.toJson(result)
                             )
+                        writeTimings()
                     }
                 }
                 """.trimIndent(),
@@ -461,6 +571,7 @@ class GradleTargetResolutionService(
             process.inputStream
                 .bufferedReader()
                 .use { it.readText() }
+        projectDir.resolve("gradle-output.txt").writeText(output)
 
         val exitCode = process.waitFor()
 

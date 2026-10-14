@@ -28,7 +28,7 @@ fun filesHandler(baseDir: File): HttpHandler =
         val canonicalBase = baseDir.canonicalFile
         val canonicalTarget = target.canonicalFile
 
-        if (!canonicalTarget.path.startsWith(canonicalBase.path)) {
+        if (!canonicalTarget.toPath().startsWith(canonicalBase.toPath())) {
             Response(Status.FORBIDDEN).body("Forbidden")
         } else if (!target.exists()) {
             Response(Status.NOT_FOUND).body("Not found")

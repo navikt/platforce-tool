@@ -15,7 +15,7 @@ class DependencyPullRequestFlowTest {
             ),
         )
     private val cache = DependencyScanCache()
-    private val resolutionScanner = GradleTargetResolutionScanner({ error("Unexpected Gradle resolution") })
+    private val resolutionScanner = GradleTargetResolutionScanner({ _, _ -> error("Unexpected Gradle resolution") })
     private val securityScanner = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()), resolutionScanner)
     private val scanner = DependencyScanner(github)
     private val view = DependencyScanViewService(cache, securityScanner, scanner)

@@ -86,7 +86,7 @@ class DependencyScanIsolationTest {
     fun `inventory is compared against current targets without fetching GitHub again`() {
         val github = RecordingGithubClient()
         val scanner = DependencyScanner(github)
-        val resolution = GradleTargetResolutionScanner({ error("Unexpected Gradle call") })
+        val resolution = GradleTargetResolutionScanner({ _, _ -> error("Unexpected Gradle call") })
         val security = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()), resolution)
         val view = DependencyScanViewService(cache, security, scanner)
         cache.update("alice", listOf(inventory("example:library" to "1.0.0", "example:other" to "3.0.0")))

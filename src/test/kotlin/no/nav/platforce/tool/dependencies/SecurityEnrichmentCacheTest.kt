@@ -20,7 +20,7 @@ class SecurityEnrichmentCacheTest {
     private var vulnerabilityQueries = 0
     private val resolutionScanner =
         GradleTargetResolutionScanner(
-            {
+            { _, _ ->
                 TargetResolution(
                     "8.0",
                     listOf(standalone.copy(dependencies = listOf(fixed)), fixed),
