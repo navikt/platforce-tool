@@ -1,0 +1,9 @@
+package no.nav.platforce.tool.dependencies
+
+data class RepositoryDependencyInventory(
+    val repository: String,
+    val scannedAt: String,
+    val plugins: Map<String, String>,
+    val dependencies: Map<String, String>,
+    val gradleVersion: String?,
+)

@@ -12,13 +12,14 @@ class DependencyPullRequestService(
     fun createPullRequest(
         owner: String,
         repo: String,
+        username: String,
         targetState: TargetVersionsState,
     ): String {
         val fullRepo = "$owner/$repo"
 
         val scan =
             dependencyScanViewService
-                .get(targetState)
+                .get(username, targetState)
                 .singleOrNull { it.repository == fullRepo }
                 ?: error("No scan found for $fullRepo")
 

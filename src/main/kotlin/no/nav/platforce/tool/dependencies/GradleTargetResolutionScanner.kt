@@ -1,224 +1,72 @@
 package no.nav.platforce.tool.dependencies
 
-import mu.KotlinLogging
+import com.google.gson.Gson
 import java.security.MessageDigest
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ExecutorService
 
 class GradleTargetResolutionScanner(
-    private val resolutionService: GradleTargetResolutionService,
+    resolve: (TargetVersionsState) -> TargetResolution,
+    executor: ExecutorService = scanExecutor("gradle-target-resolution"),
 ) {
-    private val log = KotlinLogging.logger { }
+    private val jobs = UserScanJobs(executor) { _: String, state: TargetVersionsState -> resolve(state) }
 
-    private val executor =
-        Executors.newSingleThreadExecutor {
-            Thread(it, "gradle-target-resolution").apply {
-                isDaemon = true
-            }
-        }
-
-    private val snapshot =
-        AtomicReference(
-            TargetResolutionSnapshot(
-                status = ResolutionStatus.IDLE,
-                targetFingerprint = null,
-                result = null,
-                error = null,
-            ),
-        )
-
-    fun start(targetState: TargetVersionsState): TargetResolutionSnapshot {
-        val fingerprint = fingerprint(targetState)
-
-        synchronized(this) {
-            val current = snapshot.get()
-
-            if (
-                current.status == ResolutionStatus.READY &&
-                current.targetFingerprint == fingerprint
-            ) {
-                log.info {
-                    "Target resolution already available for fingerprint=$fingerprint"
-                }
-
-                return current
-            }
-
-            if (
-                current.status == ResolutionStatus.RUNNING &&
-                current.targetFingerprint == fingerprint
-            ) {
-                log.info {
-                    "Target resolution already running for fingerprint=$fingerprint"
-                }
-
-                return current
-            }
-
-            log.info {
-                "Starting target resolution for fingerprint=$fingerprint"
-            }
-
-            snapshot.set(
-                TargetResolutionSnapshot(
-                    status = ResolutionStatus.RUNNING,
-                    targetFingerprint = fingerprint,
-                    result = null,
-                    error = null,
-                ),
-            )
-
-            executor.submit {
-                resolveAsync(
-                    targetState = targetState,
-                    fingerprint = fingerprint,
-                )
-            }
-
-            return snapshot.get()
-        }
-    }
-
-    fun get(targetState: TargetVersionsState): TargetResolutionSnapshot {
-        val fingerprint = fingerprint(targetState)
-
-        val current = snapshot.get()
-
-        if (current.targetFingerprint != fingerprint) {
-            return TargetResolutionSnapshot(
-                status = ResolutionStatus.IDLE,
-                targetFingerprint = fingerprint,
-                result = null,
-                error = null,
-            )
-        }
-
-        log.info {
-            "Returning cached target resolution: " +
-                "status=${current.status}, " +
-                "fingerprint=${current.targetFingerprint}, " +
-                "hasResult=${current.result != null}"
-        }
-
-        return current
-    }
-
-    fun invalidate() {
-        synchronized(this) {
-            snapshot.set(
-                TargetResolutionSnapshot(
-                    status = ResolutionStatus.IDLE,
-                    targetFingerprint = null,
-                    result = null,
-                    error = null,
-                ),
-            )
-        }
-    }
-
-    private fun resolveAsync(
+    fun start(
+        username: String,
         targetState: TargetVersionsState,
-        fingerprint: String,
-    ) {
-        try {
-            log.info {
-                "Running Gradle target resolution for fingerprint=$fingerprint"
-            }
+    ): TargetResolutionSnapshot = jobs.start(username, targetState).toResolutionSnapshot()
 
-            val result =
-                resolutionService.resolve(targetState)
+    fun get(
+        username: String,
+        targetState: TargetVersionsState,
+    ): TargetResolutionSnapshot = jobs.get(username, targetState).toResolutionSnapshot()
 
-            synchronized(this) {
-                val current = snapshot.get()
+    fun invalidate(username: String) = jobs.invalidate(username)
 
-                /*
-                 * Target versions might have changed while Gradle was running.
-                 * Never put a stale result into the cache.
-                 */
-                if (
-                    current.status != ResolutionStatus.RUNNING ||
-                    current.targetFingerprint != fingerprint
-                ) {
-                    log.info {
-                        "Discarding stale resolution result for fingerprint=$fingerprint"
-                    }
-
-                    return
-                }
-
-                snapshot.set(
-                    TargetResolutionSnapshot(
-                        status = ResolutionStatus.READY,
-                        targetFingerprint = fingerprint,
-                        result = result,
-                        error = null,
-                    ),
-                )
-            }
-
-            log.info {
-                "Gradle target resolution completed for fingerprint=$fingerprint"
-            }
-        } catch (e: Exception) {
-            log.error(e) {
-                "Gradle target resolution failed for fingerprint=$fingerprint"
-            }
-
-            synchronized(this) {
-                val current = snapshot.get()
-
-                if (
-                    current.status == ResolutionStatus.RUNNING &&
-                    current.targetFingerprint == fingerprint
-                ) {
-                    snapshot.set(
-                        TargetResolutionSnapshot(
-                            status = ResolutionStatus.FAILED,
-                            targetFingerprint = fingerprint,
-                            result = null,
-                            error = e.message ?: e.javaClass.simpleName,
-                        ),
-                    )
+    fun waitForResolution(
+        username: String,
+        targetState: TargetVersionsState,
+    ): TargetResolution {
+        val started = jobs.get(username, targetState)
+        while (true) {
+            val current = jobs.get(username, targetState)
+            when (current.status) {
+                ScanJobStatus.READY -> return checkNotNull(current.result)
+                ScanJobStatus.FAILED -> error("Gradle target resolution failed: ${current.error}")
+                ScanJobStatus.IDLE -> throw CancellationException("Target resolution was invalidated")
+                ScanJobStatus.RUNNING -> {
+                    if (current !== started) throw CancellationException("Target resolution was replaced")
+                    Thread.sleep(250)
                 }
             }
         }
     }
+
+    private fun ScanJobSnapshot<TargetResolution>.toResolutionSnapshot() =
+        TargetResolutionSnapshot(
+            status =
+                when (status) {
+                    ScanJobStatus.IDLE -> ResolutionStatus.IDLE
+                    ScanJobStatus.RUNNING -> ResolutionStatus.RUNNING
+                    ScanJobStatus.READY -> ResolutionStatus.READY
+                    ScanJobStatus.FAILED -> ResolutionStatus.FAILED
+                },
+            targetFingerprint = targetFingerprint,
+            result = result,
+            error = error,
+        )
 }
 
 fun fingerprint(targetState: TargetVersionsState): String {
     val canonical =
-        buildString {
-            append("gradle=")
-            append(targetState.gradleVersion)
-            append('\n')
-
-            targetState.plugins
-                .toSortedMap()
-                .forEach { (key, version) ->
-                    append("plugin:")
-                    append(key)
-                    append('=')
-                    append(version)
-                    append('\n')
-                }
-
-            targetState.dependencies
-                .toSortedMap()
-                .forEach { (key, version) ->
-                    append("dependency:")
-                    append(key)
-                    append('=')
-                    append(version)
-                    append('\n')
-                }
-        }
-
-    val digest =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(canonical.toByteArray())
-
-    return digest.joinToString("") {
-        "%02x".format(it)
-    }
+        Gson().toJson(
+            listOf(
+                targetState.gradleVersion,
+                targetState.plugins.toSortedMap(),
+                targetState.dependencies.toSortedMap(),
+                targetState.transientDependencies.sorted(),
+            ),
+        )
+    val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { "%02x".format(it) }
 }

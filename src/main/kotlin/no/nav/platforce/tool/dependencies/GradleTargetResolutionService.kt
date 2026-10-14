@@ -5,7 +5,6 @@ import com.google.gson.reflect.TypeToken
 import mu.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteRecursively
@@ -81,15 +80,6 @@ class GradleTargetResolutionService(
             writeProject(
                 projectDir = projectDir,
                 state = state,
-            )
-
-            val debugDir = Path.of("/tmp/files")
-            Files.createDirectories(debugDir)
-
-            Files.copy(
-                projectDir.resolve("build.gradle"),
-                debugDir.resolve("build.gradle"),
-                StandardCopyOption.REPLACE_EXISTING,
             )
 
             val gradleHome =
@@ -243,7 +233,7 @@ class GradleTargetResolutionService(
                 tasks.register("platforceResolve") {
                     doLast {
                         def unresolvedReport =
-                            file("/tmp/files/gradle-unresolved-dependencies.txt")
+                            file("gradle-unresolved-dependencies.txt")
                 
                         unresolvedReport.parentFile.mkdirs()
                         unresolvedReport.text = ""

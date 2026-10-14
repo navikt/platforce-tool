@@ -43,6 +43,7 @@ let lastLoadedData = [];
 let ignoredRepositories = [];
 
 let targetSecurityScan = null;
+let targetScanGeneration = 0;
 
 function toggleTargetSecurityDetails(button) {
 
@@ -62,27 +63,28 @@ function toggleTargetSecurityDetails(button) {
     );
 }
 
+async function fetchJson(url) {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error(`Request failed: ${url} (HTTP ${response.status})`);
+    }
+    return await response.json();
+}
+
 async function fetchRepoView() {
-    const res = await fetch("/internal/repos/view");
-    return await res.json();
+    return await fetchJson("/internal/repos/view");
 }
 
 async function fetchProgress() {
-    const res = await fetch("/internal/api/dependency-scan/progress");
-    return await res.json();
+    return await fetchJson("/internal/api/dependency-scan/progress");
 }
 
 async function fetchData() {
-    const res = await fetch("/internal/api/dependency-scan");
-    return await res.json();
+    return await fetchJson("/internal/api/dependency-scan");
 }
 
 async function fetchIgnoredRepositories() {
-    const res =
-        await fetch(
-            "/internal/api/ignored-repositories"
-        );
-    return await res.json();
+    return await fetchJson("/internal/api/ignored-repositories");
 }
 
 let selectedTeam = null;
@@ -129,27 +131,27 @@ function render({ repos, scans }) {
             );
         });
 
-    document.addEventListener("click", e => {
-        const pill = e.target.closest(".target-draft-pill");
-
-        if (!pill) {
-            return;
-        }
-
-        const kind = pill.dataset.kind;
-        const key = pill.dataset.key;
-        const version = pill.dataset.version;
-
-        addDraftTarget(kind, key, version);
-
-        pill.textContent = "DRAFTED";
-        pill.classList.remove("status-unknown", "status-ahead");
-        pill.classList.add("status-drafted");
-        pill.classList.add("disabled");
-    });
-
     console.log("✅ Render complete");
 }
+
+document.addEventListener("click", e => {
+    const pill = e.target.closest(".target-draft-pill");
+
+    if (!pill) {
+        return;
+    }
+
+    const kind = pill.dataset.kind;
+    const key = pill.dataset.key;
+    const version = pill.dataset.version;
+
+    addDraftTarget(kind, key, version);
+
+    pill.textContent = "DRAFTED";
+    pill.classList.remove("status-unknown", "status-ahead");
+    pill.classList.add("status-drafted");
+    pill.classList.add("disabled");
+});
 
 function renderTeamTabs(teams) {
 
@@ -554,15 +556,25 @@ async function refresh() {
 
     startProgressPolling()
 
-    await fetch("/internal/api/dependency-scan/refresh", {
-        method: "POST"
-    });
-
-    await loadData();
-
-    isRefreshing = false;
-    // NOTE: we do NOT stop hasActiveScan here
-    // it is stopped by pollProgress when backend finishes
+    try {
+        const response = await fetch("/internal/api/dependency-scan/refresh", {
+            method: "POST"
+        });
+        if (!response.ok) {
+            throw new Error(`Repository refresh failed: HTTP ${response.status}`);
+        }
+        await loadData();
+        await pollProgress();
+    } catch (error) {
+        console.error("Repository refresh failed", error);
+        text.innerText = error.message;
+        hasActiveScan = false;
+        clearInterval(progressInterval);
+        progressInterval = null;
+    } finally {
+        isRefreshing = false;
+        isStartingScan = false;
+    }
 }
 
 async function loadData() {
@@ -595,7 +607,19 @@ async function pollProgress() {
 
         const p = await fetchProgress();
 
-        if (!p || !p.total || p.total === 0) {
+        if (!p) return;
+
+        if (p.error || (!p.running && p.done >= p.total)) {
+            text.innerText = p.error ? `Failed: ${p.error}` : "Done";
+            if (!p.error) bar.style.width = p.total > 0 ? "100%" : "0%";
+            hasActiveScan = false;
+            isStartingScan = false;
+            clearInterval(progressInterval);
+            progressInterval = null;
+            return;
+        }
+
+        if (!p.total || p.total === 0) {
             bar.style.width = "0%";
             if (!isStartingScan) {
                 text.innerText = "Idle";
@@ -609,17 +633,6 @@ async function pollProgress() {
             isStartingScan = false;
         }
         bar.style.width = percent + "%";
-
-        if (!p.running && p.done >= p.total) {
-            text.innerText = "Done";
-
-            hasActiveScan = false;
-
-            // stop polling when finished
-            clearInterval(progressInterval);
-            progressInterval = null;
-            return;
-        }
 
         text.innerText = `Scanning ${p.done}/${p.total}`;
 
@@ -679,17 +692,13 @@ async function createPr(repo) {
 }
 
 async function fetchTargetVersions() {
-    const res = await fetch("/internal/api/target-versions");
-    return await res.json();
+    return await fetchJson("/internal/api/target-versions");
 }
 
 let notes = {};
 
 async function fetchNotes() {
-    const res =
-        await fetch("/internal/api/repository-notes");
-
-    return await res.json();
+    return await fetchJson("/internal/api/repository-notes");
 }
 
 async function saveNote(repository, note) {
@@ -739,6 +748,7 @@ function renderTargetTables() {
 }
 
 function addDraftTarget(kind, key, version) {
+    captureTargetDrafts();
     if (kind === "PLUGIN") {
         targetState.plugins[key] = version;
     }
@@ -797,13 +807,9 @@ function renderTable(containerId, entries, type) {
         const securityTarget =
             type === "dependency"
                 ? targetSecurityScan?.targets?.find(
-                    target => target.key === key
+                    target => target.key === key && target.targetVersion === version
                 )
                 : null;
-                // ? targetSecurityScan?.result?.targets?.find(
-                //     target => target.key === key
-                // )
-                // : null;
 
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
@@ -900,8 +906,8 @@ function renderTable(containerId, entries, type) {
         if (!k || !v) return;
         const securityTarget =
             type === "dependency"
-                ? targetSecurityScan?.result?.targets?.find(
-                    target => target.key === k
+                ? targetSecurityScan?.targets?.find(
+                    target => target.key === k && target.targetVersion === v
                 )
                 : null;
         const newRow = document.createElement("div");
@@ -1313,61 +1319,80 @@ function updateScanStep(
         status;
 }
 
-document.getElementById("saveTargets")
-    .addEventListener("click", async () => {
+function readTargetInputs() {
+    function read(containerId) {
+        const rows = document.querySelectorAll(`#${containerId} .target-row`);
 
-        function read(containerId) {
-            const rows = document.querySelectorAll(`#${containerId} .target-row`);
+        const map = {};
 
-            const map = {};
+        rows.forEach(r => {
+            const key = r.querySelector(".key")?.value;
+            const version = r.querySelector(".version")?.value;
 
-            rows.forEach(r => {
-                const key = r.querySelector(".key")?.value;
-                const version = r.querySelector(".version")?.value;
-
-                if (key && version) {
-                    map[key] = version;
-                }
-            });
-
-            return map;
-        }
-
-        function readSingleVersion(containerId) {
-            const row = document.querySelector(`#${containerId} .target-row`);
-            if (!row) return "";
-
-            return row.querySelector(".version")?.value ?? "";
-        }
-
-        const payload = {
-            plugins: read("pluginsTable"),
-            dependencies: read("depsTable"),
-            gradleVersion: readSingleVersion("gradleTable"),
-            transientDependencies:
-                Array.from(targetState.transientDependencies)
-        };
-
-        await fetch("/internal/api/target-versions/update", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
+            if (key && version) {
+                map[key] = version;
+            }
         });
 
-        alert("Target versions updated");
+        return map;
+    }
 
-        targetState = {
-            plugins: payload.plugins,
-            dependencies: payload.dependencies,
-            gradleVersion: payload.gradleVersion,
-            transientDependencies: new Set(payload.transientDependencies),
-            drafted: new Set()
-        };
+    function readSingleVersion(containerId) {
+        const row = document.querySelector(`#${containerId} .target-row`);
+        if (!row) return "";
 
-        renderTargetTables();
-        await loadData();
+        return row.querySelector(".version")?.value ?? "";
+    }
+
+    return {
+        plugins: read("pluginsTable"),
+        dependencies: read("depsTable"),
+        gradleVersion: readSingleVersion("gradleTable"),
+        transientDependencies:
+            Array.from(targetState.transientDependencies)
+    };
+}
+
+function captureTargetDrafts() {
+    const inputs = readTargetInputs();
+    targetState.plugins = inputs.plugins;
+    targetState.dependencies = inputs.dependencies;
+    targetState.gradleVersion = inputs.gradleVersion;
+}
+
+document.getElementById("saveTargets")
+    .addEventListener("click", async () => {
+        const payload = readTargetInputs();
+        try {
+            const response = await fetch("/internal/api/target-versions/update", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to save target versions: HTTP ${response.status}`);
+            }
+
+            targetScanGeneration++;
+            targetSecurityScan = null;
+            targetState = {
+                plugins: payload.plugins,
+                dependencies: payload.dependencies,
+                gradleVersion: payload.gradleVersion,
+                transientDependencies: new Set(payload.transientDependencies),
+                drafted: new Set()
+            };
+
+            renderTargetTables();
+            await loadData();
+            alert("Target versions updated");
+        } catch (error) {
+            console.error("Could not save target versions", error);
+            alert(error.message);
+        }
     });
 
 document.getElementById("refreshBtn")
@@ -1416,6 +1441,7 @@ document
     .addEventListener("click", scanTargetSecurity);
 
 async function loadCachedTargetSecurity() {
+    const generation = targetScanGeneration;
     try {
         const response =
             await fetch(
@@ -1442,7 +1468,9 @@ async function loadCachedTargetSecurity() {
             }
         );
 
-        await applyTargetSecurityResult(snapshot)
+        if (generation === targetScanGeneration) {
+            await applyTargetSecurityResult(snapshot);
+        }
     } catch (error) {
         console.warn(
             "Could not load cached target security result",
@@ -1460,11 +1488,7 @@ async function applyTargetSecurityResult(snapshot) {
             targetCount: snapshot.result?.targets?.length
         }
     );
-    if (!snapshot.result) {
-        return;
-    }
-
-    targetSecurityScan = snapshot.result;
+    targetSecurityScan = snapshot.status === "READY" ? snapshot.result : null;
 
     console.log(
         "TARGET SECURITY STATE SET:",
@@ -1473,6 +1497,7 @@ async function applyTargetSecurityResult(snapshot) {
 }
 
 async function scanTargetSecurity() {
+    const generation = targetScanGeneration;
     const button =
         document.getElementById("scanTargets");
 
@@ -1515,7 +1540,14 @@ async function scanTargetSecurity() {
             );
         }
 
-        // targetSecurityScan = security;
+        if (generation !== targetScanGeneration) {
+            throw new Error("Target versions changed during the scan. Run SCAN again.");
+        }
+
+        await applyTargetSecurityResult(security);
+        captureTargetDrafts();
+        renderTargetTables();
+        await loadData();
 
         console.log("TARGET SECURITY SCAN:", targetSecurityScan);
         console.log(
@@ -1532,8 +1564,6 @@ async function scanTargetSecurity() {
             "scanStepDone",
             "DONE",
         );
-
-        renderTargetTables();
 
         document.getElementById(
             "targetScanDetails"
@@ -1594,6 +1624,7 @@ async function startOrWaitForResolution() {
     }
 
     let snapshot = await startResponse.json();
+    const expectedFingerprint = snapshot.targetFingerprint;
 
     if (snapshot.status === "READY") {
         return snapshot;
@@ -1624,6 +1655,9 @@ async function startOrWaitForResolution() {
         }
 
         snapshot = await response.json();
+        if (snapshot.targetFingerprint !== expectedFingerprint) {
+            throw new Error("Target versions changed during resolution. Run SCAN again.");
+        }
     }
 
     if (snapshot.status === "READY") {
@@ -1657,9 +1691,9 @@ async function startOrWaitForSecurity() {
     }
 
     let snapshot = await startResponse.json();
+    const expectedFingerprint = snapshot.targetFingerprint;
 
     if (snapshot.status === "READY") {
-        await applyTargetSecurityResult(snapshot);
         return snapshot;
     }
 
@@ -1688,10 +1722,12 @@ async function startOrWaitForSecurity() {
         }
 
         snapshot = await response.json();
+        if (snapshot.targetFingerprint !== expectedFingerprint) {
+            throw new Error("Target versions changed during security scan. Run SCAN again.");
+        }
     }
 
     if (snapshot.status === "READY") {
-        await applyTargetSecurityResult(snapshot);
         return snapshot;
     }
 

@@ -15,8 +15,9 @@ class DependencyPullRequestFlowTest {
             ),
         )
     private val cache = DependencyScanCache()
-    private val securityScanner = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()))
-    private val scanner = DependencyScanner(github, securityScanner)
+    private val resolutionScanner = GradleTargetResolutionScanner({ error("Unexpected Gradle resolution") })
+    private val securityScanner = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()), resolutionScanner)
+    private val scanner = DependencyScanner(github)
     private val view = DependencyScanViewService(cache, securityScanner, scanner)
     private val service = DependencyPullRequestService(github, view)
     private val targets = TargetVersionsState(mutableMapOf(), mutableMapOf("example:library" to "2.0.0"), "8.1")
@@ -24,15 +25,13 @@ class DependencyPullRequestFlowTest {
     @Test
     fun `PR flow creates branch updates build and wrapper then opens pull request`() {
         cache.update(
+            "alice",
             listOf(
-                scan(
-                    finding("example:library", target = "2.0.0", status = DependencyStatus.UPDATE),
-                    DependencyFinding(DependencyKind.GRADLE, "gradle-wrapper", "8.0", "8.1", DependencyStatus.UPDATE),
-                ),
+                inventory("example:library" to "1.0.0"),
             ),
         )
         // Invoke PR creation with an existing scan and no available security snapshot.
-        val url = service.createPullRequest("example", "repository", targets)
+        val url = service.createPullRequest("example", "repository", "alice", targets)
 
         assertEquals("https://github.example.test/example/repository/pull/1", url)
         assertEquals(
@@ -62,9 +61,9 @@ class DependencyPullRequestFlowTest {
 
     @Test
     fun `matching dependencies do not create a branch or pull request`() {
-        cache.update(listOf(scan(finding("example:library", version = "2.0.0"))))
+        cache.update("alice", listOf(inventory("example:library" to "2.0.0").copy(gradleVersion = "8.1")))
         // Invoke PR creation when all findings are already OK.
-        service.createPullRequest("example", "repository", targets)
+        service.createPullRequest("example", "repository", "alice", targets)
         assertTrue(github.calls.isEmpty())
         // No GitHub operation is performed.
     }
@@ -74,9 +73,19 @@ class DependencyPullRequestFlowTest {
         // Invoke PR creation before a repository has been scanned.
         val error =
             assertThrows(IllegalStateException::class.java) {
-                service.createPullRequest("example", "repository", targets)
+                service.createPullRequest("example", "repository", "alice", targets)
             }
         assertEquals("No scan found for example/repository", error.message)
+        assertTrue(github.calls.isEmpty())
+    }
+
+    @Test
+    fun `another users cached inventory cannot be used to create a PR`() {
+        cache.update("bob", listOf(inventory("example:library" to "1.0.0")))
+        // Alice must scan the repository herself before creating a PR, even if Bob already scanned it.
+        assertThrows(IllegalStateException::class.java) {
+            service.createPullRequest("example", "repository", "alice", targets)
+        }
         assertTrue(github.calls.isEmpty())
     }
 }

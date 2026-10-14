@@ -16,7 +16,7 @@ data class UserContext(
         RepositoryNotesStore(userId = username),
     val ignoredRepositoriesStore: IgnoredRepositoriesStore =
         IgnoredRepositoriesStore(userId = username),
-    var selectedTeam: String? = null,
+    @Volatile var selectedTeam: String? = null,
 )
 
 object UserContextCache {

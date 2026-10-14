@@ -36,6 +36,13 @@ data class TargetVersionsState(
     val transientDependencies: Set<String> = emptySet(),
 )
 
+fun TargetVersionsState.snapshot(): TargetVersionsState =
+    copy(
+        plugins = plugins.toMutableMap(),
+        dependencies = dependencies.toMutableMap(),
+        transientDependencies = transientDependencies.toSet(),
+    )
+
 class TargetVersionsStore(
     private val userId: String = "default",
     private val team: String? = null,

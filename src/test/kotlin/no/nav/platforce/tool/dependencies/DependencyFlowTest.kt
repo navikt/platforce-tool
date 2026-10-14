@@ -9,8 +9,7 @@ import org.junit.jupiter.api.Test
 
 class DependencyFlowTest {
     private val github = RecordingGithubClient()
-    private val securityScanner = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()))
-    private val scanner = DependencyScanner(github, securityScanner)
+    private val scanner = DependencyScanner(github)
 
     @Test
     fun `parse build file and distinguish matching older newer and missing dependencies`() {
@@ -39,18 +38,20 @@ class DependencyFlowTest {
 
     @Test
     fun `missing transitive override produces an add finding without modifying the cached scan`() {
-        val raw = scan(finding("example:library"))
-        val cache = DependencyScanCache().apply { update(listOf(raw)) }
+        val inventory = inventory("example:library" to "1.0.0")
+        val targets = TargetVersionsState(mutableMapOf(), mutableMapOf("example:library" to "1.0.0"), "8.1")
+        val cache = DependencyScanCache().apply { update("alice", listOf(inventory)) }
         // Enrich a cached repository whose target is safe only with example:override:2.0.0.
-        val enriched = scanner.enrichSecurityScan(cache.get().single(), overrideSecurity())
+        val raw = scanner.compare(cache.get("alice").single(), targets)
+        val enriched = scanner.enrichSecurityScan(raw, overrideSecurity())
 
         assertEquals(DependencyStatus.OK_WITH_ADD, enriched.findings.first().status)
         val addition = enriched.findings.single { it.status == DependencyStatus.ADD }
         assertEquals("example:override", addition.key)
         assertEquals("2.0.0", addition.targetVersion)
         assertEquals(listOf(DependencyReference(DependencyKind.DEPENDENCY, "example:library", "1.0.0")), addition.relatedTo)
-        assertEquals(listOf(raw), cache.get())
-        // The view proposes ADD, while the original cached finding remains OK.
+        assertEquals(listOf(inventory), cache.get("alice"))
+        // The view proposes ADD, while the cache retains only the original repository inventory.
 
         val updated =
             GradleBuildFileUpdater().apply(
@@ -145,6 +146,9 @@ fun finding(
 ) = DependencyFinding(DependencyKind.DEPENDENCY, key, version, target, status)
 
 fun scan(vararg findings: DependencyFinding) = RepositoryDependencyScan("example/repository", "2026-01-01T00:00:00Z", findings.toList())
+
+fun inventory(vararg dependencies: Pair<String, String>) =
+    RepositoryDependencyInventory("example/repository", "2026-01-01T00:00:00Z", emptyMap(), dependencies.toMap(), "8.0")
 
 class EmptyVulnerabilityService : VulnerabilityService {
     override fun find(dependencies: List<ResolvedDependency>) = emptyMap<String, List<no.nav.platforce.tool.Vulnerability>>()

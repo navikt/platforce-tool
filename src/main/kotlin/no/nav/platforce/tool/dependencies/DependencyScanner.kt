@@ -3,12 +3,10 @@ package no.nav.platforce.tool.dependencies
 import mu.KotlinLogging
 import no.nav.platforce.tool.TargetSecurityStatus
 import no.nav.platforce.tool.github.GithubClient
-import no.nav.platforce.tool.user.UserContext
 import java.time.Instant
 
 class DependencyScanner(
     private val githubClient: GithubClient,
-    private val targetSecurityScanner: TargetSecurityScanner,
 ) {
     private val gradleDependencyParser = GradleDependencyParser()
     private val gradleWrapperParser = GradleWrapperParser()
@@ -17,11 +15,12 @@ class DependencyScanner(
 
     fun scanAllRepositoriesWithProgress(
         cache: DependencyScanCache,
-        userContext: UserContext,
-    ): List<RepositoryDependencyScan> {
+        username: String,
+    ): List<RepositoryDependencyInventory> {
         val scanStart = System.nanoTime()
 
         cache.setProgress(
+            username,
             ScanProgress(
                 total = 0,
                 done = 0,
@@ -29,74 +28,75 @@ class DependencyScanner(
             ),
         )
 
-        val start = System.nanoTime()
-
-        val repos = githubClient.listRepositories()
-
-        val durationMsListing =
-            (System.nanoTime() - start) / 1_000_000
-
-        log.info {
-            "Repository listing complete: " +
-                "duration=${durationMsListing}ms"
-        }
-
-        cache.setProgress(
-            ScanProgress(
-                total = repos.size,
-                done = 0,
-                running = true,
-            ),
-        )
-
-        val results = mutableListOf<RepositoryDependencyScan>()
-
-        repos.forEachIndexed { index, repo ->
+        try {
             val start = System.nanoTime()
 
-            scanRepository(repo, userContext)?.let {
-                results += it
-            }
+            val repos = githubClient.listRepositories()
 
-            val durationMs =
+            val durationMsListing =
                 (System.nanoTime() - start) / 1_000_000
 
             log.info {
-                "Repository scan complete: " +
-                    "repo=$repo, " +
-                    "duration=${durationMs}ms"
+                "Repository listing complete: " +
+                    "duration=${durationMsListing}ms"
             }
 
             cache.setProgress(
-                cache.getProgress().copy(
-                    done = index + 1,
+                username,
+                ScanProgress(
+                    total = repos.size,
+                    done = 0,
+                    running = true,
                 ),
             )
+
+            val results = mutableListOf<RepositoryDependencyInventory>()
+
+            repos.forEachIndexed { index, repo ->
+                val start = System.nanoTime()
+
+                scanRepository(repo)?.let {
+                    results += it
+                }
+
+                val durationMs =
+                    (System.nanoTime() - start) / 1_000_000
+
+                log.info {
+                    "Repository scan complete: " +
+                        "repo=$repo, " +
+                        "duration=${durationMs}ms"
+                }
+
+                cache.setProgress(
+                    username,
+                    cache.getProgress(username).copy(
+                        done = index + 1,
+                    ),
+                )
+            }
+
+            val durationMs =
+                (System.nanoTime() - scanStart) / 1_000_000
+
+            log.info {
+                "Repository dependency scan complete (FULL): " +
+                    "repos=${repos.size}, " +
+                    "results=${results.size}, " +
+                    "duration=${durationMs}ms"
+            }
+
+            return results
+        } catch (e: Exception) {
+            log.error(e) { "Repository refresh failed" }
+            cache.setProgress(username, cache.getProgress(username).copy(error = e.message ?: e.javaClass.simpleName))
+            throw e
+        } finally {
+            cache.setProgress(username, cache.getProgress(username).copy(running = false))
         }
-
-        cache.setProgress(
-            cache.getProgress().copy(
-                running = false,
-            ),
-        )
-
-        val durationMs =
-            (System.nanoTime() - scanStart) / 1_000_000
-
-        log.info {
-            "Repository dependency scan complete (FULL): " +
-                "repos=${repos.size}, " +
-                "results=${results.size}, " +
-                "duration=${durationMs}ms"
-        }
-
-        return results
     }
 
-    fun scanRepository(
-        repository: String,
-        userContext: UserContext,
-    ): RepositoryDependencyScan? {
+    fun scanRepository(repository: String): RepositoryDependencyInventory? {
         val owner = repository.substringBefore("/")
         val repo = repository.substringAfter("/")
 
@@ -108,12 +108,24 @@ class DependencyScanner(
 
         val parsedBuildFile = gradleDependencyParser.parse(buildFile)
 
-        val findings = mutableListOf<DependencyFinding>()
+        return RepositoryDependencyInventory(
+            repository = repository,
+            scannedAt = Instant.now().toString(),
+            plugins = parsedBuildFile.plugins,
+            dependencies = parsedBuildFile.dependencies,
+            gradleVersion = parsedWrapper,
+        )
+    }
 
-        val store = userContext.targetVersionsStore.get()
+    fun compare(
+        inventory: RepositoryDependencyInventory,
+        targetState: TargetVersionsState,
+    ): RepositoryDependencyScan {
+        val findings = mutableListOf<DependencyFinding>()
+        val store = targetState
 
         store.plugins.forEach { (plugin, target) ->
-            val current = parsedBuildFile.plugins[plugin] ?: return@forEach
+            val current = inventory.plugins[plugin] ?: return@forEach
 
             findings +=
                 DependencyFinding(
@@ -126,7 +138,7 @@ class DependencyScanner(
         }
 
         store.dependencies.forEach { (dep, target) ->
-            val current = parsedBuildFile.dependencies[dep] ?: return@forEach
+            val current = inventory.dependencies[dep] ?: return@forEach
 
             findings +=
                 DependencyFinding(
@@ -139,7 +151,7 @@ class DependencyScanner(
         }
 
         store.gradleVersion.let { target ->
-            val current = parsedWrapper ?: ""
+            val current = inventory.gradleVersion ?: ""
 
             findings +=
                 DependencyFinding(
@@ -155,7 +167,7 @@ class DependencyScanner(
         val trackedPlugins = store.plugins.keys
 
         val untrackedDependencies =
-            parsedBuildFile.dependencies
+            inventory.dependencies
                 .filterKeys { it !in trackedDependencies }
                 .map { (key, version) ->
                     UntrackedDependency(
@@ -165,7 +177,7 @@ class DependencyScanner(
                 }
 
         val untrackedPlugins =
-            parsedBuildFile.plugins
+            inventory.plugins
                 .filterKeys { it !in trackedPlugins }
                 .map { (key, version) ->
                     UntrackedPlugin(
@@ -175,8 +187,8 @@ class DependencyScanner(
                 }
 
         return RepositoryDependencyScan(
-            repository = repository,
-            scannedAt = Instant.now().toString(),
+            repository = inventory.repository,
+            scannedAt = inventory.scannedAt,
             findings = findings,
             untrackedDependencies = untrackedDependencies,
             untrackedPlugins = untrackedPlugins,

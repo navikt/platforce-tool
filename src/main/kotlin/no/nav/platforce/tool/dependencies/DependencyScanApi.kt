@@ -20,38 +20,40 @@ fun dependencyScanRoutes(
         val targetState = context.targetVersionsStore.get()
 
         val scans =
-            dependencyScanViewService.get(targetState)
+            dependencyScanViewService.get(context.username, targetState)
 
         Response(Status.OK)
             .header("Content-Type", "application/json")
             .body(Gson().toJson(scans))
     },
     "/internal/api/dependency-scan/refresh" bind Method.POST to { request ->
-        val result = scanner.scanAllRepositoriesWithProgress(cache, request.userContext())
-        cache.update(result)
+        val context = request.userContext()
+        cache.withRefreshLock(context.username) {
+            val result = scanner.scanAllRepositoriesWithProgress(cache, context.username)
+            cache.update(context.username, result)
+        }
         Response(Status.OK).body("Refreshed")
     },
     "/internal/api/dependency-scan/refresh/{owner}/{repo}" bind Method.POST to { request ->
         val owner = request.path("owner")!!
         val repo = request.path("repo")!!
 
-        val result =
-            scanner.scanRepository(
-                repository = "$owner/$repo",
-                userContext = request.userContext(),
-            )
-
-        if (result != null) {
-            cache.updateRepository(result)
-            Response(Status.OK)
-        } else {
-            Response(Status.NOT_FOUND)
+        val context = request.userContext()
+        cache.withRefreshLock(context.username) {
+            val result = scanner.scanRepository(repository = "$owner/$repo")
+            if (result != null) {
+                cache.updateRepository(context.username, result)
+                Response(Status.OK)
+            } else {
+                Response(Status.NOT_FOUND)
+            }
         }
     },
-    "/internal/api/dependency-scan/progress" bind Method.GET to {
+    "/internal/api/dependency-scan/progress" bind Method.GET to { request ->
+        val context = request.userContext()
         Response(Status.OK)
             .header("Content-Type", "application/json")
-            .body(Gson().toJson(cache.getProgress()))
+            .body(Gson().toJson(cache.getProgress(context.username)))
     },
     "/internal/api/dependency-scan/pr/{owner}/{repo}" bind Method.POST to { req ->
         val owner = req.path("owner")!!
@@ -61,7 +63,7 @@ fun dependencyScanRoutes(
 
         val targetState = context.targetVersionsStore.get()
 
-        val url = pullRequestService.createPullRequest(owner, repo, targetState)
+        val url = pullRequestService.createPullRequest(owner, repo, context.username, targetState)
 
         Response(Status.OK)
             .header("Content-Type", "text/plain")

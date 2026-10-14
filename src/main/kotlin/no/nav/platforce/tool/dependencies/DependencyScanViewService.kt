@@ -5,14 +5,18 @@ class DependencyScanViewService(
     private val targetSecurityScanner: TargetSecurityScanner,
     private val dependencyScanner: DependencyScanner,
 ) {
-    fun get(targetState: TargetVersionsState): List<RepositoryDependencyScan> {
+    fun get(
+        username: String,
+        targetState: TargetVersionsState,
+    ): List<RepositoryDependencyScan> {
         val securityResult =
             targetSecurityScanner
-                .get(targetState)
+                .get(username, targetState)
                 .takeIf { it.status == SecurityScanStatus.READY }
                 ?.result
 
-        return dependencyScanCache.get().map { scan ->
+        return dependencyScanCache.get(username).map { inventory ->
+            val scan = dependencyScanner.compare(inventory, targetState)
             if (securityResult != null) {
                 dependencyScanner.enrichSecurityScan(
                     scan = scan,

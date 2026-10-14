@@ -8,19 +8,19 @@ class ScanCacheTest {
     @Test
     fun `repository refresh replaces its scan and preserves other repositories`() {
         val cache = DependencyScanCache()
-        val first = scan(finding("example:library"))
+        val first = inventory("example:library" to "1.0.0")
         val other = first.copy(repository = "example/other")
-        cache.update(listOf(first, other))
+        cache.update("alice", listOf(first, other))
         // Refresh one repository in a cache containing two repositories.
         val refreshed = first.copy(scannedAt = "2026-01-02T00:00:00Z")
-        cache.updateRepository(refreshed)
-        assertEquals(listOf(refreshed, other), cache.get())
+        cache.updateRepository("alice", refreshed)
+        assertEquals(listOf(refreshed, other), cache.get("alice"))
 
         // A first scan of a third repository is appended without duplicates.
         val added = first.copy(repository = "example/new")
-        cache.updateRepository(added)
-        cache.updateRepository(added)
-        assertEquals(listOf(refreshed, other, added), cache.get())
+        cache.updateRepository("alice", added)
+        cache.updateRepository("alice", added)
+        assertEquals(listOf(refreshed, other, added), cache.get("alice"))
     }
 
     @Test
@@ -49,6 +49,7 @@ class ScanCacheTest {
             original.copy(plugins = mutableMapOf("plugin.a" to "2")),
             original.copy(dependencies = mutableMapOf("example:a" to "2")),
             original.copy(gradleVersion = "8.2"),
+            original.copy(transientDependencies = setOf("example:a")),
         ).forEach { changed ->
             assertNotEquals(fingerprint(original), fingerprint(changed))
         }

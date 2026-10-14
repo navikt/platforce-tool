@@ -1,10 +1,6 @@
 package no.nav.platforce.tool.dependencies
 
-import mu.KotlinLogging
-import no.nav.platforce.tool.application
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicReference
 
 enum class SecurityScanStatus {
     IDLE,
@@ -21,124 +17,42 @@ data class SecurityScanSnapshot(
 )
 
 class TargetSecurityScanner(
-    private val targetSecurityService: TargetSecurityService,
-    private val executor: ExecutorService = Executors.newSingleThreadExecutor(),
+    targetSecurityService: TargetSecurityService,
+    private val resolutionScanner: GradleTargetResolutionScanner,
+    executor: ExecutorService = scanExecutor("target-security"),
 ) {
-    private val snapshot =
-        AtomicReference(
-            SecurityScanSnapshot(
-                status = SecurityScanStatus.IDLE,
-                targetFingerprint = null,
-                result = null,
-                error = null,
-            ),
+    private val jobs =
+        UserScanJobs(executor) { username: String, state: TargetVersionsState ->
+            val resolution = resolutionScanner.waitForResolution(username, state)
+            targetSecurityService.scan(resolution, state)
+        }
+
+    fun start(
+        username: String,
+        targetState: TargetVersionsState,
+    ): SecurityScanSnapshot {
+        resolutionScanner.start(username, targetState)
+        return jobs.start(username, targetState, refreshReady = true).toSecuritySnapshot()
+    }
+
+    fun get(
+        username: String,
+        targetState: TargetVersionsState,
+    ): SecurityScanSnapshot = jobs.get(username, targetState).toSecuritySnapshot()
+
+    fun invalidate(username: String) = jobs.invalidate(username)
+
+    private fun ScanJobSnapshot<TargetSecurityScan>.toSecuritySnapshot() =
+        SecurityScanSnapshot(
+            status =
+                when (status) {
+                    ScanJobStatus.IDLE -> SecurityScanStatus.IDLE
+                    ScanJobStatus.RUNNING -> SecurityScanStatus.RUNNING
+                    ScanJobStatus.READY -> SecurityScanStatus.READY
+                    ScanJobStatus.FAILED -> SecurityScanStatus.FAILED
+                },
+            targetFingerprint = targetFingerprint,
+            result = result,
+            error = error,
         )
-
-    fun start(targetState: TargetVersionsState): SecurityScanSnapshot {
-        val fingerprint = fingerprint(targetState)
-        synchronized(this) {
-            val current = snapshot.get()
-            if (
-                current.targetFingerprint == fingerprint &&
-                current.status == SecurityScanStatus.READY
-            ) {
-                return current
-            }
-            if (
-                current.targetFingerprint == fingerprint &&
-                current.status == SecurityScanStatus.RUNNING
-            ) {
-                return current
-            }
-            snapshot.set(
-                SecurityScanSnapshot(
-                    status = SecurityScanStatus.RUNNING,
-                    targetFingerprint = fingerprint,
-                    result = null,
-                    error = null,
-                ),
-            )
-            executor.submit {
-                try {
-                    val resolution =
-                        application.waitForResolution(
-                            targetState = targetState,
-                        )
-                    val result =
-                        targetSecurityService.scan(
-                            resolution = resolution,
-                            targetState = targetState,
-                        )
-                    snapshot.set(
-                        SecurityScanSnapshot(
-                            status = SecurityScanStatus.READY,
-                            targetFingerprint = fingerprint,
-                            result = result,
-                            error = null,
-                        ),
-                    )
-                } catch (e: Exception) {
-                    snapshot.set(
-                        SecurityScanSnapshot(
-                            status = SecurityScanStatus.FAILED,
-                            targetFingerprint = fingerprint,
-                            result = null,
-                            error = e.message ?: e.javaClass.simpleName,
-                        ),
-                    )
-                }
-            }
-            return snapshot.get()
-        }
-    }
-
-    private val log = KotlinLogging.logger { }
-
-    fun get(targetState: TargetVersionsState): SecurityScanSnapshot {
-        val fingerprint = fingerprint(targetState)
-        log.info {
-            "TARGET SECURITY GET: " +
-                "fingerprint=$fingerprint"
-        }
-        val current = snapshot.get()
-
-        log.info {
-            "TARGET SECURITY CACHE: " +
-                "status=${current.status}, " +
-                "fingerprint=${current.targetFingerprint}, " +
-                "targets=${current.result?.targets?.size}"
-        }
-
-        if (current.targetFingerprint != fingerprint) {
-            log.info {
-                "TARGET SECURITY CACHE MISS: " +
-                    "requestedFingerprint=$fingerprint, " +
-                    "cachedFingerprint=${current.targetFingerprint}"
-            }
-            return SecurityScanSnapshot(
-                status = SecurityScanStatus.IDLE,
-                targetFingerprint = fingerprint,
-                result = null,
-                error = null,
-            )
-        }
-
-        log.info {
-            "TARGET SECURITY CACHE HIT: " +
-                "status=${current.status}, " +
-                "targets=${current.result?.targets?.size}"
-        }
-        return current
-    }
-
-    fun invalidate() {
-        snapshot.set(
-            SecurityScanSnapshot(
-                status = SecurityScanStatus.IDLE,
-                targetFingerprint = null,
-                result = null,
-                error = null,
-            ),
-        )
-    }
 }

@@ -14,10 +14,8 @@ import no.nav.platforce.tool.dependencies.RepositoryDependencyScan
 import no.nav.platforce.tool.dependencies.ResolutionStatus
 import no.nav.platforce.tool.dependencies.ResolvedDependency
 import no.nav.platforce.tool.dependencies.SecurityScanStatus
-import no.nav.platforce.tool.dependencies.TargetResolution
 import no.nav.platforce.tool.dependencies.TargetSecurityScanner
 import no.nav.platforce.tool.dependencies.TargetSecurityService
-import no.nav.platforce.tool.dependencies.TargetVersionsState
 import no.nav.platforce.tool.dependencies.dependencyScanRoutes
 import no.nav.platforce.tool.dependencies.targetVersionsRoutes
 import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
@@ -27,6 +25,7 @@ import no.nav.platforce.tool.gui.filesHandler
 import no.nav.platforce.tool.ignore.ignoredRepositoriesRoutes
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.user.userContext
+import no.nav.platforce.tool.user.withUserCacheControl
 import no.nav.sf.keytool.db.PostgresDatabase
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -87,15 +86,15 @@ class Application {
 
     val gradleTargetResolutionService = GradleTargetResolutionService()
 
-    val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService)
+    val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService::resolve)
 
     val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
 
     val targetSecurityService = TargetSecurityService(osvVulnerabilityService)
 
-    val targetSecurityScanner = TargetSecurityScanner(targetSecurityService)
+    val targetSecurityScanner = TargetSecurityScanner(targetSecurityService, gradleTargetResolutionScanner)
 
-    val dependencyScanner = DependencyScanner(githubClient, targetSecurityScanner)
+    val dependencyScanner = DependencyScanner(githubClient)
 
     val dependencyScanViewService = DependencyScanViewService(dependencyScanCache, targetSecurityScanner, dependencyScanner)
 
@@ -132,6 +131,7 @@ class Application {
                 val targetState = context.targetVersionsStore.get()
                 val snapshot =
                     gradleTargetResolutionScanner.start(
+                        username = context.username,
                         targetState = targetState,
                     )
                 when (snapshot.status) {
@@ -159,6 +159,7 @@ class Application {
 
                 val snapshot =
                     gradleTargetResolutionScanner.get(
+                        username = context.username,
                         targetState = targetState,
                     )
 
@@ -179,6 +180,7 @@ class Application {
                 val targetState = context.targetVersionsStore.get()
                 val snapshot =
                     targetSecurityScanner.start(
+                        username = context.username,
                         targetState = targetState,
                     )
                 when (snapshot.status) {
@@ -206,6 +208,7 @@ class Application {
 
                 val snapshot =
                     targetSecurityScanner.get(
+                        username = context.username,
                         targetState = targetState,
                     )
 
@@ -256,11 +259,12 @@ class Application {
                 pullRequestService,
                 dependencyScanViewService,
             ).toTypedArray(),
-            *targetVersionsRoutes().toTypedArray(),
+            *targetVersionsRoutes(gradleTargetResolutionScanner, targetSecurityScanner).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
             "/internal/repos/view" bind Method.GET to { request ->
-                val nais = getRepositoriesForUser(request.userContext().username)
+                val context = request.userContext()
+                val nais = getRepositoriesForUser(context.username)
 
                 val naisRepos =
                     nais.teams
@@ -272,8 +276,8 @@ class Application {
 
                 val installed = githubClient.listRepositories().toSet()
                 val scanned: Map<String, RepositoryDependencyScan> =
-                    dependencyScanCache
-                        .get()
+                    dependencyScanViewService
+                        .get(context.username, context.targetVersionsStore.get())
                         .associateBy { it.repository }
 
                 val result =
@@ -287,7 +291,7 @@ class Application {
                     .header("Content-Type", "application/json")
                     .body(gson.toJson(result))
             },
-        )
+        ).withUserCacheControl()
 
     fun start() {
         log.info { "Starting in cluster $cluster" }
@@ -464,33 +468,6 @@ class Application {
                     scan = scan,
                 )
             }.sortedWith(compareBy({ it.team }, { it.name }))
-
-    fun waitForResolution(targetState: TargetVersionsState): TargetResolution {
-        while (true) {
-            val resolutionSnapshot =
-                gradleTargetResolutionScanner.get(
-                    targetState = targetState,
-                )
-            when (resolutionSnapshot.status) {
-                ResolutionStatus.READY -> {
-                    return checkNotNull(resolutionSnapshot.result)
-                }
-                ResolutionStatus.FAILED -> {
-                    throw IllegalStateException(
-                        "Gradle target resolution failed: ${resolutionSnapshot.error}",
-                    )
-                }
-                ResolutionStatus.IDLE -> {
-                    gradleTargetResolutionScanner.start(
-                        targetState = targetState,
-                    )
-                }
-                ResolutionStatus.RUNNING -> {
-                    Thread.sleep(250)
-                }
-            }
-        }
-    }
 }
 
 data class Vulnerability(
