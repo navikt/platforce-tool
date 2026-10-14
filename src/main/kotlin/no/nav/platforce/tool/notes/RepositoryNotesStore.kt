@@ -1,6 +1,6 @@
 package no.nav.platforce.tool.notes
 
-import no.nav.sf.keytool.db.PostgresDatabase
+import no.nav.platforce.tool.db.PostgresDatabase
 
 class RepositoryNotesStore(
     private val userId: String = "default",

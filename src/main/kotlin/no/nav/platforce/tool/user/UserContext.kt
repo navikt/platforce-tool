@@ -1,9 +1,9 @@
 package no.nav.platforce.tool.user
 
 import com.google.gson.JsonParser
-import no.nav.platforce.tool.dependencies.TargetVersionsStore
 import no.nav.platforce.tool.ignore.IgnoredRepositoriesStore
 import no.nav.platforce.tool.notes.RepositoryNotesStore
+import no.nav.platforce.tool.targets.TargetVersionsStore
 import org.http4k.core.Request
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -16,7 +16,7 @@ data class UserContext(
         RepositoryNotesStore(userId = username),
     val ignoredRepositoriesStore: IgnoredRepositoriesStore =
         IgnoredRepositoriesStore(userId = username),
-    var selectedTeam: String? = null,
+    @Volatile var selectedTeam: String? = null,
 )
 
 object UserContextCache {

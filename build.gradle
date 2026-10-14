@@ -29,8 +29,6 @@ repositories {
 }
 
 dependencies {
-    implementation "no.nav.security:token-validation-core:5.0.29"
-
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
 
     implementation "com.google.code.gson:gson:2.13.2"
@@ -72,6 +70,7 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    systemProperty 'platforce.tests.gradleHome', gradle.gradleHomeDir.absolutePath
     testLogging {
         events "passed", "skipped", "failed"
     }

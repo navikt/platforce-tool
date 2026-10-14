@@ -1,6 +1,6 @@
 package no.nav.platforce.tool.ignore
 
-import no.nav.sf.keytool.db.PostgresDatabase
+import no.nav.platforce.tool.db.PostgresDatabase
 
 data class IgnoredRepositoriesState(
     val repositories: MutableList<String>,

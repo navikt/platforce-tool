@@ -1,18 +1,10 @@
-package no.nav.sf.keytool.db
+package no.nav.platforce.tool.db
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import mu.KotlinLogging
-import no.nav.platforce.tool.db.IGNORED_REPOSITORIES
-import no.nav.platforce.tool.db.IgnoredRepositoriesTable
-import no.nav.platforce.tool.db.REPOSITORY_NOTES
-import no.nav.platforce.tool.db.RepositoryNotesTable
-import no.nav.platforce.tool.db.TARGET_VERSIONS
-import no.nav.platforce.tool.db.TargetVersion
-import no.nav.platforce.tool.db.TargetVersionsTable
-import no.nav.platforce.tool.db.toTargetVersion
-import no.nav.platforce.tool.dependencies.TargetVersions
-import no.nav.platforce.tool.env
+import no.nav.platforce.tool.config.env
+import no.nav.platforce.tool.targets.snapshot
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
