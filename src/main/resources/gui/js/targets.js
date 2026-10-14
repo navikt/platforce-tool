@@ -275,6 +275,10 @@ async function applySecurityUpgrade(button, key, version) {
 
 async function saveTargets() {
     const payload = readTargetInputs();
+    const message = document.getElementById("targetSaveMessage");
+    message.hidden = true;
+    message.textContent = "";
+    let saved = false;
     try {
         const response = await fetch("/internal/api/target-versions/update", {
             method: "POST",
@@ -287,6 +291,7 @@ async function saveTargets() {
         if (!response.ok) {
             throw new Error(`Failed to save target versions: HTTP ${response.status}`);
         }
+        saved = true;
 
         targetScanGeneration++;
         targetSecurityScan = null;
@@ -300,9 +305,15 @@ async function saveTargets() {
 
         renderTargetTables();
         await loadData();
-        alert("Target versions updated");
+        message.className = "save-banner save-banner-success";
+        message.textContent = "Target versions updated";
+        message.hidden = false;
     } catch (error) {
         console.error("Could not save target versions", error);
-        alert(error.message);
+        message.className = "save-banner save-banner-error";
+        message.textContent = saved
+            ? `Target versions saved, but repository data could not be refreshed: ${error.message}`
+            : error.message;
+        message.hidden = false;
     }
 }

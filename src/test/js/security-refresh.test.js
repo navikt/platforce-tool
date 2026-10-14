@@ -169,7 +169,10 @@ test("saving targets clears old security and reloads comparisons", async () => {
     assert.equal(app.value("targetSecurityScan"), null);
     assert.equal(app.value("targetScanGeneration"), 1);
     assert.equal(app.rendered.length, 1);
-    assert.deepEqual(app.alerts, ["Target versions updated"]);
+    assert.deepEqual(app.alerts, []);
+    assert.equal(app.element("targetSaveMessage").textContent, "Target versions updated");
+    assert.equal(app.element("targetSaveMessage").className, "save-banner save-banner-success");
+    assert.equal(app.element("targetSaveMessage").hidden, false);
 });
 
 test("failed target save retains existing security and does not report success", async () => {
@@ -181,7 +184,34 @@ test("failed target save retains existing security and does not report success",
     assert.equal(app.value("targetSecurityScan.targets[0].key"), "old");
     assert.equal(app.value("targetScanGeneration"), 0);
     assert.equal(app.rendered.length, 0);
-    assert.deepEqual(app.alerts, ["Failed to save target versions: HTTP 500"]);
+    assert.deepEqual(app.alerts, []);
+    assert.equal(app.element("targetSaveMessage").textContent, "Failed to save target versions: HTTP 500");
+    assert.equal(app.element("targetSaveMessage").className, "save-banner save-banner-error");
+    assert.equal(app.element("targetSaveMessage").hidden, false);
+});
+
+test("successful save followed by failed repository reload reports partial success in the banner", async () => {
+    const app = gui();
+    app.context.fetch = async url => ({ ok: url.endsWith("/update"), status: 503 });
+    await app.context.saveTargets();
+    assert.equal(app.value("targetScanGeneration"), 1);
+    assert.equal(app.element("targetSaveMessage").className, "save-banner save-banner-error");
+    assert.match(app.element("targetSaveMessage").textContent, /^Target versions saved, but repository data could not be refreshed:/);
+    assert.deepEqual(app.alerts, []);
+});
+
+test("new save clears stale feedback until the response arrives", async () => {
+    const app = gui();
+    app.element("targetSaveMessage").textContent = "Previous success";
+    let finish;
+    app.context.fetch = () => new Promise(resolve => { finish = resolve; });
+    const pending = app.context.saveTargets();
+    assert.equal(app.element("targetSaveMessage").hidden, true);
+    assert.equal(app.element("targetSaveMessage").textContent, "");
+    finish({ ok: false, status: 400 });
+    await pending;
+    assert.equal(app.element("targetSaveMessage").hidden, false);
+    assert.match(app.element("targetSaveMessage").textContent, /HTTP 400/);
 });
 
 test("capturing drafts preserves unsaved target inputs before a scan rerenders the table", () => {
