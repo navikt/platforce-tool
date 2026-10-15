@@ -63,6 +63,13 @@ failures are exposed to the GUI and obsolete jobs cannot publish results.
 
 ## Application behavior
 
+When several missing vulnerability overrides are required, repository enrichment
+prefers a target whose scanned individual graph covers multiple requirements.
+For example, one jackson-databind ADD can replace separate databind/core ADDs
+when its matching safe target version supplies both fixes. Independent overrides
+remain separate; the GUI explanation and generated PR use the same selection.
+This reuses security-scan evidence without additional Gradle resolutions.
+
 Platform BOMs have a separate target section below Gradle and a separate
 repository finding type. Literal `platform(...)` and `enforcedPlatform(...)`
 coordinates are discovered as untracked until saved as a target. Click an

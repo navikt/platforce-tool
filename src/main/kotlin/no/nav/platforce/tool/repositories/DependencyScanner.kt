@@ -4,6 +4,7 @@ import mu.KotlinLogging
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.gradle.GradleDependencyParser
 import no.nav.platforce.tool.gradle.GradleWrapperParser
+import no.nav.platforce.tool.security.OverrideReason
 import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.security.TargetSecurityStatus
 import no.nav.platforce.tool.targets.TargetVersionsState
@@ -307,6 +308,7 @@ class DependencyScanner(
                         it.dependency !in presentDependencies && it !in coveredReasons
                     }
                 val bomReferences = if (coveredReasons.isNotEmpty()) listOfNotNull(bomCoverage?.first) else emptyList()
+                val additions = selectOverrideAdditions(missingOverrides, securityResult)
 
                 enriched +=
                     finding.copy(
@@ -319,13 +321,13 @@ class DependencyScanner(
                                 DependencyStatus.OK_OVERRIDDEN
                             },
                         relatedTo =
-                            relatedTo.filter { it !in coveredReasons }.map {
+                            relatedTo.filter { it !in coveredReasons && it !in missingOverrides }.map {
                                 DependencyReference(
                                     kind = DependencyKind.DEPENDENCY,
                                     key = it.dependency,
                                     version = it.targetVersion,
                                 )
-                            } + bomReferences,
+                            } + additions + bomReferences,
                         bomCoverage = bomReferences,
                         bomCoverageNote =
                             if (missingOverrides.isNotEmpty() && inventory?.platformBoms?.isNotEmpty() == true) {
@@ -335,13 +337,13 @@ class DependencyScanner(
                             },
                     )
 
-                missingOverrides.forEach { override ->
+                additions.forEach { override ->
                     enriched +=
                         DependencyFinding(
                             kind = DependencyKind.DEPENDENCY,
-                            key = override.dependency,
+                            key = override.key,
                             currentVersion = null,
-                            targetVersion = override.targetVersion,
+                            targetVersion = override.version,
                             status = DependencyStatus.ADD,
                             relatedTo =
                                 listOf(
@@ -410,6 +412,40 @@ class DependencyScanner(
         }
 
         return enriched
+    }
+
+    private fun selectOverrideAdditions(
+        missing: List<OverrideReason>,
+        security: TargetSecurityScan,
+    ): List<DependencyReference> {
+        val candidates =
+            missing.map { DependencyReference(DependencyKind.DEPENDENCY, it.dependency, it.targetVersion) }.distinct()
+        val remaining = missing.toMutableSet()
+        val selected = mutableListOf<DependencyReference>()
+        while (remaining.isNotEmpty()) {
+            val coverage =
+                candidates.associateWith { candidate ->
+                    val safeTarget =
+                        security.targets.any {
+                            it.key == candidate.key && it.targetVersion == candidate.version &&
+                                it.status in setOf(TargetSecurityStatus.OK, TargetSecurityStatus.OK_TRANSIENT)
+                        }
+                    remaining.filter { reason ->
+                        (reason.dependency == candidate.key && reason.targetVersion == candidate.version) ||
+                            (safeTarget && "${candidate.key}:${candidate.version}" in reason.causedBy)
+                    }
+                }
+            val best =
+                candidates
+                    .sortedWith(
+                        compareByDescending<DependencyReference> { coverage.getValue(it).size }
+                            .thenBy { it.key }
+                            .thenBy { it.version },
+                    ).first()
+            selected += best
+            remaining.removeAll(coverage.getValue(best).toSet())
+        }
+        return selected
     }
 
     fun dependencyStatus(
