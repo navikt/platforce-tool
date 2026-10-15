@@ -4,6 +4,7 @@ async function renderTargets(data) {
     targetState = {
         plugins: data.plugins || {},
         dependencies: data.dependencies || {},
+        platformBoms: data.platformBoms || {},
         gradleVersion: data.gradleVersion || "",
         transientDependencies: new Set(data.transientDependencies || []),
         drafted
@@ -20,6 +21,7 @@ function renderTargetTables() {
     );
     renderTable("pluginsTable", Object.entries(targetState.plugins), "plugin");
     renderTable("depsTable", Object.entries(targetState.dependencies), "dependency");
+    renderTable("platformBomsTable", Object.entries(targetState.platformBoms), "platform_bom");
     renderGradleVersion(targetState.gradleVersion);
 }
 
@@ -31,6 +33,10 @@ function addDraftTarget(kind, key, version) {
 
     if (kind === "DEPENDENCY") {
         targetState.dependencies[key] = version;
+    }
+
+    if (kind === "PLATFORM_BOM") {
+        targetState.platformBoms[key] = version;
     }
 
     if (kind === "GRADLE") {
@@ -250,6 +256,7 @@ function readTargetInputs() {
     return {
         plugins: read("pluginsTable"),
         dependencies: read("depsTable"),
+        platformBoms: read("platformBomsTable"),
         gradleVersion: readSingleVersion("gradleTable"),
         transientDependencies:
             Array.from(targetState.transientDependencies)
@@ -260,6 +267,7 @@ function captureTargetDrafts() {
     const inputs = readTargetInputs();
     targetState.plugins = inputs.plugins;
     targetState.dependencies = inputs.dependencies;
+    targetState.platformBoms = inputs.platformBoms;
     targetState.gradleVersion = inputs.gradleVersion;
 }
 
@@ -331,6 +339,7 @@ async function saveTargets() {
         targetState = {
             plugins: payload.plugins,
             dependencies: payload.dependencies,
+            platformBoms: payload.platformBoms,
             gradleVersion: payload.gradleVersion,
             transientDependencies: new Set(payload.transientDependencies),
             drafted: new Set()

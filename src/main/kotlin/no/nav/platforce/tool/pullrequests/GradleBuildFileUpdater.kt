@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.pullrequests
 
+import no.nav.platforce.tool.gradle.GradleDependencyParser
 import no.nav.platforce.tool.repositories.DependencyFinding
 import no.nav.platforce.tool.repositories.DependencyKind
 import no.nav.platforce.tool.repositories.DependencyStatus
@@ -78,13 +79,16 @@ class GradleBuildFileUpdater {
                             )
                         }
 
-                        DependencyKind.DEPENDENCY -> {
-                            updated.replace(
-                                Regex(
-                                    """(${Regex.escape(f.key)}:)${Regex.escape(from)}(['"])""",
-                                ),
-                                """$1$to$2""",
-                            )
+                        DependencyKind.DEPENDENCY, DependencyKind.PLATFORM_BOM -> {
+                            var result = updated
+                            GradleDependencyParser()
+                                .declarations(updated)
+                                .filter {
+                                    it.key == f.key && it.version == from &&
+                                        it.platformBom == (f.kind == DependencyKind.PLATFORM_BOM)
+                                }.sortedByDescending { it.versionRange.first }
+                                .forEach { result = result.replaceRange(it.versionRange, to) }
+                            result
                         }
 
                         DependencyKind.GRADLE -> {

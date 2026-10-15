@@ -6,6 +6,7 @@ data class RepositoryDependencyScan(
     val findings: List<DependencyFinding>,
     val untrackedDependencies: List<UntrackedDependency> = emptyList(),
     val untrackedPlugins: List<UntrackedPlugin> = emptyList(),
+    val untrackedPlatformBoms: List<UntrackedPlatformBom> = emptyList(),
 )
 
 data class DependencyFinding(
@@ -28,6 +29,7 @@ data class DependencyReference(
 enum class DependencyKind {
     PLUGIN,
     DEPENDENCY,
+    PLATFORM_BOM,
     GRADLE,
 }
 
@@ -49,6 +51,11 @@ data class UntrackedDependency(
 )
 
 data class UntrackedPlugin(
+    val key: String,
+    val version: String,
+)
+
+data class UntrackedPlatformBom(
     val key: String,
     val version: String,
 )

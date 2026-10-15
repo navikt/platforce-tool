@@ -96,6 +96,7 @@ function renderRepo(repoView, scanMap, container) {
 
     const untrackedDependencies = scan?.untrackedDependencies ?? [];
     const untrackedPlugins = scan?.untrackedPlugins ?? [];
+    const untrackedPlatformBoms = scan?.untrackedPlatformBoms ?? [];
 
     const ok = findings.filter(f => f.status === "OK").length;
     const update = findings.filter(f => f.status === "UPDATE").length;
@@ -131,7 +132,7 @@ function renderRepo(repoView, scanMap, container) {
     const isMissing = state === "NOT_IN_GITHUB";
     const isNotScanned = state === "NOT_SCANNED";
 
-    const untrackedCount = untrackedDependencies.length + untrackedPlugins.length;
+    const untrackedCount = untrackedDependencies.length + untrackedPlugins.length + untrackedPlatformBoms.length;
     const untrackedBadge =
         untrackedCount > 0
             ? `<span class="badge untracked">${untrackedCount} UNTRKD</span>`
@@ -307,7 +308,7 @@ function renderRepo(repoView, scanMap, container) {
                     return `
                         <div class="finding-container">
                             <div class="row ${kind}-row">
-                                <div class="pill">${f.kind}</div>
+                                <div class="pill">${f.kind === "PLATFORM_BOM" ? "PLATFORM BOM" : f.kind}</div>
                                 <div>${f.key || ""}</div>
                 
                                 <div class="version-cell">
@@ -340,11 +341,11 @@ function renderRepo(repoView, scanMap, container) {
             </div>
 
             ${
-                (untrackedDependencies.length || untrackedPlugins.length)
+                (untrackedDependencies.length || untrackedPlugins.length || untrackedPlatformBoms.length)
                     ? `
                         <div class="untracked-section">
                             <div class="untracked-toggle">
-                                Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length})
+                                Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length}), platform BOMs (${untrackedPlatformBoms.length})
                             </div>
                         
                             <div class="untracked-content">
@@ -387,6 +388,23 @@ function renderRepo(repoView, scanMap, container) {
                                                 data-kind="DEPENDENCY"
                                                 data-key="${dep.key}"
                                                 data-version="${dep.version}">
+                                                UNTRACKED
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join("")}
+                                ${untrackedPlatformBoms.map(bom => `
+                                    <div class="row untracked-row platform_bom-row">
+                                        <div class="pill">PLATFORM BOM</div>
+                                        <div>${escapeHtml(bom.key)}</div>
+                                        <div class="version-cell">
+                                            <span class="current-version">${escapeHtml(bom.version)}</span>
+                                        </div>
+                                        <div>
+                                            <span class="status-pill status-unknown target-draft-pill"
+                                                data-kind="PLATFORM_BOM"
+                                                data-key="${escapeHtml(bom.key)}"
+                                                data-version="${escapeHtml(bom.version)}">
                                                 UNTRACKED
                                             </span>
                                         </div>

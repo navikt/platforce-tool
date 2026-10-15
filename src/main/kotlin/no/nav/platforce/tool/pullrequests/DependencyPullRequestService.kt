@@ -66,8 +66,12 @@ class DependencyPullRequestService(
         )
 
         if (buildGradleFindings.isNotEmpty()) {
-            val filePath = "build.gradle"
-            val currentContent = githubClient.getFile(owner, repo, filePath)
+            val (filePath, currentContent) =
+                runCatching {
+                    "build.gradle" to githubClient.getFile(owner, repo, "build.gradle")
+                }.getOrElse {
+                    "build.gradle.kts" to githubClient.getFile(owner, repo, "build.gradle.kts")
+                }
             val updatedContent = buildFileUpdater.apply(currentContent, actionable)
 
             val fileSha =

@@ -6,4 +6,5 @@ data class RepositoryDependencyInventory(
     val plugins: Map<String, String>,
     val dependencies: Map<String, String>,
     val gradleVersion: String?,
+    val platformBoms: Map<String, String> = emptyMap(),
 )

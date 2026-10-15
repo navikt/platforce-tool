@@ -40,6 +40,7 @@ data class TargetVersion(
 enum class TargetVersionType {
     PLUGIN,
     DEPENDENCY,
+    PLATFORM_BOM,
     GRADLE,
 }
 

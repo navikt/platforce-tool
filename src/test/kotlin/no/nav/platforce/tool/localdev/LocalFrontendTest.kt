@@ -21,6 +21,48 @@ class LocalFrontendTest {
     lateinit var directory: Path
 
     @Test
+    fun `BOM targets start untracked can be saved and accept legacy payloads`() {
+        val handler = LocalFrontendApi(directory).handler
+
+        fun scan() =
+            JsonParser
+                .parseString(handler(Request(Method.GET, "/internal/api/dependency-scan")).bodyString())
+                .asJsonArray
+                .first()
+                .asJsonObject
+        val initial = scan()
+        assertEquals(
+            LocalFrontendFixtures.PLATFORM_BOM,
+            initial["untrackedPlatformBoms"]
+                .asJsonArray
+                .single()
+                .asJsonObject["key"]
+                .asString,
+        )
+        val targets =
+            JsonParser
+                .parseString(handler(Request(Method.GET, "/internal/api/target-versions")).bodyString())
+                .asJsonObject
+        assertEquals(0, targets["platformBoms"].asJsonObject.size())
+        targets["platformBoms"].asJsonObject.addProperty(LocalFrontendFixtures.PLATFORM_BOM, "3.6.0")
+        assertEquals(Status.OK, handler(Request(Method.POST, "/internal/api/target-versions/update").body(targets.toString())).status)
+        val tracked = scan()
+        assertEquals(0, tracked["untrackedPlatformBoms"].asJsonArray.size())
+        val bom = tracked["findings"].asJsonArray.single { it.asJsonObject["kind"].asString == "PLATFORM_BOM" }.asJsonObject
+        assertEquals("UPDATE", bom["status"].asString)
+        assertEquals("3.6.0", bom["targetVersion"].asString)
+
+        targets.remove("platformBoms")
+        assertEquals(Status.OK, handler(Request(Method.POST, "/internal/api/target-versions/update").body(targets.toString())).status)
+        assertEquals(1, scan()["untrackedPlatformBoms"].asJsonArray.size())
+        targets.addProperty("platformBoms", "invalid")
+        assertEquals(
+            Status.BAD_REQUEST,
+            handler(Request(Method.POST, "/internal/api/target-versions/update").body(targets.toString())).status,
+        )
+    }
+
+    @Test
     fun `local server serves GUI assets and every startup API without credentials or database`() {
         val server = startLocalFrontend(0, Path.of("src/main/resources/gui").toAbsolutePath())
         try {

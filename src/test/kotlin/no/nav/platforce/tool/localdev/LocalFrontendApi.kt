@@ -170,6 +170,10 @@ class LocalFrontendApi(
                 }
                 parsed["plugins"].asJsonObject.keySet().forEach { parsed["plugins"].asJsonObject.string(it) }
                 parsed["dependencies"].asJsonObject.keySet().forEach { parsed["dependencies"].asJsonObject.string(it) }
+                parsed["platformBoms"]?.let { boms ->
+                    require(boms.isJsonObject) { "Expected platformBoms object" }
+                    boms.asJsonObject.keySet().forEach { boms.asJsonObject.string(it) }
+                }
                 parsed.string("gradleVersion")
                 require(parsed["transientDependencies"]?.isJsonArray == true) { "Expected transientDependencies array" }
                 require(

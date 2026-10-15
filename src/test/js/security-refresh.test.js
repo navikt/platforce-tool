@@ -273,11 +273,67 @@ test("capturing drafts preserves unsaved target inputs before a scan rerenders t
     app.rows.set("#pluginsTable .target-row", [row("example.plugin", "2.0.0")]);
     app.rows.set("#depsTable .target-row", [row("example:edited", "3.0.0")]);
     app.rows.set("#gradleTable .target-row", [row("gradle-wrapper", "8.1")]);
+    app.rows.set("#platformBomsTable .target-row", [row("io.netty:netty-bom", "4.2.17.Final")]);
 
     app.context.captureTargetDrafts();
     assert.equal(app.value("targetState.dependencies['example:edited']"), "3.0.0");
     assert.equal(app.value("targetState.plugins['example.plugin']"), "2.0.0");
     assert.equal(app.value("targetState.gradleVersion"), "8.1");
+    assert.equal(app.value("targetState.platformBoms['io.netty:netty-bom']"), "4.2.17.Final");
+});
+
+test("platform BOM draft uses its own targets map and is included in saves", async () => {
+    const app = gui();
+    app.context.addDraftTarget("PLATFORM_BOM", "io.netty:netty-bom", "4.2.17.Final");
+    assert.equal(app.value("targetState.platformBoms['io.netty:netty-bom']"), "4.2.17.Final");
+    assert.equal(app.value("targetState.dependencies['io.netty:netty-bom']"), undefined);
+    assert.equal(app.value("targetState.drafted.has('PLATFORM_BOM:io.netty:netty-bom')"), true);
+    app.rows.set("#platformBomsTable .target-row", [{
+        querySelector: selector => ({ value: selector === ".key" ? "io.netty:netty-bom" : "4.2.17.Final" })
+    }]);
+    let saved;
+    app.responses((url, options) => {
+        if (url.endsWith("/update")) {
+            saved = JSON.parse(options.body);
+            return {};
+        }
+        return repositoryResponse(url);
+    });
+    await app.context.saveTargets();
+    assert.deepEqual(saved.platformBoms, { "io.netty:netty-bom": "4.2.17.Final" });
+    assert.equal(app.value("targetState.platformBoms['io.netty:netty-bom']"), "4.2.17.Final");
+});
+
+test("repository renders BOM-only untracked entries and tracked BOMs as a distinct type", () => {
+    const app = gui();
+    const card = {
+        querySelector: selector => selector === ".repo-header" ? { addEventListener() {} } : null
+    };
+    app.context.document.createElement = () => card;
+    const scan = {
+        findings: [],
+        untrackedPlatformBoms: [{ key: "io.netty:netty-bom", version: "4.2.17.Final" }]
+    };
+    const render = () => app.context.renderRepo(
+        { name: "example/repo", state: "SCANNED" },
+        { "example/repo": scan },
+        { appendChild() {} }
+    );
+    render();
+    assert.match(card.innerHTML, /1 UNTRKD/);
+    assert.match(card.innerHTML, /platform BOMs \(1\)/);
+    assert.match(card.innerHTML, /data-kind="PLATFORM_BOM"/);
+    assert.match(card.innerHTML, /data-key="io.netty:netty-bom"/);
+    scan.untrackedPlatformBoms = [];
+    scan.findings = [{
+        kind: "PLATFORM_BOM", key: "io.netty:netty-bom",
+        currentVersion: "4.2.17.Final", targetVersion: "4.2.18.Final", status: "UPDATE"
+    }];
+    render();
+    assert.match(card.innerHTML, /class="pill">PLATFORM BOM/);
+    assert.match(card.innerHTML, /row platform_bom-row/);
+    assert.match(card.innerHTML, /1 UPDATE/);
+    assert.doesNotMatch(card.innerHTML, /data-toggle-details="true"/);
 });
 
 test("failed repository refresh stops progress polling and permits another attempt", async () => {

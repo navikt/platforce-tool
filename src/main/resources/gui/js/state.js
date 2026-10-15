@@ -21,6 +21,7 @@ let notes = {};
 let targetState = {
     plugins: {},
     dependencies: {},
+    platformBoms: {},
     gradleVersion: "",
     transientDependencies: new Set(),
     drafted: new Set()

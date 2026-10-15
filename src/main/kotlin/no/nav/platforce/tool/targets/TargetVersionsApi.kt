@@ -22,7 +22,7 @@ fun targetVersionsRoutes(
     "/internal/api/target-versions/update" bind Method.POST to { request ->
         val context = request.userContext()
         val body = request.bodyString()
-        val parsed = Gson().fromJson(body, TargetVersionsState::class.java)
+        val parsed = Gson().fromJson(body, TargetVersionsState::class.java).snapshot()
 
         context.targetVersionsStore.update(parsed)
 

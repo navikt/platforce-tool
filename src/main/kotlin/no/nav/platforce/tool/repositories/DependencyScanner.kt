@@ -118,6 +118,7 @@ class DependencyScanner(
             plugins = parsedBuildFile.plugins,
             dependencies = parsedBuildFile.dependencies,
             gradleVersion = parsedWrapper,
+            platformBoms = parsedBuildFile.platformBoms,
         )
     }
 
@@ -148,6 +149,18 @@ class DependencyScanner(
                 DependencyFinding(
                     kind = DependencyKind.DEPENDENCY,
                     key = dep,
+                    currentVersion = current,
+                    targetVersion = target,
+                    status = dependencyStatus(current, target),
+                )
+        }
+
+        store.platformBoms.forEach { (bom, target) ->
+            val current = inventory.platformBoms[bom] ?: return@forEach
+            findings +=
+                DependencyFinding(
+                    kind = DependencyKind.PLATFORM_BOM,
+                    key = bom,
                     currentVersion = current,
                     targetVersion = target,
                     status = dependencyStatus(current, target),
@@ -196,6 +209,10 @@ class DependencyScanner(
             findings = findings,
             untrackedDependencies = untrackedDependencies,
             untrackedPlugins = untrackedPlugins,
+            untrackedPlatformBoms =
+                inventory.platformBoms
+                    .filterKeys { it !in store.platformBoms }
+                    .map { (key, version) -> UntrackedPlatformBom(key, version) },
         )
     }
 

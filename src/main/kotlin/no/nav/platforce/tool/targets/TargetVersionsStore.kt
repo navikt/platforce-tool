@@ -37,14 +37,21 @@ class TargetVersionsStore(
                             it.transient
                     }.map { it.key }
                     .toSet(),
+            platformBoms =
+                versions
+                    .filter { it.type == TargetVersionType.PLATFORM_BOM }
+                    .sortedBy { it.key }
+                    .associate { it.key to it.version }
+                    .toMutableMap(),
         )
     }
 
     fun update(state: TargetVersionsState) {
+        val normalized = state.snapshot()
         val now = Instant.now()
 
         val versions =
-            state.plugins.map {
+            normalized.plugins.map {
                 TargetVersion(
                     userId = userId,
                     team = team,
@@ -56,14 +63,26 @@ class TargetVersionsStore(
                     updatedAt = now,
                 )
             } +
-                state.dependencies.map {
+                normalized.dependencies.map {
                     TargetVersion(
                         userId = userId,
                         team = team,
                         type = TargetVersionType.DEPENDENCY,
                         key = it.key,
                         version = it.value,
-                        transient = it.key in state.transientDependencies,
+                        transient = it.key in normalized.transientDependencies,
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                } +
+                normalized.platformBoms.map {
+                    TargetVersion(
+                        userId = userId,
+                        team = team,
+                        type = TargetVersionType.PLATFORM_BOM,
+                        key = it.key,
+                        version = it.value,
+                        transient = false,
                         createdAt = now,
                         updatedAt = now,
                     )
@@ -73,7 +92,7 @@ class TargetVersionsStore(
                     team = team,
                     type = TargetVersionType.GRADLE,
                     key = "gradle-wrapper",
-                    version = state.gradleVersion,
+                    version = normalized.gradleVersion,
                     transient = false,
                     createdAt = now,
                     updatedAt = now,

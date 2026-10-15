@@ -1182,6 +1182,27 @@ button:hover {
     filter: brightness(0.95);
 }
 
+.target-section.platform-boms {
+    background: #fbf8ff;
+    border: 1px solid #e3d8f2;
+}
+
+.platform-bom-pill {
+    background: #f1eafa;
+    color: #70439b;
+    border: 1px solid #70439b;
+}
+
+.target-section.platform-boms .target-row:nth-child(odd),
+.finding-container:nth-child(odd) .row.platform_bom-row {
+    background: #f1eafa;
+}
+
+.target-section.platform-boms .target-row:nth-child(even),
+.row.platform_bom-row {
+    background: #fbf8ff;
+}
+
 /* Visibility utilities */
 
 .hidden {

@@ -63,6 +63,14 @@ failures are exposed to the GUI and obsolete jobs cannot publish results.
 
 ## Application behavior
 
+Platform BOMs have a separate target section below Gradle and a separate
+repository finding type. Literal `platform(...)` and `enforcedPlatform(...)`
+coordinates are discovered as untracked until saved as a target. Click an
+UNTRACKED or AHEAD pill to draft the version, then save Target Versions.
+Tracked BOMs use the same OK / UPDATE / AHEAD comparisons and PR updates as
+other versioned entries. In this iteration BOMs are not included in target
+security resolution or vulnerability enrichment.
+
 ### Local mock GUI
 
 Run `main` in

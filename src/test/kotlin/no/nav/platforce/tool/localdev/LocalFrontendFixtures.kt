@@ -18,6 +18,7 @@ object LocalFrontendFixtures {
     const val JSON = "example:json-codec"
     const val LEGACY = "example:legacy-parser"
     const val UNUSED = "example:unused-override"
+    const val PLATFORM_BOM = "org.springframework.boot:spring-boot-dependencies"
 
     val repositories =
         linkedMapOf(
@@ -64,6 +65,7 @@ object LocalFrontendFixtures {
                     if (repository.endsWith("customer-api")) put(JSON, "2.0.0")
                 },
             gradleVersion = "8.13",
+            platformBoms = mapOf(PLATFORM_BOM to "3.5.0"),
         )
     }
 
