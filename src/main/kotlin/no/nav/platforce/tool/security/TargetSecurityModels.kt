@@ -83,6 +83,23 @@ data class OverrideReason(
 data class TargetSecurityScan(
     val dependencies: List<ResolvedDependencySecurity>,
     val targets: List<TargetSecurityResult>,
+    val platformBoms: List<PlatformBomSecurityResult> = emptyList(),
+)
+
+data class PlatformBomSecurityResult(
+    val key: String,
+    val targetVersion: String,
+    val status: TargetSecurityStatus,
+    val vulnerableDependencies: List<VulnerableDependency>,
+    val managedDependencyCount: Int,
+    val coverage: List<PlatformBomCoverage>,
+)
+
+data class PlatformBomCoverage(
+    val dependency: String,
+    val targetVersion: String,
+    val enforcedPlatform: Boolean,
+    val overrides: List<OverrideReason>,
 )
 
 enum class SecurityScanStatus {

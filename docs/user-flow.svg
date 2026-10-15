@@ -56,7 +56,7 @@
   <text class="text" x="341" y="461">Click Refresh scan (or refresh one repository)</text>
   <text class="package" x="341" y="486">repositories / github / gradle</text>
   <text class="detail" x="341" y="508">DependencyScanner reads build.gradle and wrapper properties</text>
-  <text class="detail" x="341" y="530">Gradle parsers extract plugins, dependencies and wrapper version</text>
+  <text class="detail" x="341" y="530">Parse plugins, dependencies, platform BOMs and wrapper version</text>
   <path class="connector" d="M560 543V581"/>
 
   <rect class="card cache" x="280" y="587" width="560" height="110" rx="15"/>
@@ -98,7 +98,7 @@
   <text class="text" x="341" y="1112">Resolve target dependency trees with Gradle</text>
   <text class="package" x="341" y="1137">resolution</text>
   <text class="detail" x="341" y="1161">Generate temporary build; resolve all targets together and individually</text>
-  <text class="detail" x="341" y="1183">Produces resolved versions and transitive graphs, not repo builds</text>
+  <text class="detail" x="341" y="1183">Separate BOM catalogs and coverage graphs; not repo builds</text>
   <path class="connector" d="M560 1200V1238"/>
 
   <rect class="card cache" x="868" y="1082" width="232" height="116" rx="13"/>
@@ -113,7 +113,7 @@
   <text class="text" x="341" y="1276">Query OSV and evaluate target security</text>
   <text class="package" x="341" y="1301">security / scanning</text>
   <text class="detail" x="341" y="1325">TargetSecurityService checks combined and standalone graphs</text>
-  <text class="detail" x="341" y="1347">Find vulnerabilities, override relationships and unused transient targets</text>
+  <text class="detail" x="341" y="1347">Evaluate overrides, BOM health/coverage and unused transient targets</text>
   <path class="green" d="M560 1364V1413"/>
 
   <rect class="card cache" x="868" y="1247" width="232" height="114" rx="13"/>

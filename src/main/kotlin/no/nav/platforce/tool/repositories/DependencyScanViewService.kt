@@ -25,6 +25,7 @@ class DependencyScanViewService(
                 dependencyScanner.enrichSecurityScan(
                     scan = scan,
                     securityResult = securityResult,
+                    inventory = inventory,
                 )
             } else {
                 scan

@@ -11,6 +11,7 @@ import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.resolution.TargetResolutionSnapshot
 import no.nav.platforce.tool.security.SecurityScanSnapshot
 import no.nav.platforce.tool.security.SecurityScanStatus
+import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.targets.TargetVersionsState
 import no.nav.platforce.tool.targets.fingerprint
 import no.nav.platforce.tool.targets.snapshot
@@ -44,6 +45,12 @@ class LocalFrontendApi(
     private var selectedTeam: String? = "demo-commerce"
     private var resolutionReadyAt: Long? = null
     private var securityReadyAt: Long? = 0L
+    private var bomSecurityReadyAt: Long? = null
+
+    private fun securityResult(): TargetSecurityScan {
+        val result = LocalFrontendFixtures.security(targets)
+        return if (bomSecurityReadyAt?.let { now() >= it } == true) result else result.copy(platformBoms = emptyList())
+    }
 
     private fun json(
         value: Any,
@@ -66,7 +73,7 @@ class LocalFrontendApi(
         inventories.values.map { inventory ->
             val scan = scanner.compare(inventory, targets)
             if (securityReadyAt?.let { now() >= it } == true) {
-                scanner.enrichSecurityScan(scan, LocalFrontendFixtures.security(targets))
+                scanner.enrichSecurityScan(scan, securityResult(), inventory)
             } else {
                 scan
             }
@@ -95,8 +102,8 @@ class LocalFrontendApi(
         )
     }
 
-    private fun security(): SecurityScanSnapshot {
-        val readyAt = securityReadyAt
+    private fun security(includeBoms: Boolean = false): SecurityScanSnapshot {
+        val readyAt = if (includeBoms) bomSecurityReadyAt else securityReadyAt
         val status =
             when {
                 readyAt == null -> SecurityScanStatus.IDLE
@@ -106,7 +113,7 @@ class LocalFrontendApi(
         return SecurityScanSnapshot(
             status,
             fingerprint(targets),
-            if (status == SecurityScanStatus.READY) LocalFrontendFixtures.security(targets) else null,
+            if (status == SecurityScanStatus.READY) securityResult() else null,
             null,
         )
     }
@@ -184,6 +191,7 @@ class LocalFrontendApi(
                 targets = gson.fromJson(parsed, TargetVersionsState::class.java).snapshot()
                 resolutionReadyAt = null
                 securityReadyAt = null
+                bomSecurityReadyAt = null
                 Response(Status.OK).body("updated")
             },
             "/internal/api/target-resolution/start" bind Method.GET to {
@@ -191,11 +199,21 @@ class LocalFrontendApi(
                 snapshotResponse(resolution())
             },
             "/internal/api/target-resolution" bind Method.GET to { snapshotResponse(resolution()) },
-            "/internal/api/target-resolution/security/start" bind Method.GET to {
-                if (security().status != SecurityScanStatus.RUNNING) securityReadyAt = now() + 1200
-                snapshotResponse(security())
+            "/internal/api/target-resolution/security/start" bind Method.GET to { request ->
+                val includeBoms = request.query("includeBoms") == "true"
+                if (security(includeBoms).status != SecurityScanStatus.RUNNING) {
+                    if (includeBoms) {
+                        bomSecurityReadyAt = now() + 1200
+                        securityReadyAt = bomSecurityReadyAt
+                    } else {
+                        securityReadyAt = now() + 1200
+                    }
+                }
+                snapshotResponse(security(includeBoms))
             },
-            "/internal/api/target-resolution/security" bind Method.GET to { snapshotResponse(security()) },
+            "/internal/api/target-resolution/security" bind Method.GET to { request ->
+                snapshotResponse(security(request.query("includeBoms") == "true"))
+            },
             "/internal/api/ignored-repositories" bind Method.GET to { json(mapOf("repositories" to ignored)) },
             "/internal/api/ignored-repositories/update" bind Method.POST to { request ->
                 val repositories = body(request)["repositories"]

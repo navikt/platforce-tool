@@ -68,6 +68,9 @@ document
     .getElementById("scanTargets")
     .addEventListener("click", scanTargetSecurity);
 
+document.getElementById("scanBoms")
+    .addEventListener("click", () => scanTargetSecurity(true));
+
 document
     .getElementById("saveIgnored")
     .addEventListener("click", async () => {

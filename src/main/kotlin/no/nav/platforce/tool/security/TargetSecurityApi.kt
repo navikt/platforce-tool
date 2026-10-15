@@ -22,6 +22,7 @@ fun targetSecurityRoutes(targetSecurityScanner: TargetSecurityScanner) =
                 targetSecurityScanner.start(
                     username = context.username,
                     targetState = targetState,
+                    includeBoms = request.query("includeBoms") == "true",
                 )
             when (snapshot.status) {
                 SecurityScanStatus.READY ->
@@ -50,6 +51,7 @@ fun targetSecurityRoutes(targetSecurityScanner: TargetSecurityScanner) =
                 targetSecurityScanner.get(
                     username = context.username,
                     targetState = targetState,
+                    includeBoms = request.query("includeBoms") == "true",
                 )
 
             log.info {

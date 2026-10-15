@@ -102,6 +102,22 @@ class GradleResolutionReportTest {
         assertTrue(report["phasesMs"].asJsonObject.has("gradleDistributionCheckMs"))
     }
 
+    @Test
+    fun `unresolved BOM only scan fails explicitly and retains its diagnostic artifacts`() {
+        val gradleHome = Path.of(checkNotNull(System.getProperty("platforce.tests.gradleHome")))
+        val launcher = launcher("exec '${gradleHome.resolve("bin/gradle")}' --offline \"${'$'}@\"")
+        val store = ResolutionDebugFiles(directory.resolve("files"))
+        val service = GradleTargetResolutionService(launcher, debugFiles = store)
+        val bomOnly = targets.copy(dependencies = mutableMapOf(), platformBoms = mutableMapOf("example.nonexistent:bom" to "1.0"))
+        val error = assertThrows(IllegalStateException::class.java) { service.resolve("alice", bomOnly) }
+        assertTrue(error.message.orEmpty().contains("Incomplete BOM resolution"), error.message)
+        val artifacts = store.latestDirectory("alice")
+        val report = JsonParser.parseString(artifacts.resolve("gradle-resolution-report.json").readText()).asJsonObject
+        assertEquals("FAILED", report["status"].asString)
+        assertTrue(artifacts.resolve("build.gradle").readText().contains("configuredPlatformBoms"))
+        assertTrue(artifacts.resolve("gradle-output.txt").readText().contains("example.nonexistent:bom:1.0"))
+    }
+
     private fun launcher(script: String): Path {
         val home = directory.resolve("gradle")
         Files.createDirectories(home.resolve("bin"))

@@ -44,6 +44,8 @@ class GradleDependencyParser {
                         match.groupValues[7],
                         platformBom,
                         match.groups[7]!!.range,
+                        match.groupValues[1],
+                        match.groupValues[2] == "enforcedPlatform",
                     )
                 } else {
                     val arguments = namedArgument.findAll(match.groupValues[3]).associateBy { it.groupValues[1] }
@@ -57,6 +59,8 @@ class GradleDependencyParser {
                         version.groupValues[3],
                         platformBom,
                         (offset + range.first)..(offset + range.last),
+                        match.groupValues[1],
+                        match.groupValues[2] == "enforcedPlatform",
                     )
                 }
             }.toList()
@@ -101,6 +105,8 @@ data class GradleDependencyDeclaration(
     val version: String,
     val platformBom: Boolean,
     val versionRange: IntRange,
+    val configuration: String = "",
+    val enforcedPlatform: Boolean = false,
 )
 
 data class ParsedBuildFile(

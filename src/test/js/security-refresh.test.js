@@ -132,6 +132,31 @@ test("immediately ready security result also reloads repository data", async () 
     assert.ok(app.value("targetSecurityScan !== null"));
 });
 
+test("BOM scan explicitly opts in for resolution and security while ordinary scan preserves completed BOM results", async () => {
+    const app = gui();
+    const bom = { key: "example:bom", targetVersion: "1.0", status: "OK" };
+    app.responses(url => {
+        if (url.includes("/target-resolution")) {
+            return {
+                status: "READY", targetFingerprint: "targets",
+                result: { targets: [], platformBoms: url.includes("includeBoms=true") ? [bom] : [] }
+            };
+        }
+        return repositoryResponse(url);
+    });
+    await app.context.scanTargetSecurity(true);
+    assert.ok(app.calls.some(([url]) => url === "/internal/api/target-resolution/start?includeBoms=true"));
+    assert.ok(app.calls.some(([url]) => url === "/internal/api/target-resolution/security/start?includeBoms=true"));
+    assert.equal(app.value("targetSecurityScan.platformBoms[0].key"), "example:bom");
+    app.calls.length = 0;
+    // Browser click listeners pass an event object; it must not accidentally opt in to BOM work.
+    await app.context.scanTargetSecurity({ type: "click" });
+    assert.ok(app.calls.every(([url]) => !url.includes("includeBoms")));
+    assert.equal(app.value("targetSecurityScan.platformBoms[0].key"), "example:bom");
+    assert.equal(app.element("scanBoms").disabled, false);
+    assert.equal(app.element("scanTargets").disabled, false);
+});
+
 test("targets saved during a security scan prevent its old result from being applied", async () => {
     const app = gui();
     app.responses(url => {
@@ -334,6 +359,44 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
     assert.match(card.innerHTML, /row platform_bom-row/);
     assert.match(card.innerHTML, /1 UPDATE/);
     assert.doesNotMatch(card.innerHTML, /data-toggle-details="true"/);
+    scan.findings[0].platformBomSecurity = {
+        key: "io.netty:netty-bom", targetVersion: "4.2.18.Final", status: "VULNERABLE",
+        managedDependencyCount: 3, vulnerableDependencies: [], coverage: []
+    };
+    render();
+    assert.match(card.innerHTML, /TARGET VULNERABLE/);
+    assert.match(card.innerHTML, /target BOM version, not the current repository version/);
+    assert.match(card.innerHTML, /data-toggle-details="true"/);
+});
+
+test("BOM health and coverage render independently without treating module fixes as BOM upgrade versions", () => {
+    const app = gui();
+    const bom = {
+        key: "example:platform", targetVersion: "1.0", status: "VULNERABLE",
+        managedDependencyCount: 2,
+        vulnerableDependencies: [{
+            dependency: { group: "example", name: "unused<module>", version: "1.0" },
+            vulnerabilities: [{ id: "TEST-1", summary: "Example <advisory>", fixedVersions: ["2.0"] }]
+        }],
+        coverage: [{
+            dependency: "example:library", targetVersion: "1.0", enforcedPlatform: false,
+            overrides: [{ dependency: "example:child", vulnerableVersion: "1.0", resolvedVersion: "3.0" }]
+        }]
+    };
+    app.context.bom = bom;
+    app.value("targetSecurityScan = { targets: [{ key: 'example:platform', targetVersion: '1.0', status: 'OK' }], platformBoms: [bom] }");
+    assert.equal(app.context.findTargetSecurity("platform_bom", "example:platform", "1.0").status, "VULNERABLE");
+    assert.equal(app.context.findTargetSecurity("dependency", "example:platform", "1.0").status, "OK");
+    assert.equal(app.context.findTargetSecurity("platform_bom", "example:platform", "2.0"), null);
+    const html = app.context.platformBomSecurityDetailsHtml(bom);
+    assert.match(html, /unused modules/);
+    assert.match(html, /unused&lt;module&gt;/);
+    assert.match(html, /Example &lt;advisory&gt;/);
+    assert.match(html, /module fixes: 2.0/);
+    assert.match(html, /example:child/);
+    assert.match(html, /3.0/);
+    assert.doesNotMatch(html, /applySecurityUpgrade|transient-btn/);
+    assert.match(app.context.securityStatusHtml(null, "NOT SCANNED"), /NOT SCANNED/);
 });
 
 test("failed repository refresh stops progress polling and permits another attempt", async () => {

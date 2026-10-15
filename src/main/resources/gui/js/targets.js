@@ -86,12 +86,7 @@ function renderTable(containerId, entries, type) {
         const isTransient =
             type === "dependency" &&
             targetState.transientDependencies?.has(key);
-        const securityTarget =
-            type === "dependency"
-                ? targetSecurityScan?.targets?.find(
-                    target => target.key === key && target.targetVersion === version
-                )
-                : null;
+        const securityTarget = findTargetSecurity(type, key, version);
 
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
@@ -99,7 +94,7 @@ function renderTable(containerId, entries, type) {
         
             <input class="key" value="${key}" />
             <input class="version" value="${version}" />
-            ${securityStatusHtml(securityTarget)}
+            ${securityStatusHtml(securityTarget, type === "platform_bom" ? "NOT SCANNED" : null)}
             ${
             type === "dependency"
                 ? `
@@ -119,7 +114,7 @@ function renderTable(containerId, entries, type) {
             securityTarget
                 ? `
                 <div class="target-security-details hidden">
-                    ${targetSecurityDetailsHtml(securityTarget)}
+                    ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
                 </div>
             `
                 : ""
@@ -186,19 +181,14 @@ function renderTable(containerId, entries, type) {
         const k = kInput.value.trim();
         const v = vInput.value.trim();
         if (!k || !v) return;
-        const securityTarget =
-            type === "dependency"
-                ? targetSecurityScan?.targets?.find(
-                    target => target.key === k && target.targetVersion === v
-                )
-                : null;
+        const securityTarget = findTargetSecurity(type, k, v);
         const newRow = document.createElement("div");
         newRow.className = "target-row";
         newRow.innerHTML = `
        
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
-            ${securityStatusHtml(securityTarget)}
+            ${securityStatusHtml(securityTarget, type === "platform_bom" ? "NOT SCANNED" : null)}
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>
@@ -207,7 +197,7 @@ function renderTable(containerId, entries, type) {
             securityTarget
                 ? `
                 <div class="target-security-details hidden">
-                    ${targetSecurityDetailsHtml(securityTarget)}
+                    ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
                 </div>
             `
                 : ""

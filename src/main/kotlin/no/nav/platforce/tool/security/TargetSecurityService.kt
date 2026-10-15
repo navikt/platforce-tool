@@ -15,6 +15,9 @@ class TargetSecurityService(
     ): TargetSecurityScan {
         val allDependencies =
             allDependencies(resolution)
+        require(targetState.platformBoms.all { (key, version) -> resolution.platformBoms[key]?.version == version }) {
+            "BOM resolution evidence is missing or does not match saved target versions"
+        }
         val vulnerabilityMap =
             vulnerabilityService.find(
                 allDependencies,
@@ -57,6 +60,10 @@ class TargetSecurityService(
         return TargetSecurityScan(
             dependencies = securityDependencies,
             targets = enrichedTargets,
+            platformBoms =
+                targetState.platformBoms.toSortedMap().map { (key, _) ->
+                    PlatformBomSecurity().evaluate(key, resolution.platformBoms.getValue(key), resolution, vulnerabilityMap)
+                },
         )
     }
 
@@ -410,9 +417,10 @@ class TargetSecurityService(
     }
 
     private fun allDependencies(resolution: TargetResolution): List<ResolvedDependency> =
-        resolution.individual.values
-            .flatten()
-            .let(::flatten)
+        (
+            resolution.individual.values.flatten() + resolution.roots +
+                resolution.platformBoms.values.flatMap { bom -> bom.managed + bom.coverage.flatMap { it.roots } }
+        ).let(::flatten)
 
     private fun flatten(roots: List<ResolvedDependency>): List<ResolvedDependency> {
         val result = mutableListOf<ResolvedDependency>()

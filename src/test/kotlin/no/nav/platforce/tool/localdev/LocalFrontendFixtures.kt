@@ -1,8 +1,11 @@
 package no.nav.platforce.tool.localdev
 
+import no.nav.platforce.tool.gradle.GradleDependencyParser
 import no.nav.platforce.tool.repositories.RepositoryDependencyInventory
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.security.OverrideReason
+import no.nav.platforce.tool.security.PlatformBomCoverage
+import no.nav.platforce.tool.security.PlatformBomSecurityResult
 import no.nav.platforce.tool.security.TargetSecurityResult
 import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.security.TargetSecurityStatus
@@ -66,6 +69,13 @@ object LocalFrontendFixtures {
                 },
             gradleVersion = "8.13",
             platformBoms = mapOf(PLATFORM_BOM to "3.5.0"),
+            declarations =
+                GradleDependencyParser().declarations(
+                    """
+                    implementation platform('$PLATFORM_BOM:3.5.0')
+                    implementation '$WEB:${if (repository.endsWith("worker")) "2.0.0" else "3.0.0"}'
+                    """.trimIndent(),
+                ),
         )
     }
 
@@ -127,6 +137,28 @@ object LocalFrontendFixtures {
                         },
                 )
             }
-        return TargetSecurityScan(emptyList(), results)
+        val boms =
+            targets.platformBoms.map { (key, version) ->
+                PlatformBomSecurityResult(
+                    key,
+                    version,
+                    TargetSecurityStatus.VULNERABLE,
+                    listOf(VulnerableDependency(resolved("example:unused-managed-module", "1.0.0"), listOf(vulnerability))),
+                    12,
+                    listOf(false, true).map { enforced ->
+                        PlatformBomCoverage(
+                            WEB,
+                            targets.dependencies[WEB] ?: "3.0.0",
+                            enforced,
+                            if (key == PLATFORM_BOM && !version.startsWith("2.")) {
+                                listOf(OverrideReason(JSON, "2.0.0", "2.0.0", "1.0.0", listOf("$key:$version")))
+                            } else {
+                                emptyList()
+                            },
+                        )
+                    },
+                )
+            }
+        return TargetSecurityScan(emptyList(), results, boms)
     }
 }

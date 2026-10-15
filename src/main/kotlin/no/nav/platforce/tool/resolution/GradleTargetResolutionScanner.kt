@@ -13,26 +13,45 @@ class GradleTargetResolutionScanner(
     executor: ExecutorService = scanExecutor("gradle-target-resolution"),
 ) {
     private val jobs = UserScanJobs(executor, resolve)
+    private val bomJobs = UserScanJobs(executor, resolve)
 
     fun start(
         username: String,
         targetState: TargetVersionsState,
-    ): TargetResolutionSnapshot = jobs.start(username, targetState).toResolutionSnapshot()
+        includeBoms: Boolean = false,
+    ): TargetResolutionSnapshot =
+        if (includeBoms) {
+            bomJobs.start(username, targetState).toResolutionSnapshot()
+        } else {
+            jobs.start(username, targetState.copy(platformBoms = mutableMapOf())).toResolutionSnapshot()
+        }
 
     fun get(
         username: String,
         targetState: TargetVersionsState,
-    ): TargetResolutionSnapshot = jobs.get(username, targetState).toResolutionSnapshot()
+        includeBoms: Boolean = false,
+    ): TargetResolutionSnapshot =
+        if (includeBoms) {
+            bomJobs.get(username, targetState).toResolutionSnapshot()
+        } else {
+            jobs.get(username, targetState.copy(platformBoms = mutableMapOf())).toResolutionSnapshot()
+        }
 
-    fun invalidate(username: String) = jobs.invalidate(username)
+    fun invalidate(username: String) {
+        jobs.invalidate(username)
+        bomJobs.invalidate(username)
+    }
 
     fun waitForResolution(
         username: String,
         targetState: TargetVersionsState,
+        includeBoms: Boolean = false,
     ): TargetResolution {
-        val started = jobs.get(username, targetState)
+        val selectedJobs = if (includeBoms) bomJobs else jobs
+        val state = if (includeBoms) targetState else targetState.copy(platformBoms = mutableMapOf())
+        val started = selectedJobs.get(username, state)
         while (true) {
-            val current = jobs.get(username, targetState)
+            val current = selectedJobs.get(username, state)
             when (current.status) {
                 ScanJobStatus.READY -> return checkNotNull(current.result)
                 ScanJobStatus.FAILED -> error("Gradle target resolution failed: ${current.error}")

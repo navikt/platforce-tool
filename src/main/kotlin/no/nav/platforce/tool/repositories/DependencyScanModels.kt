@@ -1,5 +1,7 @@
 package no.nav.platforce.tool.repositories
 
+import no.nav.platforce.tool.security.PlatformBomSecurityResult
+
 data class RepositoryDependencyScan(
     val repository: String,
     val scannedAt: String,
@@ -18,6 +20,9 @@ data class DependencyFinding(
     // Dependency is safe because another dependency/version overrides
     // the vulnerable transitive version OR added due to parent otherwise has vulnerability
     val relatedTo: List<DependencyReference> = emptyList(),
+    val platformBomSecurity: PlatformBomSecurityResult? = null,
+    val bomCoverage: List<DependencyReference> = emptyList(),
+    val bomCoverageNote: String? = null,
 )
 
 data class DependencyReference(

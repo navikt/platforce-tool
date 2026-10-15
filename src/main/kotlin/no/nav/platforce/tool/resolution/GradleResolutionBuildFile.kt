@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.resolution
 
+import com.google.gson.Gson
 import no.nav.platforce.tool.targets.TargetVersionsState
 
 class GradleResolutionBuildFile {
@@ -242,7 +243,23 @@ class GradleResolutionBuildFile {
                 }
                 """.trimIndent(),
             )
+            if (state.platformBoms.isNotEmpty()) {
+                state.platformBoms.keys.forEach(::requireValidDependencyKey)
+                appendLine(
+                    "def configuredPlatformBoms = new groovy.json.JsonSlurper().parseText(${groovyString(
+                        Gson().toJson(state.platformBoms.toSortedMap()),
+                    )})",
+                )
+                appendLine(
+                    "def configuredTargetDependencies = new groovy.json.JsonSlurper().parseText(${groovyString(
+                        Gson().toJson(state.dependencies.toSortedMap()),
+                    )})",
+                )
+                appendLine(GradleBomResolutionScript.create())
+            }
         }
+
+    private fun groovyString(value: String): String = "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
     private fun requireValidDependencyKey(key: String) {
         require(

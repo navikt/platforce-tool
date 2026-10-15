@@ -43,8 +43,8 @@ class GradleTargetResolutionService(
             "Invalid Gradle version: ${state.gradleVersion}"
         }
 
-        require(state.dependencies.isNotEmpty()) {
-            "No target dependencies configured"
+        require(state.dependencies.isNotEmpty() || state.platformBoms.isNotEmpty()) {
+            "No target dependencies or platform BOMs configured"
         }
 
         val debugDir = debugFiles.start(username)
@@ -338,11 +338,13 @@ class GradleTargetResolutionService(
             gradleVersion = gradleVersion,
             roots = file.roots,
             individual = file.individual,
+            platformBoms = file.platformBoms.orEmpty(),
         )
     }
 
     private data class ResolutionFile(
         val roots: List<ResolvedDependency>,
         val individual: Map<String, List<ResolvedDependency>>,
+        val platformBoms: Map<String, PlatformBomResolution>? = null,
     )
 }

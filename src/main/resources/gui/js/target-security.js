@@ -1,3 +1,48 @@
+function findTargetSecurity(type, key, version) {
+    const results = type === "platform_bom"
+        ? targetSecurityScan?.platformBoms
+        : type === "dependency" ? targetSecurityScan?.targets : null;
+    return results?.find(target => target.key === key && target.targetVersion === version) ?? null;
+}
+
+function platformBomSecurityDetailsHtml(security) {
+    const vulnerable = security.vulnerableDependencies || [];
+    const coverage = (security.coverage || []).filter(item => item.overrides?.length);
+    return `
+        <div class="finding-details target-security-detail">
+            <h4>${escapeHtml(security.key)} ${escapeHtml(security.targetVersion)}</h4>
+            <p>${escapeHtml(security.managedDependencyCount)} managed modules checked independently.
+                Managed versions are constraints, not necessarily installed dependencies.</p>
+            ${vulnerable.length
+                ? `<strong>Vulnerable managed versions</strong>
+                   <p>This includes unused modules. Upgrade the BOM target and rescan;
+                   fixed module versions below are not suggested BOM versions.</p>
+                   ${vulnerable.map(item => `
+                       <div class="target-security-vulnerability">
+                           <strong>${escapeHtml(item.dependency.group)}:${escapeHtml(item.dependency.name)}</strong>
+                           ${escapeHtml(item.dependency.version)}
+                           <ul>${(item.vulnerabilities || []).map(v => `
+                               <li>${escapeHtml(v.id)}: ${escapeHtml(v.summary || "")}
+                                   ${v.fixedVersions?.length ? ` (module fixes: ${v.fixedVersions.map(escapeHtml).join(", ")})` : ""}
+                               </li>`).join("")}</ul>
+                       </div>`).join("")}`
+                : "<p>No vulnerabilities found in the effective managed versions.</p>"}
+            <h4>Verified dependency coverage</h4>
+            ${coverage.length
+                ? `<ul>${coverage.map(item => `
+                    <li>${escapeHtml(item.dependency)} ${escapeHtml(item.targetVersion)}
+                        (${item.enforcedPlatform ? "enforcedPlatform" : "platform"})
+                        <ul>${item.overrides.map(reason => `
+                            <li>${escapeHtml(reason.dependency)}:
+                                ${escapeHtml(reason.vulnerableVersion)} &rarr; ${escapeHtml(reason.resolvedVersion)}</li>
+                        `).join("")}</ul>
+                    </li>`).join("")}</ul>`
+                : "<p>No verified fixes for the scanned dependency targets.</p>"}
+            <p>Coverage applies only to matching scanned versions and applicable declarations.
+                Managed-version warnings above remain independent of coverage.</p>
+        </div>`;
+}
+
 function toggleTargetSecurityDetails(button) {
 
     const row = button.closest(".target-row");
@@ -16,9 +61,11 @@ function toggleTargetSecurityDetails(button) {
     );
 }
 
-function securityStatusHtml(security) {
+function securityStatusHtml(security, emptyLabel = null) {
     if (!security) {
-        return `<div></div>`;
+        return emptyLabel
+            ? `<span class="target-status-pill target-status-unknown">${escapeHtml(emptyLabel)}</span>`
+            : `<div></div>`;
     }
 
     return `

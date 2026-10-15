@@ -78,7 +78,7 @@ function startProgressPolling() {
     progressInterval = setInterval(pollProgress, 500);
 }
 
-function showScanDetails() {
+function showScanDetails(includeBoms = false) {
     const container =
         document.getElementById("targetScanDetails");
 
@@ -91,7 +91,7 @@ function showScanDetails() {
                 class="target-scan-step running"
             >
                 <span class="step-status">RUNNING</span>
-                <span>Gradle target resolution</span>
+                <span>${includeBoms ? "Gradle BOM catalogs and dependency coverage" : "Gradle target resolution (dependencies only)"}</span>
             </div>
 
             <div
@@ -197,15 +197,17 @@ async function applyTargetSecurityResult(snapshot) {
     );
 }
 
-async function scanTargetSecurity() {
+async function scanTargetSecurity(includeBoms = false) {
+    includeBoms = includeBoms === true;
     const generation = targetScanGeneration;
     const button =
-        document.getElementById("scanTargets");
+        document.getElementById(includeBoms ? "scanBoms" : "scanTargets");
 
     button.disabled = true;
+    document.getElementById(includeBoms ? "scanTargets" : "scanBoms").disabled = true;
     button.textContent = "SCANNING...";
 
-    showScanDetails();
+    showScanDetails(includeBoms);
 
     try {
         updateScanStep(
@@ -214,7 +216,7 @@ async function scanTargetSecurity() {
         );
 
         const resolution =
-            await startOrWaitForResolution();
+            await startOrWaitForResolution(includeBoms);
 
         if (!resolution) {
             throw new Error(
@@ -233,7 +235,7 @@ async function scanTargetSecurity() {
         );
 
         const security =
-            await startOrWaitForSecurity();
+            await startOrWaitForSecurity(includeBoms);
 
         if (!security) {
             throw new Error(
@@ -245,7 +247,11 @@ async function scanTargetSecurity() {
             throw new Error("Target versions changed during the scan. Run SCAN again.");
         }
 
+        const previousBoms = targetSecurityScan?.platformBoms;
         await applyTargetSecurityResult(security);
+        if (!includeBoms && targetSecurityScan && previousBoms) {
+            targetSecurityScan.platformBoms = previousBoms;
+        }
         captureTargetDrafts();
         renderTargetTables();
         await loadData();
@@ -307,14 +313,16 @@ async function scanTargetSecurity() {
         );
     } finally {
         button.disabled = false;
-        button.textContent = "SCAN";
+        document.getElementById(includeBoms ? "scanTargets" : "scanBoms").disabled = false;
+        button.textContent = includeBoms ? "Scan BOMs" : "SCAN";
     }
 }
 
-async function startOrWaitForResolution() {
+async function startOrWaitForResolution(includeBoms = false) {
+    const query = includeBoms ? "?includeBoms=true" : "";
     const startResponse =
         await fetch(
-            "/internal/api/target-resolution/start"
+            "/internal/api/target-resolution/start" + query
         );
 
     if (!startResponse.ok && startResponse.status !== 202) {
@@ -344,7 +352,7 @@ async function startOrWaitForResolution() {
 
         const response =
             await fetch(
-                "/internal/api/target-resolution"
+                "/internal/api/target-resolution" + query
             );
 
         if (!response.ok && response.status !== 202) {
@@ -377,10 +385,11 @@ async function startOrWaitForResolution() {
     );
 }
 
-async function startOrWaitForSecurity() {
+async function startOrWaitForSecurity(includeBoms = false) {
+    const query = includeBoms ? "?includeBoms=true" : "";
     const startResponse =
         await fetch(
-            "/internal/api/target-resolution/security/start"
+            "/internal/api/target-resolution/security/start" + query
         );
 
     if (!startResponse.ok && startResponse.status !== 202) {
@@ -411,7 +420,7 @@ async function startOrWaitForSecurity() {
 
         const response =
             await fetch(
-                "/internal/api/target-resolution/security"
+                "/internal/api/target-resolution/security" + query
             );
 
         if (!response.ok && response.status !== 202) {

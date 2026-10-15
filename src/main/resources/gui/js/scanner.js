@@ -253,13 +253,21 @@ function renderRepo(repoView, scanMap, container) {
                                 : `status-${status.toLowerCase()}`;
 
                     const hasDetails =
+                        !!f.platformBomSecurity ||
                         (status === "OK_OVERRIDDEN" && f.relatedTo?.length > 0) ||
                         (status === "OK_WITH_ADD" && f.relatedTo?.length > 0) ||
                         (status === "OK_TRANSIENT" && f.relatedTo?.length > 0) ||
                         (status === "ADD" && f.relatedTo?.length > 0);
 
                 const details =
-                    hasDetails
+                    f.platformBomSecurity
+                        ? `<div class="finding-details hidden">
+                            ${f.currentVersion !== f.targetVersion
+                                ? "<p>Security below describes the target BOM version, not the current repository version.</p>"
+                                : ""}
+                            ${platformBomSecurityDetailsHtml(f.platformBomSecurity)}
+                           </div>`
+                        : hasDetails
                         ? `
                 <div class="finding-details hidden">
                     ${
@@ -274,9 +282,9 @@ function renderRepo(repoView, scanMap, container) {
                               `
                                 : status === "OK_WITH_ADD"
                                     ? `
-                                    <strong>Safe with added dependency:</strong>
+                                    <strong>Required dependency overrides:</strong>
                                     <ul>
-                                        ${f.relatedTo.map(r =>
+                                        ${f.relatedTo.filter(r => r.kind !== "PLATFORM_BOM").map(r =>
                                         `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
                                     ).join("")}
                                     </ul>
@@ -301,6 +309,11 @@ function renderRepo(repoView, scanMap, container) {
                                                       `
                                 : ""
                         }
+                    ${f.bomCoverage?.length ? `
+                        <p>Already covered by platform BOM:
+                            ${f.bomCoverage.map(r => `${escapeHtml(r.key)} (${escapeHtml(r.version)})`).join(", ")}.
+                            Corresponding dependency ADDs are not needed.</p>` : ""}
+                    ${f.bomCoverageNote ? `<p>${escapeHtml(f.bomCoverageNote)}</p>` : ""}
                 </div>
               `
                         : "";
@@ -332,6 +345,9 @@ function renderRepo(repoView, scanMap, container) {
                                         ${hasDetails ? 'data-toggle-details="true"' : ""}>
                                         ${displayStatus}
                                     </span>
+                                    ${f.platformBomSecurity?.status === "VULNERABLE" && status !== "VULNERABLE"
+                                        ? '<span class="status-pill target-status-vulnerable" data-toggle-details="true">TARGET VULNERABLE</span>'
+                                        : ""}
                                 </div>
                             </div>
                             ${details}

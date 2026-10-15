@@ -18,21 +18,43 @@ class TargetSecurityScanner(
             val resolution = resolutionScanner.waitForResolution(username, state)
             targetSecurityService.scan(resolution, state)
         }
+    private val bomJobs =
+        UserScanJobs(executor) { username: String, state: TargetVersionsState ->
+            val resolution = resolutionScanner.waitForResolution(username, state, includeBoms = true)
+            targetSecurityService.scan(resolution, state)
+        }
 
     fun start(
         username: String,
         targetState: TargetVersionsState,
+        includeBoms: Boolean = false,
     ): SecurityScanSnapshot {
-        resolutionScanner.start(username, targetState)
-        return jobs.start(username, targetState, refreshReady = true).toSecuritySnapshot()
+        resolutionScanner.start(username, targetState, includeBoms)
+        return if (includeBoms) {
+            bomJobs.start(username, targetState, refreshReady = true).toSecuritySnapshot()
+        } else {
+            jobs.start(username, targetState.copy(platformBoms = mutableMapOf()), refreshReady = true).toSecuritySnapshot()
+        }
     }
 
     fun get(
         username: String,
         targetState: TargetVersionsState,
-    ): SecurityScanSnapshot = jobs.get(username, targetState).toSecuritySnapshot()
+        includeBoms: Boolean = false,
+    ): SecurityScanSnapshot {
+        val bom = bomJobs.get(username, targetState).toSecuritySnapshot()
+        if (includeBoms) return bom
+        val baseline = jobs.get(username, targetState.copy(platformBoms = mutableMapOf())).toSecuritySnapshot()
+        if (bom.status != SecurityScanStatus.READY) return baseline
+        if (baseline.status == SecurityScanStatus.IDLE) return bom
+        if (baseline.status != SecurityScanStatus.READY) return baseline
+        return baseline.copy(result = baseline.result?.copy(platformBoms = bom.result?.platformBoms.orEmpty()))
+    }
 
-    fun invalidate(username: String) = jobs.invalidate(username)
+    fun invalidate(username: String) {
+        jobs.invalidate(username)
+        bomJobs.invalidate(username)
+    }
 
     private fun ScanJobSnapshot<TargetSecurityScan>.toSecuritySnapshot() =
         SecurityScanSnapshot(

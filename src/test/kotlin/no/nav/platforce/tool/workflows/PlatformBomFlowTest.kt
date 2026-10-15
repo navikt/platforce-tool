@@ -23,6 +23,7 @@ import no.nav.platforce.tool.targets.fingerprint
 import no.nav.platforce.tool.targets.snapshot
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -96,7 +97,7 @@ class PlatformBomFlowTest {
     }
 
     @Test
-    fun `scanner separates tracked untracked and absent BOMs and does not enrich their security status`() {
+    fun `scanner separates BOMs and ignores dependency security results without BOM evidence`() {
         val inventory =
             inventory(key to "1.0").copy(
                 platformBoms = mapOf(key to "1.0", "example:other" to "4.0"),
@@ -141,12 +142,14 @@ class PlatformBomFlowTest {
     }
 
     @Test
-    fun `BOMs do not affect resolution or its security fingerprint`() {
+    fun `BOM targets affect scan fingerprints but leave the dependency baseline separate`() {
         val targets = TargetVersionsState(mutableMapOf(), mutableMapOf("example:library" to "1.0"), "8.0")
         val tracked = targets.copy(platformBoms = mutableMapOf(key to "1.0"))
-        assertEquals(fingerprint(targets), fingerprint(tracked))
-        assertEquals(GradleResolutionBuildFile().create(targets), GradleResolutionBuildFile().create(tracked))
-        assertFalse(GradleResolutionBuildFile().create(tracked).contains(key))
+        assertNotEquals(fingerprint(targets), fingerprint(tracked))
+        val build = GradleResolutionBuildFile().create(tracked)
+        assertTrue(build.startsWith(GradleResolutionBuildFile().create(targets)))
+        assertTrue(build.contains(key))
+        assertTrue(build.contains("def configuredPlatformBoms"))
     }
 
     @Test

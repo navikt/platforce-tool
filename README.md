@@ -68,8 +68,35 @@ repository finding type. Literal `platform(...)` and `enforcedPlatform(...)`
 coordinates are discovered as untracked until saved as a target. Click an
 UNTRACKED or AHEAD pill to draft the version, then save Target Versions.
 Tracked BOMs use the same OK / UPDATE / AHEAD comparisons and PR updates as
-other versioned entries. In this iteration BOMs are not included in target
-security resolution or vulnerability enrichment.
+other versioned entries.
+
+The regular **SCAN** remains dependency-only. **Scan BOMs**, in the Platform
+BOMs header, explicitly opts in to the more expensive analysis of all saved
+BOM targets. The two scan modes use separate per-user jobs/results; running
+SCAN again does not discard completed, still-matching BOM coverage. Saving
+targets invalidates both modes. BOM analysis can also run without dependency
+targets.
+
+BOM scans keep the dependency-only individual/collective graphs as the
+baseline and analyze each saved BOM separately. Gradle metadata supplies the
+complete managed-module catalog (including inherited/imported constraints);
+isolated versionless probes select each effective managed version without
+resolving its ordinary transitive dependencies. OSV checks these versions even
+when no saved dependency uses the module. A red BOM status is therefore a
+managed-version warning, not proof that every repository installs that module.
+Upgrade the BOM target and rescan; module fixes are not BOM version suggestions.
+
+Separate dependency-plus-BOM graphs show which vulnerable transitive versions a
+normal or enforced platform fixes. Repository enrichment omits redundant ADDs
+only when dependency/BOM versions match the scanned targets and declarations
+share a configuration. This initial coverage proof requires a single platform
+declaration: multiple platforms, unknown scope relationships and mismatched
+versions retain the existing ADD suggestions rather than assume protection.
+Partial coverage retains the remaining ADDs. BOM target health and coverage are
+displayed independently; a BOM can fix one used module while managing vulnerable
+versions of unused modules elsewhere. Adding a missing BOM instead of multiple
+dependency ADDs remains out of scope. These scans analyze supported target
+declarations, not arbitrary repository Gradle rules.
 
 ### Local mock GUI
 

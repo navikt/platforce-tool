@@ -119,6 +119,7 @@ class DependencyScanner(
             dependencies = parsedBuildFile.dependencies,
             gradleVersion = parsedWrapper,
             platformBoms = parsedBuildFile.platformBoms,
+            declarations = gradleDependencyParser.declarations(buildFile),
         )
     }
 
@@ -219,18 +220,21 @@ class DependencyScanner(
     fun enrichSecurityScan(
         scan: RepositoryDependencyScan,
         securityResult: TargetSecurityScan,
+        inventory: RepositoryDependencyInventory? = null,
     ): RepositoryDependencyScan =
         scan.copy(
             findings =
                 enrichSecurityFindings(
                     findings = scan.findings,
                     securityResult = securityResult,
+                    inventory = inventory,
                 ),
         )
 
     private fun enrichSecurityFindings(
         findings: List<DependencyFinding>,
         securityResult: TargetSecurityScan,
+        inventory: RepositoryDependencyInventory?,
     ): List<DependencyFinding> {
         val securityByKey =
             securityResult.targets.associateBy { it.key }
@@ -245,6 +249,23 @@ class DependencyScanner(
         val enriched = mutableListOf<DependencyFinding>()
 
         findings.forEach { finding ->
+            if (finding.kind == DependencyKind.PLATFORM_BOM) {
+                val bom =
+                    securityResult.platformBoms.singleOrNull {
+                        it.key == finding.key && it.targetVersion == finding.targetVersion
+                    }
+                enriched +=
+                    finding.copy(
+                        platformBomSecurity = bom,
+                        status =
+                            if (finding.currentVersion == finding.targetVersion && bom?.status == TargetSecurityStatus.VULNERABLE) {
+                                DependencyStatus.VULNERABLE
+                            } else {
+                                finding.status
+                            },
+                    )
+                return@forEach
+            }
             if (finding.kind != DependencyKind.DEPENDENCY) {
                 enriched += finding
                 return@forEach
@@ -272,11 +293,20 @@ class DependencyScanner(
 
             if (targetResult.status == TargetSecurityStatus.OK_OVERRIDDEN) {
                 val relatedTo = targetResult.relatedTo
+                val bomCoverage = RepositoryBomCoverage().find(finding, inventory, securityResult)
+                val coveredReasons =
+                    relatedTo.filter { reason ->
+                        reason.dependency !in presentDependencies &&
+                            bomCoverage?.second?.overrides?.any {
+                                it.dependency == reason.dependency && it.vulnerableVersion == reason.vulnerableVersion
+                            } == true
+                    }
 
                 val missingOverrides =
                     relatedTo.filter {
-                        it.dependency !in presentDependencies
+                        it.dependency !in presentDependencies && it !in coveredReasons
                     }
+                val bomReferences = if (coveredReasons.isNotEmpty()) listOfNotNull(bomCoverage?.first) else emptyList()
 
                 enriched +=
                     finding.copy(
@@ -289,12 +319,19 @@ class DependencyScanner(
                                 DependencyStatus.OK_OVERRIDDEN
                             },
                         relatedTo =
-                            relatedTo.map {
+                            relatedTo.filter { it !in coveredReasons }.map {
                                 DependencyReference(
                                     kind = DependencyKind.DEPENDENCY,
                                     key = it.dependency,
                                     version = it.targetVersion,
                                 )
+                            } + bomReferences,
+                        bomCoverage = bomReferences,
+                        bomCoverageNote =
+                            if (missingOverrides.isNotEmpty() && inventory?.platformBoms?.isNotEmpty() == true) {
+                                "BOM protection is not verified for every required override. Uncovered ADDs are retained; evidence requires matching versions, declaration scope and an isolated platform context."
+                            } else {
+                                null
                             },
                     )
 

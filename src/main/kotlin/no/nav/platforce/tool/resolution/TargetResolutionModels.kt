@@ -4,6 +4,20 @@ data class TargetResolution(
     val gradleVersion: String,
     val roots: List<ResolvedDependency>,
     val individual: Map<String, List<ResolvedDependency>>,
+    val platformBoms: Map<String, PlatformBomResolution> = emptyMap(),
+)
+
+data class PlatformBomResolution(
+    val version: String,
+    val managed: List<ResolvedDependency>,
+    val coverage: List<PlatformBomDependencyResolution>,
+)
+
+data class PlatformBomDependencyResolution(
+    val dependency: String,
+    val targetVersion: String,
+    val enforcedPlatform: Boolean,
+    val roots: List<ResolvedDependency>,
 )
 
 data class ResolvedDependency(

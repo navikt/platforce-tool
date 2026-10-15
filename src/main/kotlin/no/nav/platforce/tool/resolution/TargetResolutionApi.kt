@@ -18,6 +18,7 @@ fun targetResolutionRoutes(gradleTargetResolutionScanner: GradleTargetResolution
                 gradleTargetResolutionScanner.start(
                     username = context.username,
                     targetState = targetState,
+                    includeBoms = request.query("includeBoms") == "true",
                 )
             when (snapshot.status) {
                 ResolutionStatus.READY ->
@@ -46,6 +47,7 @@ fun targetResolutionRoutes(gradleTargetResolutionScanner: GradleTargetResolution
                 gradleTargetResolutionScanner.get(
                     username = context.username,
                     targetState = targetState,
+                    includeBoms = request.query("includeBoms") == "true",
                 )
 
             val status =

@@ -102,7 +102,7 @@
   <rect class="card cache" x="240" y="955" width="640" height="124" rx="15"/>
   <text class="file" x="262" y="986">target-security.js</text>
   <text class="text" x="262" y="1013">Presentation of target security results</text>
-  <text class="detail" x="262" y="1037">Status labels/classes, expandable vulnerabilities and override explanations</text>
+  <text class="detail" x="262" y="1037">Dependency/BOM health, managed-version warnings and coverage details</text>
   <text class="detail" x="262" y="1059">Used by targets.js; upgrade controls call applySecurityUpgrade() in targets.js</text>
   <path class="connector" d="M560 1079V1121"/>
 
