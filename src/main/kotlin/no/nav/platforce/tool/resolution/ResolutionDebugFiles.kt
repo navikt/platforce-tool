@@ -12,6 +12,63 @@ import kotlin.io.path.writeText
 class ResolutionDebugFiles(
     private val baseDir: Path = Path.of("/tmp/files"),
 ) {
+    private val artifactNames =
+        listOf(
+            "build.gradle",
+            "gradle-output.txt",
+            "gradle-unresolved-dependencies.txt",
+            "gradle-configuration-timings.json",
+            "gradle-resolution-report.json",
+        )
+
+    fun inspectionDirectory(username: String): Path = userDirectory(username).resolve("inspection")
+
+    @Synchronized
+    fun startInspection(
+        username: String,
+        bom: Boolean,
+    ) {
+        val directory = inspectionDirectory(username)
+        Files.createDirectories(directory)
+        artifactNames.forEach { Files.deleteIfExists(directory.resolve(inspectionName(it, bom))) }
+    }
+
+    @Synchronized
+    fun publishInspection(
+        username: String,
+        runDirectory: Path,
+        bom: Boolean,
+    ) {
+        val directory = inspectionDirectory(username)
+        Files.createDirectories(directory)
+        artifactNames.forEach { name ->
+            val source = runDirectory.resolve(name)
+            if (source.exists()) {
+                val temporary = Files.createTempFile(directory, ".publishing-", ".tmp")
+                try {
+                    Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING)
+                    Files.move(
+                        temporary,
+                        directory.resolve(inspectionName(name, bom)),
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } finally {
+                    Files.deleteIfExists(temporary)
+                }
+            }
+        }
+    }
+
+    private fun inspectionName(
+        name: String,
+        bom: Boolean,
+    ): String {
+        if (!bom) return name
+        val extension = name.lastIndexOf('.')
+        return name.substring(0, extension) + "-bom" + name.substring(extension)
+    }
+
     fun start(username: String): Path {
         val userDir = userDirectory(username)
         Files.createDirectories(userDir)

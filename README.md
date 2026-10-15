@@ -63,6 +63,13 @@ failures are exposed to the GUI and obsolete jobs cannot publish results.
 
 ## Application behavior
 
+`/internal/files` retains separate per-user diagnostics for the latest dependency
+and BOM resolutions: `build.gradle` and `build-bom.gradle`. BOM output, unresolved
+findings, timings and resolution reports use the same `-bom` suffix before their
+extension. Starting a fresh run clears only that mode's previous diagnostics;
+cached resolution reuse leaves the files unchanged. Publishing these files uses
+local copies only, without extra resolution or security scans.
+
 When several missing vulnerability overrides are required, repository enrichment
 prefers a target whose scanned individual graph covers multiple requirements.
 For example, one jackson-databind ADD can replace separate databind/core ADDs

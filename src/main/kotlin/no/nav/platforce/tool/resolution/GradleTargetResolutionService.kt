@@ -48,6 +48,8 @@ class GradleTargetResolutionService(
         }
 
         val debugDir = debugFiles.start(username)
+        val bom = state.platformBoms.isNotEmpty()
+        debugFiles.startInspection(username, bom)
         val projectDir =
             Files.createTempDirectory(
                 "platforce-gradle-resolution-",
@@ -82,6 +84,7 @@ class GradleTargetResolutionService(
                 )
             }
             Files.copy(projectDir.resolve("build.gradle"), debugDir.resolve("build.gradle"), StandardCopyOption.REPLACE_EXISTING)
+            debugFiles.publishInspection(username, debugDir, bom)
             projectDir.resolve("gradle-unresolved-dependencies.txt").writeText(
                 "Gradle resolution task has not started. See gradle-output.txt and gradle-resolution-report.json if execution fails.\n",
             )
@@ -185,6 +188,7 @@ class GradleTargetResolutionService(
                         .create()
                         .toJson(report),
                 )
+                debugFiles.publishInspection(username, debugDir, bom)
             } catch (e: Exception) {
                 log.error(e) { "Could not publish Gradle debug artifacts" }
                 if (failure != null) failure.addSuppressed(e) else throw e

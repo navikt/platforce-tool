@@ -13,11 +13,61 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 class ResolutionDebugFilesTest {
     @TempDir
     lateinit var directory: Path
+
+    @Test
+    fun `inspection retains latest artifacts per scan mode and user without stale failure output`() {
+        val store = ResolutionDebugFiles(directory)
+
+        fun publish(
+            user: String,
+            bom: Boolean,
+            build: String,
+        ) {
+            val run = store.start(user)
+            store.startInspection(user, bom)
+            run.resolve("build.gradle").writeText(build)
+            run.resolve("gradle-output.txt").writeText("$build output")
+            run.resolve("gradle-resolution-report.json").writeText("""{"status":"READY"}""")
+            store.publishInspection(user, run, bom)
+        }
+
+        publish("alice", false, "normal")
+        publish("alice", true, "bom")
+        publish("bob", true, "private bob")
+        publish("alice", false, "new normal")
+        val inspection = store.inspectionDirectory("alice")
+        assertEquals("new normal", inspection.resolve("build.gradle").readText())
+        assertEquals("bom", inspection.resolve("build-bom.gradle").readText())
+        assertEquals("bom output", inspection.resolve("gradle-output-bom.txt").readText())
+        assertTrue(inspection.resolve("gradle-resolution-report-bom.json").exists())
+        val handler = filesHandler(inspection.toFile())
+        val response = handler(Request(Method.GET, "/internal/files/build-bom.gradle"))
+        assertEquals(Status.OK, response.status)
+        assertTrue(response.bodyString().contains("bom"))
+        assertFalse(response.bodyString().contains("private bob"))
+
+        // A failed new BOM run must not display old successful BOM output or disturb the normal scan.
+        store.startInspection("alice", true)
+        assertFalse(inspection.resolve("build-bom.gradle").exists())
+        assertFalse(inspection.resolve("gradle-output-bom.txt").exists())
+        assertEquals("new normal", inspection.resolve("build.gradle").readText())
+        assertTrue(store.inspectionDirectory("bob").resolve("build-bom.gradle").exists())
+        assertEquals(
+            Status.FORBIDDEN,
+            handler(
+                Request(
+                    Method.GET,
+                    "/internal/files/../../${store.inspectionDirectory("bob").parent.fileName}/inspection/build-bom.gradle",
+                ),
+            ).status,
+        )
+    }
 
     @Test
     fun `latest artifacts are selected separately for each user and each run`() {

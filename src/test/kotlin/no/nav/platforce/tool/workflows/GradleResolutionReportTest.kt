@@ -37,6 +37,7 @@ class GradleResolutionReportTest {
         val result = service.resolve("alice", targets)
         val artifacts = store.latestDirectory("alice")
         val build = artifacts.resolve("build.gradle").readText()
+        assertEquals(build, store.inspectionDirectory("alice").resolve("build.gradle").readText())
         assertTrue(build.contains("targetResolution \"example.nonexistent:one:1.0.0\""))
         assertTrue(build.contains("System.nanoTime()"))
         assertEquals(2, result.individual.size)
@@ -115,6 +116,12 @@ class GradleResolutionReportTest {
         val report = JsonParser.parseString(artifacts.resolve("gradle-resolution-report.json").readText()).asJsonObject
         assertEquals("FAILED", report["status"].asString)
         assertTrue(artifacts.resolve("build.gradle").readText().contains("configuredPlatformBoms"))
+        val inspection = store.inspectionDirectory("alice")
+        assertEquals(artifacts.resolve("build.gradle").readText(), inspection.resolve("build-bom.gradle").readText())
+        assertEquals(
+            "FAILED",
+            JsonParser.parseString(inspection.resolve("gradle-resolution-report-bom.json").readText()).asJsonObject["status"].asString,
+        )
         assertTrue(artifacts.resolve("gradle-output.txt").readText().contains("example.nonexistent:bom:1.0"))
     }
 

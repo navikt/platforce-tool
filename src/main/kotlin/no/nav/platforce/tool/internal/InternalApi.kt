@@ -13,7 +13,7 @@ fun internalRoutes(resolutionDebugFiles: ResolutionDebugFiles) =
     run {
         val userFilesHandler: HttpHandler = { request ->
             val context = request.userContext()
-            filesHandler(resolutionDebugFiles.latestDirectory(context.username).toFile())(request)
+            filesHandler(resolutionDebugFiles.inspectionDirectory(context.username).toFile())(request)
                 .header("Cache-Control", "no-store")
         }
 
