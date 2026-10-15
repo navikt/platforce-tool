@@ -69,6 +69,7 @@ data class TargetSecurityResult(
     val vulnerableDependencies: List<VulnerableDependency>,
     val relatedTo: List<OverrideReason>,
     val transientUsage: List<TransientDependencyUsage> = emptyList(),
+    val replacementDependencies: List<TransientDependencyUsage> = emptyList(),
 )
 
 data class OverrideReason(

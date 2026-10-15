@@ -70,6 +70,12 @@ when its matching safe target version supplies both fixes. Independent overrides
 remain separate; the GUI explanation and generated PR use the same selection.
 This reuses security-scan evidence without additional Gradle resolutions.
 
+User-marked transient overrides are needed only when they provide actual
+vulnerability fixes. A redundant override is marked REMOVE when retained targets
+already cover its fixes (for example databind covering core). Repository PRs
+remove it only when the replacement dependencies are present at their scanned
+versions in matching declaration configurations; otherwise the override stays.
+
 Platform BOMs have a separate target section below Gradle and a separate
 repository finding type. Literal `platform(...)` and `enforcedPlatform(...)`
 coordinates are discovered as untracked until saved as a target. Click an

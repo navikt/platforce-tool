@@ -239,11 +239,46 @@ class DependencyScanner(
     ): List<DependencyFinding> {
         val securityByKey =
             securityResult.targets.associateBy { it.key }
+        val declarations = inventory?.declarations.orEmpty().filter { !it.platformBom }
+
+        fun coversConfigurations(
+            consumer: String,
+            provider: String,
+            version: String,
+        ): Boolean {
+            val configurations = declarations.filter { it.key == consumer }.map { it.configuration }.toSet()
+            return configurations.isNotEmpty() &&
+                configurations.all { configuration ->
+                    declarations.any { it.key == provider && it.version == version && it.configuration == configuration }
+                }
+        }
+
+        val removableTransients =
+            findings
+                .filter { finding ->
+                    val result = securityByKey[finding.key]
+                    finding.kind == DependencyKind.DEPENDENCY &&
+                        result?.status == TargetSecurityStatus.TRANSIENT_UNUSED &&
+                        finding.currentVersion == result.targetVersion &&
+                        (
+                            result.replacementDependencies.isEmpty() ||
+                                result.replacementDependencies.all { replacement ->
+                                    val present =
+                                        findings.any {
+                                            it.kind == DependencyKind.DEPENDENCY && it.key == replacement.dependency &&
+                                                it.currentVersion == replacement.targetVersion
+                                        }
+                                    present && coversConfigurations(finding.key, replacement.dependency, replacement.targetVersion)
+                                }
+                        )
+                }.map { it.key }
+                .toSet()
 
         val presentDependencies =
             findings
                 .filter {
-                    it.kind == DependencyKind.DEPENDENCY
+                    it.kind == DependencyKind.DEPENDENCY &&
+                        it.key !in removableTransients
                 }.map { it.key }
                 .toSet()
 
@@ -294,6 +329,22 @@ class DependencyScanner(
 
             if (targetResult.status == TargetSecurityStatus.OK_OVERRIDDEN) {
                 val relatedTo = targetResult.relatedTo
+                val presentProviders =
+                    relatedTo.associateWith { reason ->
+                        findings
+                            .firstOrNull { provider ->
+                                provider.kind == DependencyKind.DEPENDENCY &&
+                                    provider.key in presentDependencies &&
+                                    provider.currentVersion == provider.targetVersion &&
+                                    coversConfigurations(finding.key, provider.key, provider.targetVersion) &&
+                                    "${provider.key}:${provider.targetVersion}" in reason.causedBy &&
+                                    securityByKey[provider.key]?.status in
+                                    setOf(
+                                        TargetSecurityStatus.OK,
+                                        TargetSecurityStatus.OK_TRANSIENT,
+                                    )
+                            }?.let { DependencyReference(DependencyKind.DEPENDENCY, it.key, it.targetVersion) }
+                    }
                 val bomCoverage = RepositoryBomCoverage().find(finding, inventory, securityResult)
                 val coveredReasons =
                     relatedTo.filter { reason ->
@@ -305,7 +356,7 @@ class DependencyScanner(
 
                 val missingOverrides =
                     relatedTo.filter {
-                        it.dependency !in presentDependencies && it !in coveredReasons
+                        it.dependency !in presentDependencies && it !in coveredReasons && presentProviders[it] == null
                     }
                 val bomReferences = if (coveredReasons.isNotEmpty()) listOfNotNull(bomCoverage?.first) else emptyList()
                 val additions = selectOverrideAdditions(missingOverrides, securityResult)
@@ -321,13 +372,15 @@ class DependencyScanner(
                                 DependencyStatus.OK_OVERRIDDEN
                             },
                         relatedTo =
-                            relatedTo.filter { it !in coveredReasons && it !in missingOverrides }.map {
-                                DependencyReference(
-                                    kind = DependencyKind.DEPENDENCY,
-                                    key = it.dependency,
-                                    version = it.targetVersion,
-                                )
-                            } + additions + bomReferences,
+                            relatedTo
+                                .filter { it !in coveredReasons && it !in missingOverrides }
+                                .map {
+                                    presentProviders[it] ?: DependencyReference(
+                                        kind = DependencyKind.DEPENDENCY,
+                                        key = it.dependency,
+                                        version = it.targetVersion,
+                                    )
+                                }.distinct() + additions + bomReferences,
                         bomCoverage = bomReferences,
                     )
 
@@ -392,7 +445,20 @@ class DependencyScanner(
                 TargetSecurityStatus.TRANSIENT_UNUSED -> {
                     enriched +=
                         finding.copy(
-                            status = DependencyStatus.REMOVE,
+                            status =
+                                if (finding.key in removableTransients) {
+                                    DependencyStatus.REMOVE
+                                } else {
+                                    DependencyStatus.OK_TRANSIENT
+                                },
+                            relatedTo =
+                                if (finding.key in removableTransients) {
+                                    emptyList()
+                                } else {
+                                    targetResult.transientUsage.map {
+                                        DependencyReference(DependencyKind.DEPENDENCY, it.dependency, it.targetVersion)
+                                    }
+                                },
                         )
                 }
 

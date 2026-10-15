@@ -11,6 +11,7 @@ import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.security.TargetSecurityScanner
 import no.nav.platforce.tool.security.TargetSecurityService
+import no.nav.platforce.tool.security.TargetSecurityStatus
 import no.nav.platforce.tool.security.Vulnerability
 import no.nav.platforce.tool.security.VulnerabilityService
 import no.nav.platforce.tool.targets.TargetVersionsState
@@ -39,8 +40,53 @@ class OverrideAdditionFlowTest {
         runFlow(databindIncludesCore = false)
     }
 
-    private fun runFlow(databindIncludesCore: Boolean) {
-        val source = "dependencies {\n    implementation '$encoder:9.0'\n}"
+    @Test
+    fun `redundant core is removed when matching databind is present`() {
+        runFlow(databindIncludesCore = true, present = setOf(core, databind))
+    }
+
+    @Test
+    fun `core alone is retained until its matching replacement is present`() {
+        runFlow(databindIncludesCore = true, present = setOf(core))
+    }
+
+    @Test
+    fun `databind alone needs neither core ADD nor removal`() {
+        runFlow(databindIncludesCore = true, present = setOf(databind))
+    }
+
+    @Test
+    fun `independent transient overrides both remain when present`() {
+        runFlow(databindIncludesCore = false, present = setOf(core, databind))
+    }
+
+    @Test
+    fun `older databind does not justify removing matching core`() {
+        runFlow(databindIncludesCore = true, present = setOf(core, databind), databindVersion = "3.0.1")
+    }
+
+    @Test
+    fun `newer unscanned databind does not justify removing matching core`() {
+        runFlow(databindIncludesCore = true, present = setOf(core, databind), databindVersion = "3.2.0")
+    }
+
+    @Test
+    fun `test only databind does not justify removing production core`() {
+        runFlow(databindIncludesCore = true, present = setOf(core, databind), databindConfiguration = "testImplementation")
+    }
+
+    private fun runFlow(
+        databindIncludesCore: Boolean,
+        present: Set<String> = emptySet(),
+        databindVersion: String = "3.1.7",
+        databindConfiguration: String = "implementation",
+    ) {
+        val source =
+            "dependencies {\n    implementation '$encoder:9.0'\n" +
+                present.joinToString("") {
+                    val configuration = if (it == databind) databindConfiguration else "implementation"
+                    "    $configuration '$it:${if (it == databind) databindVersion else "3.1.7"}'\n"
+                } + "}"
         val github = RecordingGithubClient(mapOf("build.gradle" to source))
         val scanner = DependencyScanner(github)
         val cache = DependencyScanCache()
@@ -93,16 +139,45 @@ class OverrideAdditionFlowTest {
         securityExecutor.runNext()
         val view = DependencyScanViewService(cache, security, scanner)
         val findings = view.get("alice", targets).single().findings
-        val expected = if (databindIncludesCore) setOf(databind) else setOf(databind, core)
+        val selected = if (databindIncludesCore) setOf(databind) else setOf(databind, core)
+        val expected = selected - present
+        val removed =
+            if (databindIncludesCore && core in present && databind in present &&
+                databindVersion == "3.1.7" && databindConfiguration == "implementation"
+            ) {
+                setOf(core)
+            } else {
+                emptySet()
+            }
+        val securityResults =
+            security
+                .get("alice", targets)
+                .result!!
+                .targets
+                .associateBy { it.key }
+        assertEquals(
+            if (databindIncludesCore) TargetSecurityStatus.TRANSIENT_UNUSED else TargetSecurityStatus.OK_TRANSIENT,
+            securityResults.getValue(core).status,
+        )
+        assertEquals(TargetSecurityStatus.OK_TRANSIENT, securityResults.getValue(databind).status)
+        assertEquals(
+            setOf(encoder),
+            securityResults
+                .getValue(databind)
+                .transientUsage
+                .map { it.dependency }
+                .toSet(),
+        )
+        assertEquals(removed, findings.filter { it.status == DependencyStatus.REMOVE }.map { it.key }.toSet())
         // No bandaids are present in the repository. Databind's individual graph proves whether it also fixes core.
         assertEquals(expected, findings.filter { it.status == DependencyStatus.ADD }.map { it.key }.toSet())
         val parent = findings.single { it.key == encoder }
-        assertEquals(DependencyStatus.OK_WITH_ADD, parent.status)
-        assertEquals(expected, parent.relatedTo.map { it.key }.toSet())
+        assertEquals(if (expected.isEmpty()) DependencyStatus.OK_OVERRIDDEN else DependencyStatus.OK_WITH_ADD, parent.status)
+        assertEquals(selected + (present - removed), parent.relatedTo.map { it.key }.toSet())
 
         DependencyPullRequestService(github, view).createPullRequest("example", "repository", "alice", targets)
-        val updated = GradleDependencyParser().parse(github.updatedFiles.getValue("build.gradle"))
-        assertEquals(expected + encoder, updated.dependencies.keys)
+        val updated = GradleDependencyParser().parse(github.updatedFiles["build.gradle"] ?: source)
+        assertEquals((present - removed) + expected + encoder, updated.dependencies.keys)
         if (databindIncludesCore) {
             assertFalse(github.pullRequestBody.orEmpty().contains("ADD $core:"))
         }

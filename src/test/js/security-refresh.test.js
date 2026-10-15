@@ -399,6 +399,22 @@ test("BOM health and coverage render independently without treating module fixes
     assert.equal(app.context.securityStatusHtml(null), "<div></div>");
 });
 
+test("redundant transient details explain conditional removal and matching replacement", () => {
+    const app = gui();
+    const html = app.context.targetSecurityDetailsHtml({
+        key: "example:core", targetVersion: "2.0", status: "TRANSIENT_UNUSED",
+        replacementDependencies: [{ dependency: "example:databind", targetVersion: "2.0" }]
+    });
+    assert.match(html, /Redundant when these scanned dependencies are present/);
+    assert.match(html, /example:databind/);
+    assert.match(html, /Repositories without matching replacements keep this override/);
+    const unused = app.context.targetSecurityDetailsHtml({
+        key: "example:unused", targetVersion: "2.0", status: "TRANSIENT_UNUSED"
+    });
+    assert.match(unused, /no longer needed/);
+    assert.doesNotMatch(unused, /matching replacements/);
+});
+
 test("failed repository refresh stops progress polling and permits another attempt", async () => {
     const app = gui();
     app.context.fetch = async () => ({ ok: false, status: 500 });

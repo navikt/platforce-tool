@@ -38,7 +38,6 @@ class TargetSecurityService(
             applyTransientStatus(
                 targets = targets,
                 targetState = targetState,
-                resolution = resolution,
             )
 
         val securityDependencies =
@@ -70,25 +69,53 @@ class TargetSecurityService(
     private fun applyTransientStatus(
         targets: List<TargetSecurityResult>,
         targetState: TargetVersionsState,
-        resolution: TargetResolution,
     ): List<TargetSecurityResult> {
+        val safeProviders = targets.filter { it.status == TargetSecurityStatus.OK }.associateBy { it.key }
+
+        fun provides(
+            provider: TargetSecurityResult,
+            reason: OverrideReason,
+        ): Boolean = "${provider.key}:${provider.targetVersion}" in reason.causedBy
+
+        val requirements = targets.flatMap { consumer -> consumer.relatedTo.map { consumer to it } }
         val transientUsage =
             targetState.transientDependencies
                 .associateWith { transientKey ->
-                    targets
-                        .filter { target ->
-                            target.key != transientKey &&
-                                flatten(
-                                    resolution.individual[target.key]
-                                        ?: emptyList(),
-                                ).any { dependency ->
-                                    coordinateWithoutVersion(
-                                        dependency.group,
-                                        dependency.name,
-                                    ) == transientKey
-                                }
-                        }
+                    val provider = safeProviders[transientKey]
+                    requirements
+                        .filter { (consumer, reason) ->
+                            consumer.key != transientKey && provider != null && provides(provider, reason)
+                        }.map { it.first }
+                        .distinctBy { it.key }
                 }
+        val retained = safeProviders.toMutableMap()
+        val replacements = mutableMapOf<String, List<TransientDependencyUsage>>()
+        val transientCandidates =
+            safeProviders.values
+                .filter { it.key in targetState.transientDependencies }
+                .sortedWith(
+                    compareBy<TargetSecurityResult> { provider -> requirements.count { provides(provider, it.second) } }
+                        .thenBy { it.key },
+                )
+        transientCandidates.forEach { candidate ->
+            val covered = requirements.filter { provides(candidate, it.second) }
+            val alternatives =
+                covered.map { (_, reason) ->
+                    retained.values.firstOrNull { it.key != candidate.key && provides(it, reason) }
+                }
+            if (alternatives.all { it != null }) {
+                retained.remove(candidate.key)
+                replacements[candidate.key] =
+                    alternatives.filterNotNull().map { TransientDependencyUsage(it.key, it.targetVersion) }.distinct()
+            }
+        }
+
+        fun retainedReplacements(key: String): List<TransientDependencyUsage> =
+            replacements[key]
+                .orEmpty()
+                .flatMap { replacement ->
+                    if (replacement.dependency in replacements) retainedReplacements(replacement.dependency) else listOf(replacement)
+                }.distinct()
 
         return targets.map { target ->
             if (target.key !in targetState.transientDependencies) {
@@ -109,7 +136,13 @@ class TargetSecurityService(
                             )
                         },
                 )
-            } else if (protectedTargets.isNotEmpty()) {
+            } else if (target.key in replacements) {
+                target.copy(
+                    status = TargetSecurityStatus.TRANSIENT_UNUSED,
+                    transientUsage = protectedTargets.map { TransientDependencyUsage(it.key, it.targetVersion) },
+                    replacementDependencies = retainedReplacements(target.key),
+                )
+            } else if (protectedTargets.isNotEmpty() || target.status == TargetSecurityStatus.OK_OVERRIDDEN) {
                 target.copy(
                     status = TargetSecurityStatus.OK_TRANSIENT,
                     transientUsage =

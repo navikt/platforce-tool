@@ -113,6 +113,97 @@ class TargetSecurityFlowTest {
         // The result is TRANSIENT_UNUSED, which the repository view can turn into a removal proposal.
     }
 
+    @Test
+    fun `merely appearing in a safe tree does not make a transient override useful`() {
+        val safeParent = standalone.copy(dependencies = listOf(fixed))
+        val resolution =
+            TargetResolution(
+                "8.1",
+                listOf(safeParent, fixed),
+                mapOf("example:library" to listOf(safeParent), "example:transitive" to listOf(fixed)),
+            )
+        val state = targets(true).copy(transientDependencies = setOf("example:transitive"))
+        val result = service.scan(resolution, state).targets.single { it.key == "example:transitive" }
+        assertEquals(TargetSecurityStatus.TRANSIENT_UNUSED, result.status)
+        assertTrue(result.transientUsage.isEmpty())
+        assertTrue(result.replacementDependencies.isEmpty())
+    }
+
+    @Test
+    fun `vulnerable transient target is never marked unused`() {
+        val state =
+            TargetVersionsState(
+                mutableMapOf(),
+                mutableMapOf("example:transitive" to "1.0.0"),
+                "8.1",
+                setOf("example:transitive"),
+            )
+        val resolution = TargetResolution("8.1", listOf(vulnerable), mapOf("example:transitive" to listOf(vulnerable)))
+        assertEquals(
+            TargetSecurityStatus.VULNERABLE,
+            service
+                .scan(resolution, state)
+                .targets
+                .single()
+                .status,
+        )
+    }
+
+    @Test
+    fun `equivalent transient providers retain one stable survivor rather than removing both`() {
+        val first = dependency("first-provider", "2.0.0", listOf(fixed))
+        val second = dependency("second-provider", "2.0.0", listOf(fixed))
+        val resolution =
+            TargetResolution(
+                "8.1",
+                listOf(standalone.copy(dependencies = listOf(fixed)), first, second),
+                mapOf("example:library" to listOf(standalone), first.key to listOf(first), second.key to listOf(second)),
+            )
+        val entries = listOf("example:library" to "1.0.0", first.key to first.version, second.key to second.version)
+        val scans =
+            listOf(entries, entries.reversed()).map { ordered ->
+                service.scan(
+                    resolution,
+                    TargetVersionsState(mutableMapOf(), ordered.toMap().toMutableMap(), "8.1", setOf(first.key, second.key)),
+                )
+            }
+        scans.forEach { scan ->
+            val unused = scan.targets.single { it.status == TargetSecurityStatus.TRANSIENT_UNUSED }
+            val retained = scan.targets.single { it.status == TargetSecurityStatus.OK_TRANSIENT }
+            assertEquals(first.key, unused.key)
+            assertEquals(second.key, retained.key)
+            assertEquals(listOf(TransientDependencyUsage(second.key, second.version)), unused.replacementDependencies)
+        }
+    }
+
+    @Test
+    fun `provider requiring its own override cannot replace a necessary safe override`() {
+        val unsafeProvider = dependency("other-provider", "1.0.0", listOf(fixed, vulnerable))
+        val resolution =
+            TargetResolution(
+                "8.1",
+                listOf(standalone.copy(dependencies = listOf(fixed)), fixed, unsafeProvider),
+                mapOf(
+                    "example:library" to listOf(standalone),
+                    "example:transitive" to listOf(fixed),
+                    unsafeProvider.key to listOf(unsafeProvider),
+                ),
+            )
+        val state =
+            targets(true).copy(
+                dependencies = targets(true).dependencies.apply { put(unsafeProvider.key, unsafeProvider.version) },
+                transientDependencies = setOf("example:transitive", unsafeProvider.key),
+            )
+        val scan = service.scan(resolution, state)
+        assertEquals(TargetSecurityStatus.OK_TRANSIENT, scan.targets.single { it.key == "example:transitive" }.status)
+        assertTrue(
+            scan.targets
+                .single { it.key == "example:transitive" }
+                .replacementDependencies
+                .isEmpty(),
+        )
+    }
+
     private fun overriddenResolution() =
         TargetResolution(
             gradleVersion = "8.1",

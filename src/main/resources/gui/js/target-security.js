@@ -328,7 +328,13 @@ function targetSecurityDetailsHtml(security) {
     if (security.status === "TRANSIENT_UNUSED") {
         html += `
             <div>
-                This transient override is no longer needed and is marked for removal from repositories
+                ${security.replacementDependencies?.length
+                    ? `Redundant when these scanned dependencies are present:
+                       <ul>${security.replacementDependencies.map(replacement => `
+                           <li>${escapeHtml(replacement.dependency)} ${escapeHtml(replacement.targetVersion)}</li>
+                       `).join("")}</ul>
+                       Repositories without matching replacements keep this override.`
+                    : "This transient override is no longer needed and is marked for removal from repositories"}
             </div>
         `;
     }
