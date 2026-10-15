@@ -109,8 +109,17 @@ class GradleResolutionReportTest {
         val launcher = launcher("exec '${gradleHome.resolve("bin/gradle")}' --offline \"${'$'}@\"")
         val store = ResolutionDebugFiles(directory.resolve("files"))
         val service = GradleTargetResolutionService(launcher, debugFiles = store)
-        val bomOnly = targets.copy(dependencies = mutableMapOf(), platformBoms = mutableMapOf("example.nonexistent:bom" to "1.0"))
-        val error = assertThrows(IllegalStateException::class.java) { service.resolve("alice", bomOnly) }
+        val bomOnly = targets.copy(platformBoms = mutableMapOf("example.nonexistent:bom" to "1.0"))
+        val error =
+            assertThrows(IllegalStateException::class.java) {
+                service.resolveCoverage(
+                    "alice",
+                    bomOnly,
+                    no.nav.platforce.tool.resolution
+                        .TargetResolution("8.14.4", emptyList(), emptyMap()),
+                    targets.dependencies.keys,
+                )
+            }
         assertTrue(error.message.orEmpty().contains("Incomplete BOM resolution"), error.message)
         val artifacts = store.latestDirectory("alice")
         val report = JsonParser.parseString(artifacts.resolve("gradle-resolution-report.json").readText()).asJsonObject

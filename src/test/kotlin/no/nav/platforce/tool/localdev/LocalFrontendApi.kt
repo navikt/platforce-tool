@@ -115,6 +115,8 @@ class LocalFrontendApi(
             fingerprint(targets),
             if (status == SecurityScanStatus.READY) securityResult() else null,
             null,
+            normalReady = securityReadyAt?.let { now() >= it } == true,
+            bomReady = securityReadyAt?.let { now() >= it } == true && bomSecurityReadyAt?.let { now() >= it } == true,
         )
     }
 
@@ -206,6 +208,7 @@ class LocalFrontendApi(
                         bomSecurityReadyAt = now() + 1200
                         securityReadyAt = bomSecurityReadyAt
                     } else {
+                        bomSecurityReadyAt = null
                         securityReadyAt = now() + 1200
                     }
                 }

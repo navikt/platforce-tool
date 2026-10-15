@@ -42,13 +42,22 @@ class PlatformBomSecurityFlowTest {
     private val service =
         TargetSecurityService(
             object : VulnerabilityService {
-                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
-                    dependencies.associate {
+                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
+                    fun flatten(nodes: List<ResolvedDependency>): List<ResolvedDependency> =
+                        nodes.flatMap { listOf(it) + flatten(it.dependencies) }
+                    return flatten(dependencies).associate {
                         val coordinate = "${it.key}:${it.version}"
                         queried += coordinate
                         coordinate to
-                            if (it.version == "1.0" && it.name in setOf("first", "second", "unused")) listOf(advisory) else emptyList()
+                            if (it.version in setOf("1.0", "4.0") &&
+                                it.name in setOf("first", "second", "unused")
+                            ) {
+                                listOf(advisory)
+                            } else {
+                                emptyList()
+                            }
                     }
+                }
             },
         )
 
@@ -111,20 +120,17 @@ class PlatformBomSecurityFlowTest {
     }
 
     @Test
-    fun `BOM coverage removes redundant ADDs while unused vulnerable managed module remains visible`() {
-        // The BOM covers both vulnerable children, but its unused managed module is still vulnerable.
+    fun `BOM coverage removes redundant ADDs without claiming unused managed module health`() {
         val security = service.scan(resolution(), targets)
         val baseline = security.targets.single { it.key == libraryKey }
         assertEquals(TargetSecurityStatus.OK_OVERRIDDEN, baseline.status)
         val bom = security.platformBoms.single()
-        assertEquals(TargetSecurityStatus.VULNERABLE, bom.status)
-        assertEquals(
-            "unused",
-            bom.vulnerableDependencies
-                .single()
-                .dependency.name,
-        )
-        assertTrue(queried.containsAll(listOf("example:first:1.0", "example:first:2.0", "example:first:3.0", "example:unused:1.0")))
+        assertEquals(null, bom.status)
+        assertEquals("COVERAGE_ONLY", bom.scope)
+        assertTrue(bom.vulnerableDependencies.isEmpty())
+        assertEquals(0, bom.managedDependencyCount)
+        assertTrue(queried.containsAll(listOf("example:first:1.0", "example:first:2.0", "example:first:3.0")))
+        assertFalse("example:unused:1.0" in queried)
 
         val inventory = inventory()
         val enriched = scanner.enrichSecurityScan(scanner.compare(inventory, targets), security, inventory)
@@ -133,7 +139,7 @@ class PlatformBomSecurityFlowTest {
         assertEquals(DependencyStatus.OK_OVERRIDDEN, library.status)
         assertEquals(DependencyKind.PLATFORM_BOM, library.relatedTo.single().kind)
         assertEquals(bomKey, library.bomCoverage.single().key)
-        assertEquals(DependencyStatus.VULNERABLE, enriched.findings.single { it.kind == DependencyKind.PLATFORM_BOM }.status)
+        assertEquals(DependencyStatus.OK, enriched.findings.single { it.kind == DependencyKind.PLATFORM_BOM }.status)
     }
 
     @Test
@@ -184,7 +190,7 @@ class PlatformBomSecurityFlowTest {
         val olderResult = scanner.enrichSecurityScan(scanner.compare(older, targets), security, older)
         val bom = olderResult.findings.single { it.kind == DependencyKind.PLATFORM_BOM }
         assertEquals(DependencyStatus.UPDATE, bom.status)
-        assertEquals(TargetSecurityStatus.VULNERABLE, bom.platformBomSecurity?.status)
+        assertEquals(null, bom.platformBomSecurity?.status)
     }
 
     @Test
@@ -221,16 +227,41 @@ class PlatformBomSecurityFlowTest {
     }
 
     @Test
-    fun `BOM only security scan checks unused managed modules without dependency targets`() {
+    fun `coverage introducing a different vulnerable version of an existing module cannot suppress any ADDs`() {
+        val normal = resolution().copy(platformBoms = emptyMap())
+        val baseline = service.scan(normal, targets.copy(platformBoms = mutableMapOf()))
+        val bom = resolution().platformBoms.getValue(bomKey)
+        val candidate = bom.coverage.single()
+        val unsafe = node("library", "1.0", listOf(node("first", "4.0"), node("second", "3.0")))
+        val result =
+            service.scanCoverage(
+                normal.copy(platformBoms = mapOf(bomKey to bom.copy(coverage = listOf(candidate.copy(roots = listOf(unsafe)))))),
+                targets,
+                baseline,
+            )
+        assertTrue("example:first:4.0" in queried)
+        assertTrue(
+            result.platformBoms
+                .single()
+                .coverage
+                .single()
+                .overrides
+                .isEmpty(),
+        )
+    }
+
+    @Test
+    fun `BOM only security scan makes no managed module health claim`() {
         val bomOnly = targets.copy(dependencies = mutableMapOf())
         val resolution = resolution().copy(roots = emptyList(), individual = emptyMap())
         val result = service.scan(resolution, bomOnly)
         assertTrue(result.targets.isEmpty())
-        assertEquals(TargetSecurityStatus.VULNERABLE, result.platformBoms.single().status)
+        assertEquals(null, result.platformBoms.single().status)
+        assertFalse("example:unused:1.0" in queried)
     }
 
     @Test
-    fun `ordinary scan excludes BOM work and opt in results survive a later dependency scan`() {
+    fun `ordinary scan excludes BOM work and a new dependency scan invalidates coverage`() {
         val resolutionExecutor = QueuedExecutor()
         val securityExecutor = QueuedExecutor()
         val inputs = mutableListOf<TargetVersionsState>()
@@ -241,6 +272,11 @@ class PlatformBomSecurityFlowTest {
                     if (state.platformBoms.isEmpty()) resolution().copy(platformBoms = emptyMap()) else resolution()
                 },
                 resolutionExecutor,
+                coverageResolve = { _, state, baseline, relevant ->
+                    inputs += state
+                    assertEquals(setOf(libraryKey), relevant)
+                    resolution().copy(roots = baseline.roots, individual = baseline.individual)
+                },
             )
         val securityScanner = TargetSecurityScanner(service, resolutionScanner, securityExecutor)
 
@@ -271,26 +307,105 @@ class PlatformBomSecurityFlowTest {
                 .key,
         )
         assertTrue(securityScanner.get("bob", targets).result == null)
+        queried.clear()
+        assertEquals(SecurityScanStatus.READY, securityScanner.start("alice", targets, includeBoms = true).status)
+        assertTrue(securityScanner.get("alice", targets).bomReady)
+        assertEquals(0, resolutionExecutor.queuedTasks)
+        assertEquals(0, securityExecutor.queuedTasks)
+        assertTrue(queried.isEmpty())
 
         securityScanner.start("alice", targets)
         assertEquals(0, resolutionExecutor.queuedTasks)
         assertEquals(SecurityScanStatus.RUNNING, securityScanner.get("alice", targets).status)
         securityExecutor.runNext()
         assertEquals(2, inputs.size)
-        assertEquals(
-            bomKey,
+        assertTrue(
             securityScanner
                 .get("alice", targets)
                 .result!!
                 .platformBoms
-                .single()
-                .key,
+                .isEmpty(),
         )
+        assertFalse(securityScanner.get("alice", targets).bomReady)
 
         securityScanner.invalidate("alice")
         resolutionScanner.invalidate("alice")
         assertEquals(SecurityScanStatus.IDLE, securityScanner.get("alice", targets).status)
         assertEquals(SecurityScanStatus.IDLE, securityScanner.get("alice", targets, includeBoms = true).status)
+    }
+
+    @Test
+    fun `both BOM start paths fail without a matching normal READY security baseline`() {
+        val resolutionExecutor = QueuedExecutor()
+        val securityExecutor = QueuedExecutor()
+        val resolver = GradleTargetResolutionScanner({ _, _ -> resolution().copy(platformBoms = emptyMap()) }, resolutionExecutor)
+        val security = TargetSecurityScanner(service, resolver, securityExecutor)
+        assertEquals(no.nav.platforce.tool.resolution.ResolutionStatus.FAILED, resolver.start("alice", targets, true).status)
+        assertEquals(SecurityScanStatus.FAILED, security.start("alice", targets, true).status)
+        assertEquals(0, resolutionExecutor.queuedTasks)
+        assertEquals(0, securityExecutor.queuedTasks)
+        security.start("alice", targets)
+        assertEquals(SecurityScanStatus.FAILED, security.start("alice", targets, true).status)
+        resolutionExecutor.runNext()
+        assertEquals(SecurityScanStatus.FAILED, security.start("alice", targets, true).status)
+        securityExecutor.runNext()
+        assertTrue(security.get("alice", targets).normalReady)
+        assertFalse(security.get("alice", targets).bomReady)
+        assertEquals(SecurityScanStatus.FAILED, security.start("bob", targets, true).status)
+        val changed = targets.copy(dependencies = mutableMapOf(libraryKey to "2.0"))
+        assertEquals(SecurityScanStatus.FAILED, security.start("alice", changed, true).status)
+    }
+
+    @Test
+    fun `coverage reuses baseline security and checks full candidate graphs including changed vulnerable versions`() {
+        val normalResolution = resolution().copy(platformBoms = emptyMap())
+        val baseline = service.scan(normalResolution, targets.copy(platformBoms = mutableMapOf()))
+        queried.clear()
+        val bom = resolution().platformBoms.getValue(bomKey)
+        val candidate = bom.coverage.single()
+        val changedVulnerable =
+            bom.copy(
+                coverage =
+                    listOf(
+                        candidate.copy(
+                            roots = candidate.roots + node("unused", "1.0", listOf(node("hidden", "3.0", listOf(node("first", "2.0"))))),
+                        ),
+                    ),
+            )
+        val result = service.scanCoverage(normalResolution.copy(platformBoms = mapOf(bomKey to changedVulnerable)), targets, baseline)
+        assertEquals(baseline.targets, result.targets)
+        assertEquals(baseline.dependencies, result.dependencies)
+        assertFalse("example:first:1.0" in queried)
+        assertFalse("example:first:2.0" in queried)
+        assertTrue("example:hidden:3.0" in queried)
+        assertTrue(
+            result.platformBoms
+                .single()
+                .coverage
+                .single()
+                .overrides
+                .isEmpty(),
+        )
+    }
+
+    @Test
+    fun `PR gate requires matching BOM READY even for untracked platform inventory`() {
+        val github = RecordingGithubClient()
+        val resolutionExecutor = QueuedExecutor()
+        val securityExecutor = QueuedExecutor()
+        val resolver = GradleTargetResolutionScanner({ _, _ -> resolution().copy(platformBoms = emptyMap()) }, resolutionExecutor)
+        val security = TargetSecurityScanner(service, resolver, securityExecutor)
+        val cache = DependencyScanCache()
+        cache.update("alice", listOf(inventory()))
+        val view = DependencyScanViewService(cache, security, scanner)
+        val pr = DependencyPullRequestService(github, view)
+        security.start("alice", targets)
+        resolutionExecutor.runNext()
+        securityExecutor.runNext()
+        assertThrows(IllegalStateException::class.java) { pr.createPullRequest("example", "repository", "alice", targets) }
+        val untracked = targets.copy(platformBoms = mutableMapOf())
+        assertThrows(IllegalStateException::class.java) { pr.createPullRequest("example", "repository", "alice", untracked) }
+        assertTrue(github.calls.isEmpty())
     }
 
     @Test
@@ -305,12 +420,22 @@ class PlatformBomSecurityFlowTest {
         val github = RecordingGithubClient(mapOf("build.gradle" to source))
         val resolutionExecutor = QueuedExecutor()
         val securityExecutor = QueuedExecutor()
-        val resolutionScanner = GradleTargetResolutionScanner({ _, _ -> resolution(secondFixed = false) }, resolutionExecutor)
+        val resolutionScanner =
+            GradleTargetResolutionScanner(
+                { _, _ -> resolution(secondFixed = false).copy(platformBoms = emptyMap()) },
+                resolutionExecutor,
+                coverageResolve = { _, _, baseline, _ ->
+                    resolution(secondFixed = false).copy(roots = baseline.roots, individual = baseline.individual)
+                },
+            )
         val securityScanner = TargetSecurityScanner(service, resolutionScanner, securityExecutor)
         val cache = DependencyScanCache()
         cache.update("alice", listOf(inventory()))
         cache.update("bob", listOf(inventory()))
         val view = DependencyScanViewService(cache, securityScanner, scanner)
+        securityScanner.start("alice", targets)
+        resolutionExecutor.runNext()
+        securityExecutor.runNext()
         securityScanner.start("alice", targets, includeBoms = true)
         resolutionExecutor.runNext()
         securityExecutor.runNext()
@@ -332,7 +457,8 @@ class PlatformBomSecurityFlowTest {
                 .none { it.bomCoverage.isNotEmpty() },
         )
         val changed = targets.copy(platformBoms = mutableMapOf(bomKey to "2.0"))
-        assertEquals(SecurityScanStatus.IDLE, securityScanner.get("alice", changed).status)
+        assertEquals(SecurityScanStatus.READY, securityScanner.get("alice", changed).status)
+        assertFalse(securityScanner.get("alice", changed).bomReady)
         assertTrue(
             view
                 .get("alice", changed)
@@ -340,7 +466,14 @@ class PlatformBomSecurityFlowTest {
                 .findings
                 .none { it.bomCoverage.isNotEmpty() },
         )
-        assertEquals(SecurityScanStatus.IDLE, securityScanner.get("alice", targets.copy(platformBoms = mutableMapOf())).status)
+        assertThrows(IllegalStateException::class.java) {
+            DependencyPullRequestService(github, view).createPullRequest("example", "repository", "alice", changed)
+        }
+        assertThrows(IllegalStateException::class.java) {
+            DependencyPullRequestService(github, view).createPullRequest("example", "repository", "bob", targets)
+        }
+        assertTrue(github.calls.isEmpty())
+        assertEquals(SecurityScanStatus.READY, securityScanner.get("alice", targets.copy(platformBoms = mutableMapOf())).status)
 
         // The PR uses the same enriched view as the GUI; the BOM-covered first module must not reappear.
         DependencyPullRequestService(github, view).createPullRequest("example", "repository", "alice", targets)

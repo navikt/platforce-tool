@@ -98,7 +98,7 @@
   <text class="text" x="341" y="1112">Resolve target dependency trees with Gradle</text>
   <text class="package" x="341" y="1137">resolution</text>
   <text class="detail" x="341" y="1161">Generate temporary build; resolve all targets together and individually</text>
-  <text class="detail" x="341" y="1183">Separate BOM catalogs and coverage graphs; not repo builds</text>
+  <text class="detail" x="341" y="1183">Optional BOM coverage reuses the normal scan; not repo builds</text>
   <path class="connector" d="M560 1200V1238"/>
 
   <rect class="card cache" x="868" y="1082" width="232" height="116" rx="13"/>
@@ -113,7 +113,7 @@
   <text class="text" x="341" y="1276">Query OSV and evaluate target security</text>
   <text class="package" x="341" y="1301">security / scanning</text>
   <text class="detail" x="341" y="1325">TargetSecurityService checks combined and standalone graphs</text>
-  <text class="detail" x="341" y="1347">Evaluate overrides, BOM health/coverage and unused transient targets</text>
+  <text class="detail" x="341" y="1347">Evaluate overrides, relevant BOM coverage and redundant transient targets</text>
   <path class="green" d="M560 1364V1413"/>
 
   <rect class="card cache" x="868" y="1247" width="232" height="114" rx="13"/>

@@ -11,21 +11,15 @@ class PlatformBomSecurity {
         resolution: TargetResolution,
         vulnerabilities: Map<String, List<Vulnerability>>,
     ): PlatformBomSecurityResult {
-        val vulnerableManaged =
-            bom.managed.mapNotNull { dependency ->
-                vulnerabilities[coordinate(dependency)].orEmpty().takeIf { it.isNotEmpty() }?.let {
-                    VulnerableDependency(dependency, it)
-                }
-            }
         val coverage =
             bom.coverage.map { candidate ->
                 val standalone = flatten(resolution.individual[candidate.dependency].orEmpty())
                 val selected = flatten(candidate.roots).groupBy { it.key }
-                val originalVulnerableKeys =
-                    standalone.filter { vulnerabilities[coordinate(it)].orEmpty().isNotEmpty() }.map { it.key }.toSet()
+                val originalVulnerableCoordinates =
+                    standalone.filter { vulnerabilities[coordinate(it)].orEmpty().isNotEmpty() }.map(::coordinate).toSet()
                 val introducesVulnerability =
                     selected.values.flatten().any {
-                        it.key !in originalVulnerableKeys && vulnerabilities[coordinate(it)].orEmpty().isNotEmpty()
+                        coordinate(it) !in originalVulnerableCoordinates && vulnerabilities[coordinate(it)].orEmpty().isNotEmpty()
                     }
                 PlatformBomCoverage(
                     dependency = candidate.dependency,
@@ -62,9 +56,9 @@ class PlatformBomSecurity {
         return PlatformBomSecurityResult(
             key = key,
             targetVersion = bom.version,
-            status = if (vulnerableManaged.isEmpty()) TargetSecurityStatus.OK else TargetSecurityStatus.VULNERABLE,
-            vulnerableDependencies = vulnerableManaged,
-            managedDependencyCount = bom.managed.size,
+            status = null,
+            vulnerableDependencies = emptyList(),
+            managedDependencyCount = 0,
             coverage = coverage,
         )
     }

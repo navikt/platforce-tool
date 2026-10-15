@@ -113,6 +113,7 @@ async function init() {
 
     await loadCachedTargetSecurity();
     renderTargetTables();
+    if (lastLoadedData?.repos) render(lastLoadedData);
 
     startProgressPolling();
 }

@@ -109,6 +109,9 @@ function renderRepo(repoView, scanMap, container) {
     const hasActionable = findings.some(f =>
         f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD" || f.status === "REMOVE"
     );
+    const prPrerequisite = !normalSecurityReady ? "Scan first"
+        : ((findings.some(f => f.kind === "PLATFORM_BOM") || untrackedPlatformBoms.length) && !bomSecurityReady)
+            ? "BOM scan first" : null;
 
     const addBadge =
         add > 0
@@ -201,7 +204,9 @@ function renderRepo(repoView, scanMap, container) {
                 </button>
 
                 ${
-                hasActionable
+                prPrerequisite
+                    ? `<button class="pr-button disabled" disabled>${prPrerequisite}</button>`
+                    : hasActionable
                     ? `<button
                                data-repo="${repo}"
                                class="pr-button create-pr-button"

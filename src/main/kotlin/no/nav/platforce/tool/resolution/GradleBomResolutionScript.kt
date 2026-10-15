@@ -3,19 +3,6 @@ package no.nav.platforce.tool.resolution
 object GradleBomResolutionScript {
     fun create(): String =
         """
-        def bomMetadata = [:]
-        dependencies.components.all { details ->
-            details.allVariants {
-                withDependencyConstraints { constraints ->
-                    def keys = constraints.collect { it.group + ':' + it.name }
-                    synchronized (bomMetadata) {
-                        def id = details.id.toString()
-                        bomMetadata[id] = ((bomMetadata[id] ?: []) + keys).unique()
-                    }
-                }
-            }
-        }
-
         tasks.named('platforceResolve') {
             doLast {
                 def bomStarted = System.nanoTime()
@@ -25,12 +12,7 @@ object GradleBomResolutionScript {
                     def notation = bomKey + ':' + bomVersion
                     dependencies.add(configuration.name,
                         enforced ? dependencies.enforcedPlatform(notation) : dependencies.platform(notation))
-                    if (dependencyKey != null) {
-                        def dependency = dependencies.create(
-                            dependencyKey + (dependencyVersion == null ? '' : ':' + dependencyVersion))
-                        if (dependencyVersion == null) dependency.transitive = false
-                        dependencies.add(configuration.name, dependency)
-                    }
+                    dependencies.add(configuration.name, dependencyKey + ':' + dependencyVersion)
                     def started = System.nanoTime()
                     def result = configuration.incoming.resolutionResult
                     def unresolved = result.allDependencies.findAll {
@@ -40,15 +22,22 @@ object GradleBomResolutionScript {
                         throw new GradleException("Incomplete BOM resolution for " + notation + ": " +
                             unresolved.collect { it.attempted.displayName + ': ' + it.failure.message }.join('; '))
                     }
-                    if (dependencyKey == null && result.allDependencies.any { edge ->
-                        edge instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult &&
-                            !edge.constraint &&
-                            !(edge.resolvedVariant.attributes.getAttribute(
-                                org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE)?.name in ['platform', 'enforced-platform'])
-                    }) {
-                        throw new GradleException("Unsupported BOM with ordinary dependencies: " + notation)
-                    }
                     def visit
+                    def visitEdges
+                    visitEdges = { edges, path ->
+                        edges.findAll { edge ->
+                            !edge.constraint &&
+                                edge instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult
+                        }.collectMany { edge ->
+                            def category = edge.resolvedVariant.attributes.getAttribute(
+                                org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE)?.name
+                            if (category in ['platform', 'enforced-platform']) {
+                                def id = edge.selected.id.displayName
+                                return path.contains(id) ? [] : visitEdges(edge.selected.dependencies, path + id)
+                            }
+                            return [visit(edge.selected, edge.requested, path)]
+                        }
+                    }
                     visit = { component, requested, path ->
                         def version = component.moduleVersion
                         def node = [
@@ -60,35 +49,16 @@ object GradleBomResolutionScript {
                         ]
                         def id = component.id.displayName
                         if (!path.contains(id)) {
-                            component.dependencies.each { edge ->
-                                if (!edge.constraint &&
-                                    edge instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult) {
-                                    def category = edge.resolvedVariant.attributes.getAttribute(
-                                        org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE)?.name
-                                    if (!(category in ['platform', 'enforced-platform'])) {
-                                        node.dependencies << visit(edge.selected, edge.requested, path + id)
-                                    }
-                                }
-                            }
+                            node.dependencies = visitEdges(component.dependencies, path + id)
                         }
                         return node
                     }
-                    def roots = result.root.dependencies.findAll { edge ->
-                        edge instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult &&
-                            edge.selected.moduleVersion?.toString() != notation &&
-                            !(edge.resolvedVariant.attributes.getAttribute(
-                                org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE)?.name in ['platform', 'enforced-platform'])
-                    }.collect { edge -> visit(edge.selected, edge.requested, []) }
-                    def keys = result.allComponents.collectMany { component ->
-                        synchronized (bomMetadata) {
-                            return bomMetadata[component.id.toString()] ?: []
-                        }
-                    }.unique().sort()
+                    def roots = visitEdges(result.root.dependencies, [])
                     def timingFile = file('gradle-configuration-timings.json')
                     def timing = new groovy.json.JsonSlurper().parse(timingFile)
                     timing.configurations << [
                         configuration: configuration.name,
-                        kind: dependencyVersion != null ? 'bom-coverage' : dependencyKey != null ? 'bom-managed' : 'bom-catalog',
+                        kind: 'bom-coverage',
                         dependency: dependencyKey,
                         bom: notation,
                         enforcedPlatform: enforced,
@@ -97,21 +67,12 @@ object GradleBomResolutionScript {
                         status: 'READY'
                     ]
                     timingFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(timing))
-                    return [roots: roots, keys: keys]
+                    return [roots: roots]
                 }
                 def resolutionFile = file('resolution.json')
                 def report = new groovy.json.JsonSlurper().parse(resolutionFile)
                 report.platformBoms = [:]
                 configuredPlatformBoms.each { bomKey, bomVersion ->
-                    def metadata = resolveBomGraph(bomKey, bomVersion, false, null, null)
-                    def managed = metadata.keys.collect { key ->
-                        def graph = resolveBomGraph(bomKey, bomVersion, false, key, null)
-                        def node = graph.roots.find { it.group + ':' + it.name == key }
-                        if (node == null || node.version == null) {
-                            throw new GradleException("No effective managed version for " + key + " in " + bomKey)
-                        }
-                        return node + [dependencies: []]
-                    }
                     def coverage = []
                     configuredTargetDependencies.each { dependencyKey, dependencyVersion ->
                         [false, true].each { enforced ->
@@ -123,7 +84,7 @@ object GradleBomResolutionScript {
                             ]
                         }
                     }
-                    report.platformBoms[bomKey] = [version: bomVersion, managed: managed, coverage: coverage]
+                    report.platformBoms[bomKey] = [version: bomVersion, managed: [], coverage: coverage]
                 }
                 resolutionFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(report))
                 def timingFile = file('gradle-configuration-timings.json')

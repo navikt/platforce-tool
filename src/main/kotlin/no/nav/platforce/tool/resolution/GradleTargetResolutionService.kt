@@ -31,6 +31,25 @@ class GradleTargetResolutionService(
     fun resolve(
         username: String,
         state: TargetVersionsState,
+    ): TargetResolution = execute(username, state, GradleResolutionBuildFile().create(state))
+
+    fun resolveCoverage(
+        username: String,
+        state: TargetVersionsState,
+        baseline: TargetResolution,
+        relevantTargets: Set<String>,
+    ): TargetResolution =
+        execute(username, state, GradleResolutionBuildFile().createCoverage(state, relevantTargets), bom = true).copy(
+            roots = baseline.roots,
+            individual = baseline.individual,
+        )
+
+    @OptIn(ExperimentalPathApi::class)
+    private fun execute(
+        username: String,
+        state: TargetVersionsState,
+        buildFile: String,
+        bom: Boolean = state.platformBoms.isNotEmpty(),
     ): TargetResolution {
         val startedAt = Instant.now()
         val started = System.nanoTime()
@@ -43,15 +62,11 @@ class GradleTargetResolutionService(
             "Invalid Gradle version: ${state.gradleVersion}"
         }
 
-        require(state.dependencies.isNotEmpty() || state.platformBoms.isNotEmpty()) {
-            "No target dependencies or platform BOMs configured"
-        }
-
         val debugDir = debugFiles.start(username)
-        val bom = state.platformBoms.isNotEmpty()
         debugFiles.startInspection(username, bom)
         val projectDir =
             Files.createTempDirectory(
+                Path.of("build", "resolution-projects").createDirectories().toAbsolutePath(),
                 "platforce-gradle-resolution-",
             )
         var failure: Exception? = null
@@ -81,6 +96,7 @@ class GradleTargetResolutionService(
                 writeProject(
                     projectDir = projectDir,
                     state = state,
+                    buildFile = buildFile,
                 )
             }
             Files.copy(projectDir.resolve("build.gradle"), debugDir.resolve("build.gradle"), StandardCopyOption.REPLACE_EXISTING)
@@ -202,6 +218,7 @@ class GradleTargetResolutionService(
     private fun writeProject(
         projectDir: Path,
         state: TargetVersionsState,
+        buildFile: String,
     ) {
         projectDir.resolve("settings.gradle").writeText(
             """
@@ -210,7 +227,7 @@ class GradleTargetResolutionService(
         )
 
         projectDir.resolve("build.gradle").writeText(
-            GradleResolutionBuildFile().create(state),
+            buildFile,
         )
 
         log.info {

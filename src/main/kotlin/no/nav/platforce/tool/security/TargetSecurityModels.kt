@@ -90,10 +90,11 @@ data class TargetSecurityScan(
 data class PlatformBomSecurityResult(
     val key: String,
     val targetVersion: String,
-    val status: TargetSecurityStatus,
+    val status: TargetSecurityStatus?,
     val vulnerableDependencies: List<VulnerableDependency>,
     val managedDependencyCount: Int,
     val coverage: List<PlatformBomCoverage>,
+    val scope: String = "COVERAGE_ONLY",
 )
 
 data class PlatformBomCoverage(
@@ -115,4 +116,6 @@ data class SecurityScanSnapshot(
     val targetFingerprint: String?,
     val result: TargetSecurityScan?,
     val error: String?,
+    val normalReady: Boolean = false,
+    val bomReady: Boolean = false,
 )

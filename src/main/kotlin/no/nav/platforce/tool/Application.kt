@@ -78,7 +78,11 @@ class Application {
 
     private val gradleTargetResolutionService = GradleTargetResolutionService(debugFiles = resolutionDebugFiles)
 
-    private val gradleTargetResolutionScanner = GradleTargetResolutionScanner(gradleTargetResolutionService::resolve)
+    private val gradleTargetResolutionScanner =
+        GradleTargetResolutionScanner(
+            gradleTargetResolutionService::resolve,
+            coverageResolve = gradleTargetResolutionService::resolveCoverage,
+        )
 
     private val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
 

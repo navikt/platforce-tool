@@ -2,6 +2,10 @@ package no.nav.platforce.tool.workflows
 
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.resolution.GradleResolutionBuildFile
+import no.nav.platforce.tool.resolution.GradleTargetResolutionService
+import no.nav.platforce.tool.resolution.ResolutionDebugFiles
+import no.nav.platforce.tool.resolution.ResolvedDependency
+import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.targets.TargetVersionsState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -17,7 +21,7 @@ class BomMetadataTest {
     lateinit var directory: Path
 
     @Test
-    fun `public Gradle metadata APIs expose unused inherited and imported BOM constraints`() {
+    fun `production coverage build resolves only relevant targets without catalog or baseline configurations`() {
         val repository = directory.resolve("repository")
 
         fun pom(
@@ -114,8 +118,6 @@ class BomMetadataTest {
                 "<project><modelVersion>4.0.0</modelVersion><groupId>example</groupId><artifactId>$name</artifactId><version>$version</version><dependencies>$children</dependencies></project>",
             )
         }
-        module("inherited", "2.0")
-        module("unused", "3.0")
         module("own", "4.0")
         module("own", "1.0")
         module("own", "5.0")
@@ -138,12 +140,12 @@ class BomMetadataTest {
         val targets =
             TargetVersionsState(
                 mutableMapOf(),
-                mutableMapOf("example:library" to "1.0", "example:higher-library" to "1.0"),
+                mutableMapOf("example:library" to "1.0", "example:higher-library" to "1.0", "example:never-resolve" to "1.0"),
                 "8.14.4",
                 platformBoms = mutableMapOf("example:bom" to "1.0", "example:native" to "1.0"),
             )
         directory.resolve("build.gradle").writeText(
-            GradleResolutionBuildFile().create(targets) +
+            GradleResolutionBuildFile().createCoverage(targets, setOf("example:library", "example:higher-library")) +
                 "\nrepositories.clear()\nrepositories { maven { url = uri('${repository.toUri()}') } }\n",
         )
         val generated =
@@ -156,25 +158,9 @@ class BomMetadataTest {
         assertEquals(0, generated.waitFor(), generatedOutput)
         val result = JsonParser.parseString(directory.resolve("resolution.json").readText()).asJsonObject
         val bom = result["platformBoms"].asJsonObject["example:bom"].asJsonObject
-        val managedVersions =
-            bom["managed"].asJsonArray.associate {
-                it.asJsonObject["name"].asString to it.asJsonObject["version"].asString
-            }
-        assertEquals(mapOf("inherited" to "2.0", "unused" to "3.0", "own" to "4.0"), managedVersions)
-        val baseline =
-            result["individual"]
-                .asJsonObject["example:library"]
-                .asJsonArray
-                .single()
-                .asJsonObject
-        assertEquals(
-            "1.0",
-            baseline["dependencies"]
-                .asJsonArray
-                .single()
-                .asJsonObject["version"]
-                .asString,
-        )
+        assertTrue(bom["managed"].asJsonArray.isEmpty)
+        assertTrue(result["individual"].asJsonObject.entrySet().isEmpty())
+        assertTrue(result["roots"].asJsonArray.isEmpty)
         assertEquals(4, bom["coverage"].asJsonArray.size())
         bom["coverage"].asJsonArray.forEach { coverage ->
             val candidate = coverage.asJsonObject
@@ -197,13 +183,36 @@ class BomMetadataTest {
             )
         }
         val native = result["platformBoms"].asJsonObject["example:native"].asJsonObject
-        assertEquals(
-            "4.0",
-            native["managed"]
-                .asJsonArray
-                .single()
-                .asJsonObject["version"]
-                .asString,
+        assertTrue(native["managed"].asJsonArray.isEmpty)
+        val timings = JsonParser.parseString(directory.resolve("gradle-configuration-timings.json").readText()).asJsonObject
+        assertEquals(8, timings["configurations"].asJsonArray.size())
+        assertTrue(timings["configurations"].asJsonArray.all { it.asJsonObject["kind"].asString == "bom-coverage" })
+        assertTrue(timings["taskElapsedMs"].asDouble > 0)
+
+        val initScript = directory.resolve("fixture.init.gradle")
+        initScript.writeText(
+            "allprojects { afterEvaluate { repositories.clear(); repositories { maven { url = uri('${repository.toUri()}') } } } }",
         )
+        val executable = directory.resolve("installation/bin/gradle")
+        Files.createDirectories(executable.parent)
+        executable.writeText("#!/bin/sh\nexec '$gradle' --offline --init-script '$initScript' \"\$@\"\n")
+        executable.toFile().setExecutable(true)
+        val debug = ResolutionDebugFiles(directory.resolve("debug"))
+        val service = GradleTargetResolutionService(executable.parent.parent, debugFiles = debug)
+        val node = ResolvedDependency("example", "library", "1.0", "1.0", emptyList())
+        val baseline = TargetResolution("8.14.4", listOf(node), mapOf("example:library" to listOf(node)))
+        val coverage = service.resolveCoverage("alice", targets, baseline, setOf("example:library"))
+        assertEquals(baseline.roots, coverage.roots)
+        assertEquals(baseline.individual, coverage.individual)
+        assertEquals(setOf("example:bom", "example:native"), coverage.platformBoms.keys)
+        assertTrue(coverage.platformBoms.values.all { it.coverage.size == 2 && it.coverage.all { c -> c.dependency == "example:library" } })
+        val inspection = debug.inspectionDirectory("alice")
+        val buildFile = inspection.resolve("build-bom.gradle").readText()
+        assertTrue("targetResolution" !in buildFile)
+        assertTrue("example:never-resolve" !in buildFile)
+        assertTrue("example:higher-library" !in buildFile)
+        val serviceTimings = JsonParser.parseString(inspection.resolve("gradle-configuration-timings-bom.json").readText()).asJsonObject
+        assertEquals(4, serviceTimings["configurations"].asJsonArray.size())
+        assertTrue(inspection.resolve("gradle-resolution-report-bom.json").readText().contains("gradleProcessMs"))
     }
 }

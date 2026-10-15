@@ -20,6 +20,7 @@ class DependencyPullRequestService(
         targetState: TargetVersionsState,
     ): String {
         val fullRepo = "$owner/$repo"
+        dependencyScanViewService.requirePullRequestReady(username, targetState, fullRepo)
 
         val scan =
             dependencyScanViewService

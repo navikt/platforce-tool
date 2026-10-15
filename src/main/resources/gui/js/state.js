@@ -13,6 +13,8 @@ let ignoredRepositories = [];
 
 let targetSecurityScan = null;
 let targetScanGeneration = 0;
+let normalSecurityReady = false;
+let bomSecurityReady = false;
 
 let selectedTeam = null;
 

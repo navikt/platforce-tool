@@ -64,10 +64,15 @@ fun dependencyScanRoutes(
 
         val targetState = context.targetVersionsStore.get()
 
-        val url = pullRequestService.createPullRequest(owner, repo, context.username, targetState)
-
-        Response(Status.OK)
-            .header("Content-Type", "text/plain")
-            .body(url)
+        try {
+            val url = pullRequestService.createPullRequest(owner, repo, context.username, targetState)
+            Response(Status.OK)
+                .header("Content-Type", "text/plain")
+                .body(url)
+        } catch (e: PullRequestReadinessException) {
+            Response(Status.CONFLICT)
+                .header("Content-Type", "text/plain")
+                .body(e.message.orEmpty())
+        }
     },
 )

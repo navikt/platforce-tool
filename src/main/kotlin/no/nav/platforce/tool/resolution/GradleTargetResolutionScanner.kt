@@ -4,16 +4,42 @@ import no.nav.platforce.tool.scanning.ScanJobSnapshot
 import no.nav.platforce.tool.scanning.ScanJobStatus
 import no.nav.platforce.tool.scanning.UserScanJobs
 import no.nav.platforce.tool.scanning.scanExecutor
+import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.targets.TargetVersionsState
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutorService
 
+const val BOM_PREREQUISITE = "A matching normal security scan must be READY before scanning BOM coverage"
+
 class GradleTargetResolutionScanner(
     resolve: (String, TargetVersionsState) -> TargetResolution,
     executor: ExecutorService = scanExecutor("gradle-target-resolution"),
+    coverageResolve: ((String, TargetVersionsState, TargetResolution, Set<String>) -> TargetResolution)? = null,
 ) {
     private val jobs = UserScanJobs(executor, resolve)
-    private val bomJobs = UserScanJobs(executor, resolve)
+    private var securityBaseline: (String, TargetVersionsState) -> TargetSecurityScan? = { _, _ -> null }
+    private val bomJobs =
+        UserScanJobs(executor) { username: String, state: TargetVersionsState ->
+            val baseline = checkNotNull(securityBaseline(username, state)) { BOM_PREREQUISITE }
+            val resolution = checkNotNull(jobs.get(username, state.copy(platformBoms = mutableMapOf())).result) { BOM_PREREQUISITE }
+            val relevant =
+                baseline.targets
+                    .filter { it.vulnerableDependencies.isNotEmpty() }
+                    .map { it.key }
+                    .toSet()
+            checkNotNull(coverageResolve) { "Coverage-only Gradle resolver is not configured" }(username, state, resolution, relevant)
+        }
+
+    fun useSecurityBaseline(provider: (String, TargetVersionsState) -> TargetSecurityScan?) {
+        securityBaseline = provider
+    }
+
+    fun canScanCoverage(
+        username: String,
+        state: TargetVersionsState,
+    ): Boolean =
+        securityBaseline(username, state) != null &&
+            jobs.get(username, state.copy(platformBoms = mutableMapOf())).status == ScanJobStatus.READY
 
     fun start(
         username: String,
@@ -21,7 +47,11 @@ class GradleTargetResolutionScanner(
         includeBoms: Boolean = false,
     ): TargetResolutionSnapshot =
         if (includeBoms) {
-            bomJobs.start(username, targetState).toResolutionSnapshot()
+            if (canScanCoverage(username, targetState)) {
+                bomJobs.start(username, targetState).toResolutionSnapshot()
+            } else {
+                bomJobs.fail(username, targetState, BOM_PREREQUISITE).toResolutionSnapshot()
+            }
         } else {
             jobs.start(username, targetState.copy(platformBoms = mutableMapOf())).toResolutionSnapshot()
         }
@@ -41,6 +71,8 @@ class GradleTargetResolutionScanner(
         jobs.invalidate(username)
         bomJobs.invalidate(username)
     }
+
+    fun invalidateCoverage(username: String) = bomJobs.invalidate(username)
 
     fun waitForResolution(
         username: String,

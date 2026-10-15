@@ -181,6 +181,9 @@ async function loadCachedTargetSecurity() {
 }
 
 async function applyTargetSecurityResult(snapshot) {
+    normalSecurityReady = snapshot.normalReady === true;
+    bomSecurityReady = snapshot.bomReady === true;
+    updateBomScanButton();
     console.log(
         "APPLY TARGET SECURITY:",
         {
@@ -197,8 +200,17 @@ async function applyTargetSecurityResult(snapshot) {
     );
 }
 
+function updateBomScanButton() {
+    const button = document.getElementById("scanBoms");
+    button.disabled = !normalSecurityReady;
+    button.title = normalSecurityReady
+        ? "Check BOM coverage using the completed normal security scan"
+        : "Run normal SCAN first";
+}
+
 async function scanTargetSecurity(includeBoms = false) {
     includeBoms = includeBoms === true;
+    if (includeBoms && !normalSecurityReady) return;
     const generation = targetScanGeneration;
     const button =
         document.getElementById(includeBoms ? "scanBoms" : "scanTargets");
@@ -206,6 +218,13 @@ async function scanTargetSecurity(includeBoms = false) {
     button.disabled = true;
     document.getElementById(includeBoms ? "scanTargets" : "scanBoms").disabled = true;
     button.textContent = "SCANNING...";
+    captureTargetDrafts();
+    if (!includeBoms) {
+        normalSecurityReady = false;
+    }
+    bomSecurityReady = false;
+    renderTargetTables();
+    if (lastLoadedData?.repos) render(lastLoadedData);
 
     showScanDetails(includeBoms);
 
@@ -247,11 +266,7 @@ async function scanTargetSecurity(includeBoms = false) {
             throw new Error("Target versions changed during the scan. Run SCAN again.");
         }
 
-        const previousBoms = targetSecurityScan?.platformBoms;
         await applyTargetSecurityResult(security);
-        if (!includeBoms && targetSecurityScan && previousBoms) {
-            targetSecurityScan.platformBoms = previousBoms;
-        }
         captureTargetDrafts();
         renderTargetTables();
         await loadData();
@@ -315,6 +330,7 @@ async function scanTargetSecurity(includeBoms = false) {
         button.disabled = false;
         document.getElementById(includeBoms ? "scanTargets" : "scanBoms").disabled = false;
         button.textContent = includeBoms ? "Scan BOMs" : "SCAN";
+        updateBomScanButton();
     }
 }
 

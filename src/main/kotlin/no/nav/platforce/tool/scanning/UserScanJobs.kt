@@ -85,6 +85,17 @@ internal class UserScanJobs<T>(
             ?: ScanJobSnapshot(ScanJobStatus.IDLE, fingerprint)
     }
 
+    fun fail(
+        username: String,
+        targetState: TargetVersionsState,
+        message: String,
+    ): ScanJobSnapshot<T> {
+        val failed = ScanJobSnapshot<T>(ScanJobStatus.FAILED, fingerprint(targetState), error = message)
+        val slot = snapshots.computeIfAbsent(username) { AtomicReference() }
+        synchronized(slot) { slot.set(failed) }
+        return failed
+    }
+
     fun invalidate(username: String) {
         snapshots[username]?.let { slot ->
             synchronized(slot) {

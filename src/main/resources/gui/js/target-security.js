@@ -1,4 +1,6 @@
 function findTargetSecurity(type, key, version) {
+    if (type === "platform_bom" && !bomSecurityReady) return null;
+    if (type === "dependency" && !normalSecurityReady) return null;
     const results = type === "platform_bom"
         ? targetSecurityScan?.platformBoms
         : type === "dependency" ? targetSecurityScan?.targets : null;
@@ -13,6 +15,20 @@ function findTargetSecurity(type, key, version) {
 }
 
 function platformBomSecurityDetailsHtml(security) {
+    if (security.scope === "COVERAGE_ONLY") {
+        const coverage = (security.coverage || []).filter(item => item.overrides?.length);
+        return `<div class="finding-details target-security-detail">
+            <h4>${escapeHtml(security.key)} ${escapeHtml(security.targetVersion)}</h4>
+            <p>Coverage of standalone vulnerabilities from the cached normal security scan.
+                Unused managed modules are not audited.</p>
+            ${coverage.length ? `<ul>${coverage.map(item => `
+                <li>${escapeHtml(item.dependency)} ${escapeHtml(item.targetVersion)}
+                    (${item.enforcedPlatform ? "enforcedPlatform" : "platform"})
+                    <ul>${item.overrides.map(reason => `<li>${escapeHtml(reason.dependency)}:
+                        ${escapeHtml(reason.vulnerableVersion)} &rarr; ${escapeHtml(reason.resolvedVersion)}</li>`).join("")}</ul>
+                </li>`).join("")}</ul>` : "<p>No verified fixes for the tested dependency targets.</p>"}
+            </div>`;
+    }
     const vulnerable = security.vulnerableDependencies || [];
     const coverage = (security.coverage || []).filter(item => item.overrides?.length);
     return `
@@ -71,6 +87,10 @@ function toggleTargetSecurityDetails(button) {
 function securityStatusHtml(security) {
     if (!security) {
         return `<div></div>`;
+    }
+    if (security.scope === "COVERAGE_ONLY") {
+        const covers = security.coverage?.some(item => item.overrides?.length);
+        return `<button class="target-status-pill target-status-unknown" title="Show BOM coverage details">${covers ? "COVERS" : "NO COVERAGE"}</button>`;
     }
 
     return `

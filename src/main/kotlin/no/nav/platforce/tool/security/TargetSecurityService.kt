@@ -9,6 +9,33 @@ import kotlin.collections.isNotEmpty
 class TargetSecurityService(
     private val vulnerabilityService: VulnerabilityService,
 ) {
+    fun scanCoverage(
+        resolution: TargetResolution,
+        targetState: TargetVersionsState,
+        baseline: TargetSecurityScan,
+    ): TargetSecurityScan {
+        require(targetState.platformBoms.all { (key, version) -> resolution.platformBoms[key]?.version == version }) {
+            "BOM resolution evidence is missing or does not match saved target versions"
+        }
+        val baselineVulnerabilities =
+            baseline.dependencies.associate {
+                "${it.group}:${it.name}:${it.resolvedVersion}" to it.vulnerabilities
+            }
+        val candidates = flatten(resolution.platformBoms.values.flatMap { it.coverage.flatMap { candidate -> candidate.roots } })
+        val newDependencies =
+            candidates
+                .distinctBy { coordinate(it.group, it.name, it.version) }
+                .filter { coordinate(it.group, it.name, it.version) !in baselineVulnerabilities }
+                .map { it.copy(dependencies = emptyList()) }
+        val vulnerabilities = baselineVulnerabilities + vulnerabilityService.find(newDependencies)
+        return baseline.copy(
+            platformBoms =
+                targetState.platformBoms.toSortedMap().map { (key, _) ->
+                    PlatformBomSecurity().evaluate(key, resolution.platformBoms.getValue(key), resolution, vulnerabilities)
+                },
+        )
+    }
+
     fun scan(
         resolution: TargetResolution,
         targetState: TargetVersionsState,
@@ -452,7 +479,7 @@ class TargetSecurityService(
     private fun allDependencies(resolution: TargetResolution): List<ResolvedDependency> =
         (
             resolution.individual.values.flatten() + resolution.roots +
-                resolution.platformBoms.values.flatMap { bom -> bom.managed + bom.coverage.flatMap { it.roots } }
+                resolution.platformBoms.values.flatMap { bom -> bom.coverage.flatMap { it.roots } }
         ).let(::flatten)
 
     private fun flatten(roots: List<ResolvedDependency>): List<ResolvedDependency> {

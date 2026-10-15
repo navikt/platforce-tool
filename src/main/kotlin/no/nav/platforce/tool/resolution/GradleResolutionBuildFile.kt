@@ -4,6 +4,44 @@ import com.google.gson.Gson
 import no.nav.platforce.tool.targets.TargetVersionsState
 
 class GradleResolutionBuildFile {
+    fun createCoverage(
+        state: TargetVersionsState,
+        relevantTargets: Set<String>,
+    ): String =
+        buildString {
+            state.platformBoms.keys.forEach(::requireValidDependencyKey)
+            state.dependencies.keys.forEach(::requireValidDependencyKey)
+            appendLine(
+                """
+                plugins { id 'java' }
+                repositories {
+                    mavenCentral()
+                    maven { url = uri("https://packages.confluent.io/maven/") }
+                }
+                tasks.register("platforceResolve") {
+                    doLast {
+                        file('gradle-unresolved-dependencies.txt').text = ''
+                        file('resolution.json').text = '{"roots":[],"individual":{}}'
+                        file('gradle-configuration-timings.json').text = groovy.json.JsonOutput.toJson([
+                            taskElapsedMs: 0, executedGradleVersion: gradle.gradleVersion, configurations: []
+                        ])
+                    }
+                }
+                """.trimIndent(),
+            )
+            appendLine(
+                "def configuredPlatformBoms = new groovy.json.JsonSlurper().parseText(${groovyString(
+                    Gson().toJson(state.platformBoms.toSortedMap()),
+                )})",
+            )
+            appendLine(
+                "def configuredTargetDependencies = new groovy.json.JsonSlurper().parseText(${groovyString(
+                    Gson().toJson(state.dependencies.filterKeys { it in relevantTargets }.toSortedMap()),
+                )})",
+            )
+            appendLine(GradleBomResolutionScript.create())
+        }
+
     fun create(state: TargetVersionsState): String =
         buildString {
             appendLine(

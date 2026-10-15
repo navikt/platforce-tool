@@ -142,9 +142,9 @@ object LocalFrontendFixtures {
                 PlatformBomSecurityResult(
                     key,
                     version,
-                    TargetSecurityStatus.VULNERABLE,
-                    listOf(VulnerableDependency(resolved("example:unused-managed-module", "1.0.0"), listOf(vulnerability))),
-                    12,
+                    null,
+                    emptyList(),
+                    0,
                     listOf(false, true).map { enforced ->
                         PlatformBomCoverage(
                             WEB,

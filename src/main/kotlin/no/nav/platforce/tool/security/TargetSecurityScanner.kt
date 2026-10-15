@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.security
 
+import no.nav.platforce.tool.resolution.BOM_PREREQUISITE
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.scanning.ScanJobSnapshot
 import no.nav.platforce.tool.scanning.ScanJobStatus
@@ -21,18 +22,44 @@ class TargetSecurityScanner(
     private val bomJobs =
         UserScanJobs(executor) { username: String, state: TargetVersionsState ->
             val resolution = resolutionScanner.waitForResolution(username, state, includeBoms = true)
-            targetSecurityService.scan(resolution, state)
+            targetSecurityService.scanCoverage(resolution, state, checkNotNull(normalResult(username, state)) { BOM_PREREQUISITE })
         }
+
+    init {
+        resolutionScanner.useSecurityBaseline(::normalResult)
+    }
+
+    private fun normalResult(
+        username: String,
+        state: TargetVersionsState,
+    ): TargetSecurityScan? =
+        jobs.get(username, state.copy(platformBoms = mutableMapOf())).takeIf { it.status == ScanJobStatus.READY }?.result
+
+    fun normalReady(
+        username: String,
+        state: TargetVersionsState,
+    ): Boolean = normalResult(username, state) != null
 
     fun start(
         username: String,
         targetState: TargetVersionsState,
         includeBoms: Boolean = false,
+    ): SecurityScanSnapshot = withReadiness(startSnapshot(username, targetState, includeBoms), username, targetState)
+
+    private fun startSnapshot(
+        username: String,
+        targetState: TargetVersionsState,
+        includeBoms: Boolean,
     ): SecurityScanSnapshot {
+        if (includeBoms && !resolutionScanner.canScanCoverage(username, targetState)) {
+            return bomJobs.fail(username, targetState, BOM_PREREQUISITE).toSecuritySnapshot()
+        }
         resolutionScanner.start(username, targetState, includeBoms)
         return if (includeBoms) {
-            bomJobs.start(username, targetState, refreshReady = true).toSecuritySnapshot()
+            bomJobs.start(username, targetState).toSecuritySnapshot()
         } else {
+            bomJobs.invalidate(username)
+            resolutionScanner.invalidateCoverage(username)
             jobs.start(username, targetState.copy(platformBoms = mutableMapOf()), refreshReady = true).toSecuritySnapshot()
         }
     }
@@ -41,12 +68,27 @@ class TargetSecurityScanner(
         username: String,
         targetState: TargetVersionsState,
         includeBoms: Boolean = false,
+    ): SecurityScanSnapshot = withReadiness(getSnapshot(username, targetState, includeBoms), username, targetState)
+
+    private fun withReadiness(
+        snapshot: SecurityScanSnapshot,
+        username: String,
+        state: TargetVersionsState,
+    ): SecurityScanSnapshot =
+        snapshot.copy(
+            normalReady = normalReady(username, state),
+            bomReady = normalReady(username, state) && bomJobs.get(username, state).status == ScanJobStatus.READY,
+        )
+
+    private fun getSnapshot(
+        username: String,
+        targetState: TargetVersionsState,
+        includeBoms: Boolean,
     ): SecurityScanSnapshot {
         val bom = bomJobs.get(username, targetState).toSecuritySnapshot()
         if (includeBoms) return bom
         val baseline = jobs.get(username, targetState.copy(platformBoms = mutableMapOf())).toSecuritySnapshot()
         if (bom.status != SecurityScanStatus.READY) return baseline
-        if (baseline.status == SecurityScanStatus.IDLE) return bom
         if (baseline.status != SecurityScanStatus.READY) return baseline
         return baseline.copy(result = baseline.result?.copy(platformBoms = bom.result?.platformBoms.orEmpty()))
     }

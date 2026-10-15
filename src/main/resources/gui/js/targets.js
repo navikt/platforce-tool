@@ -328,6 +328,9 @@ async function saveTargets() {
 
         targetScanGeneration++;
         targetSecurityScan = null;
+        normalSecurityReady = false;
+        bomSecurityReady = false;
+        updateBomScanButton();
         targetState = {
             plugins: payload.plugins,
             dependencies: payload.dependencies,

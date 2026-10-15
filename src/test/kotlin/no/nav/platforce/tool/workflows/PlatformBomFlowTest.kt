@@ -13,6 +13,8 @@ import no.nav.platforce.tool.repositories.DependencyStatus
 import no.nav.platforce.tool.repositories.UntrackedPlatformBom
 import no.nav.platforce.tool.resolution.GradleResolutionBuildFile
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
+import no.nav.platforce.tool.resolution.PlatformBomResolution
+import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.security.TargetSecurityResult
 import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.security.TargetSecurityScanner
@@ -156,13 +158,28 @@ class PlatformBomFlowTest {
     fun `BOM-only PR updates Kotlin build file without changing identical ordinary dependency`() {
         val content = "dependencies {\n    implementation(platform(\"$key:1.0\"))\n    implementation(\"$key:1.0\")\n}"
         val github = RecordingGithubClient(mapOf("build.gradle.kts" to content))
-        val resolution = GradleTargetResolutionScanner({ _, _ -> error("BOM must not cause resolution") })
-        val security = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()), resolution)
+        val resolutionExecutor = QueuedExecutor()
+        val securityExecutor = QueuedExecutor()
+        val resolution =
+            GradleTargetResolutionScanner(
+                { _, state -> TargetResolution(state.gradleVersion, emptyList(), emptyMap()) },
+                resolutionExecutor,
+                coverageResolve = { _, state, baseline, _ ->
+                    baseline.copy(platformBoms = state.platformBoms.mapValues { PlatformBomResolution(it.value, emptyList(), emptyList()) })
+                },
+            )
+        val security = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()), resolution, securityExecutor)
         val cache = DependencyScanCache()
         val scan = DependencyScanner(github)
         cache.update("alice", listOf(scan.scanRepository("example/repository")!!.copy(gradleVersion = "8.0")))
         val targets = TargetVersionsState(mutableMapOf(), mutableMapOf(), "8.0", platformBoms = mutableMapOf(key to "2.0"))
         val service = DependencyPullRequestService(github, DependencyScanViewService(cache, security, scan))
+        security.start("alice", targets)
+        resolutionExecutor.runNext()
+        securityExecutor.runNext()
+        security.start("alice", targets, includeBoms = true)
+        resolutionExecutor.runNext()
+        securityExecutor.runNext()
 
         service.createPullRequest("example", "repository", "alice", targets)
 

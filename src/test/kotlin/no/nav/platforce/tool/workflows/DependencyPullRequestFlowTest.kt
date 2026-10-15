@@ -8,6 +8,7 @@ import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
+import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.security.TargetSecurityScanner
 import no.nav.platforce.tool.security.TargetSecurityService
 import no.nav.platforce.tool.targets.TargetVersionsState
@@ -27,12 +28,22 @@ class DependencyPullRequestFlowTest {
             ),
         )
     private val cache = DependencyScanCache()
-    private val resolutionScanner = GradleTargetResolutionScanner({ _, _ -> error("Unexpected Gradle resolution") })
-    private val securityScanner = TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()), resolutionScanner)
+    private val resolutionExecutor = QueuedExecutor()
+    private val securityExecutor = QueuedExecutor()
+    private val resolutionScanner =
+        GradleTargetResolutionScanner({ _, state -> TargetResolution(state.gradleVersion, emptyList(), emptyMap()) }, resolutionExecutor)
+    private val securityScanner =
+        TargetSecurityScanner(TargetSecurityService(EmptyVulnerabilityService()), resolutionScanner, securityExecutor)
     private val scanner = DependencyScanner(github)
     private val view = DependencyScanViewService(cache, securityScanner, scanner)
     private val service = DependencyPullRequestService(github, view)
     private val targets = TargetVersionsState(mutableMapOf(), mutableMapOf("example:library" to "2.0.0"), "8.1")
+
+    private fun ready() {
+        securityScanner.start("alice", targets)
+        resolutionExecutor.runNext()
+        securityExecutor.runNext()
+    }
 
     @Test
     fun `PR flow creates branch updates build and wrapper then opens pull request`() {
@@ -42,7 +53,7 @@ class DependencyPullRequestFlowTest {
                 inventory("example:library" to "1.0.0"),
             ),
         )
-        // Invoke PR creation with an existing scan and no available security snapshot.
+        ready()
         val url = service.createPullRequest("example", "repository", "alice", targets)
 
         assertEquals("https://github.example.test/example/repository/pull/1", url)
@@ -74,6 +85,7 @@ class DependencyPullRequestFlowTest {
     @Test
     fun `matching dependencies do not create a branch or pull request`() {
         cache.update("alice", listOf(inventory("example:library" to "2.0.0").copy(gradleVersion = "8.1")))
+        ready()
         // Invoke PR creation when all findings are already OK.
         service.createPullRequest("example", "repository", "alice", targets)
         assertTrue(github.calls.isEmpty())
@@ -82,6 +94,7 @@ class DependencyPullRequestFlowTest {
 
     @Test
     fun `missing repository scan fails before any GitHub operation`() {
+        ready()
         // Invoke PR creation before a repository has been scanned.
         val error =
             assertThrows(IllegalStateException::class.java) {
@@ -98,6 +111,19 @@ class DependencyPullRequestFlowTest {
         assertThrows(IllegalStateException::class.java) {
             service.createPullRequest("example", "repository", "alice", targets)
         }
+        assertTrue(github.calls.isEmpty())
+    }
+
+    @Test
+    fun `PR requires matching normal READY security before any GitHub call`() {
+        cache.update("alice", listOf(inventory("example:library" to "1.0.0")))
+        assertThrows(IllegalStateException::class.java) { service.createPullRequest("example", "repository", "alice", targets) }
+        securityScanner.start("alice", targets)
+        assertThrows(IllegalStateException::class.java) { service.createPullRequest("example", "repository", "alice", targets) }
+        resolutionExecutor.runNext()
+        securityExecutor.runNext()
+        val changed = targets.copy(dependencies = mutableMapOf("example:library" to "3.0.0"))
+        assertThrows(IllegalStateException::class.java) { service.createPullRequest("example", "repository", "alice", changed) }
         assertTrue(github.calls.isEmpty())
     }
 }

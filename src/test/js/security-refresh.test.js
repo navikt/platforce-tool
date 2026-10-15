@@ -111,7 +111,7 @@ test("completed security polling reloads and renders enriched repository data wi
     await app.context.scanTargetSecurity();
     assert.equal(app.rendered.length, 1);
     assert.equal(app.rendered[0].scans[0].findings[0].status, "ADD");
-    assert.equal(app.targetRenders(), 1);
+    assert.equal(app.targetRenders(), 2);
     assert.ok(app.calls.every(([, method]) => method === "GET"));
     assert.ok(app.calls.every(([url]) => !url.includes("dependency-scan/refresh")));
     assert.equal(app.element("scanTargets").disabled, false);
@@ -132,14 +132,17 @@ test("immediately ready security result also reloads repository data", async () 
     assert.ok(app.value("targetSecurityScan !== null"));
 });
 
-test("BOM scan explicitly opts in for resolution and security while ordinary scan preserves completed BOM results", async () => {
+test("BOM scan requires cached normal readiness and explicitly opts in", async () => {
     const app = gui();
+    await app.context.scanTargetSecurity(true);
+    assert.equal(app.calls.length, 0);
+    app.value("normalSecurityReady = true");
     const bom = { key: "example:bom", targetVersion: "1.0", status: "OK" };
     app.responses(url => {
         if (url.includes("/target-resolution")) {
             return {
-                status: "READY", targetFingerprint: "targets",
-                result: { targets: [], platformBoms: url.includes("includeBoms=true") ? [bom] : [] }
+                status: "READY", targetFingerprint: "targets", normalReady: true, bomReady: true,
+                result: { targets: [], platformBoms: [bom] }
             };
         }
         return repositoryResponse(url);
@@ -155,6 +158,31 @@ test("BOM scan explicitly opts in for resolution and security while ordinary sca
     assert.equal(app.value("targetSecurityScan.platformBoms[0].key"), "example:bom");
     assert.equal(app.element("scanBoms").disabled, false);
     assert.equal(app.element("scanTargets").disabled, false);
+});
+
+test("security snapshot readiness gates normal and BOM target rows independently", async () => {
+    const app = gui();
+    const normal = { key: "example:library", targetVersion: "1.0", status: "OK" };
+    const bom = { key: "example:bom", targetVersion: "1.0", scope: "COVERAGE_ONLY", coverage: [] };
+    await app.context.applyTargetSecurityResult({
+        status: "READY",
+        normalReady: true,
+        bomReady: false,
+        result: { targets: [normal], platformBoms: [bom] }
+    });
+    assert.equal(app.value("normalSecurityReady"), true);
+    assert.equal(app.value("bomSecurityReady"), false);
+    assert.equal(app.element("scanBoms").disabled, false);
+    assert.equal(app.context.findTargetSecurity("dependency", "example:library", "1.0").status, "OK");
+    assert.equal(app.context.findTargetSecurity("platform_bom", "example:bom", "1.0"), null);
+
+    await app.context.applyTargetSecurityResult({
+        status: "READY",
+        normalReady: true,
+        bomReady: true,
+        result: { targets: [normal], platformBoms: [bom] }
+    });
+    assert.equal(app.context.findTargetSecurity("platform_bom", "example:bom", "1.0").scope, "COVERAGE_ONLY");
 });
 
 test("targets saved during a security scan prevent its old result from being applied", async () => {
@@ -345,6 +373,13 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
         { appendChild() {} }
     );
     render();
+    assert.match(card.innerHTML, /disabled>Scan first/);
+    app.value("normalSecurityReady = true");
+    render();
+    assert.match(card.innerHTML, /disabled>BOM scan first/);
+    app.value("bomSecurityReady = true");
+    render();
+    assert.doesNotMatch(card.innerHTML, /BOM scan first/);
     assert.match(card.innerHTML, /1 UNTRKD/);
     assert.match(card.innerHTML, /platform BOMs \(1\)/);
     assert.match(card.innerHTML, /data-kind="PLATFORM_BOM"/);
@@ -369,6 +404,15 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
     assert.match(card.innerHTML, /data-toggle-details="true"/);
 });
 
+test("coverage-only BOM details do not claim managed catalog health", () => {
+    const app = gui();
+    const result = { key: "example:bom", targetVersion: "1.0", scope: "COVERAGE_ONLY", coverage: [] };
+    assert.match(app.context.securityStatusHtml(result), /NO COVERAGE/);
+    const details = app.context.platformBomSecurityDetailsHtml(result);
+    assert.match(details, /Unused managed modules are not audited/);
+    assert.doesNotMatch(details, /No vulnerabilities found|managed modules checked independently/);
+});
+
 test("BOM health and coverage render independently without treating module fixes as BOM upgrade versions", () => {
     const app = gui();
     const bom = {
@@ -384,6 +428,7 @@ test("BOM health and coverage render independently without treating module fixes
         }]
     };
     app.context.bom = bom;
+    app.value("normalSecurityReady = true; bomSecurityReady = true");
     app.value("targetSecurityScan = { targets: [{ key: 'example:platform', targetVersion: '1.0', status: 'OK' }], platformBoms: [bom] }");
     assert.equal(app.context.findTargetSecurity("platform_bom", "example:platform", "1.0").status, "VULNERABLE");
     assert.equal(app.context.findTargetSecurity("dependency", "example:platform", "1.0").status, "OK");
@@ -417,6 +462,7 @@ test("redundant transient details explain conditional removal and matching repla
 
 test("target-only redundant status becomes UNUSED only with nonempty raw inventories and no declaration at any version", () => {
     const app = gui();
+    app.value("normalSecurityReady = true");
     app.value(`targetSecurityScan = { targets: [{
         key: "example:core", targetVersion: "2.0", status: "TRANSIENT_UNUSED"
     }] }`);

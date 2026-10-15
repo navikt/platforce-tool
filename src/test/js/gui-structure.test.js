@@ -117,7 +117,9 @@ test("bootstrap preserves startup order, selected team, cached security and unca
         "/internal/api/dependency-scan": [],
         "/internal/api/repository-notes": { "example/repo": "saved note" },
         "/internal/api/ignored-repositories": { repositories: ["ignored/repo"] },
-        "/internal/api/target-resolution/security": { status: "READY", result: security }
+        "/internal/api/target-resolution/security": {
+            status: "READY", normalReady: true, bomReady: true, result: security
+        }
     };
     const app = browser(async (url, options) => {
         assert.ok(Object.hasOwn(data, url), `Unexpected startup request ${url}`);
@@ -136,11 +138,14 @@ test("bootstrap preserves startup order, selected team, cached security and unca
     for (const [url, options] of calls.slice(1, -1)) {
         assert.equal(options.cache, "no-store", `Cache policy for ${url}`);
     }
-    assert.deepEqual(renders, ["scanner", "ignored", "targets"]);
+    assert.deepEqual(renders, ["scanner", "ignored", "targets", "scanner"]);
     assert.equal(vm.runInContext("selectedTeam", app.context), "saved-team");
     assert.equal(vm.runInContext("targetState.dependencies['example:library']", app.context), "1.0");
     assert.equal(vm.runInContext("notes['example/repo']", app.context), "saved note");
     assert.equal(vm.runInContext("ignoredRepositories[0]", app.context), "ignored/repo");
     assert.equal(vm.runInContext("targetSecurityScan", app.context), security);
+    assert.equal(vm.runInContext("normalSecurityReady", app.context), true);
+    assert.equal(vm.runInContext("bomSecurityReady", app.context), true);
+    assert.equal(app.element("scanBoms").disabled, false);
     assert.equal(vm.runInContext("progressInterval", app.context), 1);
 });
