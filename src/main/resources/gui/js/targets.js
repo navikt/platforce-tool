@@ -94,7 +94,7 @@ function renderTable(containerId, entries, type) {
         
             <input class="key" value="${key}" />
             <input class="version" value="${version}" />
-            ${securityStatusHtml(securityTarget, type === "platform_bom" ? "NOT SCANNED" : null)}
+            ${securityStatusHtml(securityTarget)}
             ${
             type === "dependency"
                 ? `
@@ -188,7 +188,7 @@ function renderTable(containerId, entries, type) {
        
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
-            ${securityStatusHtml(securityTarget, type === "platform_bom" ? "NOT SCANNED" : null)}
+            ${securityStatusHtml(securityTarget)}
             <button class="icon-btn remove-btn" title="Remove">
                 ${TRASH_SVG}
             </button>

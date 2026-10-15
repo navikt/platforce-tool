@@ -313,7 +313,6 @@ function renderRepo(repoView, scanMap, container) {
                         <p>Already covered by platform BOM:
                             ${f.bomCoverage.map(r => `${escapeHtml(r.key)} (${escapeHtml(r.version)})`).join(", ")}.
                             Corresponding dependency ADDs are not needed.</p>` : ""}
-                    ${f.bomCoverageNote ? `<p>${escapeHtml(f.bomCoverageNote)}</p>` : ""}
                 </div>
               `
                         : "";

@@ -329,12 +329,6 @@ class DependencyScanner(
                                 )
                             } + additions + bomReferences,
                         bomCoverage = bomReferences,
-                        bomCoverageNote =
-                            if (missingOverrides.isNotEmpty() && inventory?.platformBoms?.isNotEmpty() == true) {
-                                "BOM protection is not verified for every required override. Uncovered ADDs are retained; evidence requires matching versions, declaration scope and an isolated platform context."
-                            } else {
-                                null
-                            },
                     )
 
                 additions.forEach { override ->

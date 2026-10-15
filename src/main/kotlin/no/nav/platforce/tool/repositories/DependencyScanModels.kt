@@ -22,7 +22,6 @@ data class DependencyFinding(
     val relatedTo: List<DependencyReference> = emptyList(),
     val platformBomSecurity: PlatformBomSecurityResult? = null,
     val bomCoverage: List<DependencyReference> = emptyList(),
-    val bomCoverageNote: String? = null,
 )
 
 data class DependencyReference(

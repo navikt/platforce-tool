@@ -61,11 +61,9 @@ function toggleTargetSecurityDetails(button) {
     );
 }
 
-function securityStatusHtml(security, emptyLabel = null) {
+function securityStatusHtml(security) {
     if (!security) {
-        return emptyLabel
-            ? `<span class="target-status-pill target-status-unknown">${escapeHtml(emptyLabel)}</span>`
-            : `<div></div>`;
+        return `<div></div>`;
     }
 
     return `

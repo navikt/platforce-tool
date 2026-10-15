@@ -896,7 +896,7 @@ button:hover {
 .target-grid {
     display: grid;
 
-    grid-template-columns: minmax(400px, 488px) minmax(650px, 700px) auto;
+    grid-template-columns: minmax(590px, 590px) minmax(650px, 700px) auto;
 
 
     gap: 14px;

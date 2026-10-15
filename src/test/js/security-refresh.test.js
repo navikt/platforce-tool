@@ -396,7 +396,7 @@ test("BOM health and coverage render independently without treating module fixes
     assert.match(html, /example:child/);
     assert.match(html, /3.0/);
     assert.doesNotMatch(html, /applySecurityUpgrade|transient-btn/);
-    assert.match(app.context.securityStatusHtml(null, "NOT SCANNED"), /NOT SCANNED/);
+    assert.equal(app.context.securityStatusHtml(null), "<div></div>");
 });
 
 test("failed repository refresh stops progress polling and permits another attempt", async () => {
