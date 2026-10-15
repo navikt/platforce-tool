@@ -1069,6 +1069,18 @@ button:hover {
     opacity: 0.8;
 }
 
+.target-status-unused {
+    background: #eeeeee;
+    color: #555555;
+    border-color: #bdbdbd;
+}
+
+.icon-btn.unused-target-remove {
+    background: #fff3e0;
+    color: #b34700;
+    border-color: #ffb74d;
+}
+
 .target-status-remove, .status-remove  {
     background: #fff3e0;
     color: #e65100;

@@ -411,8 +411,34 @@ test("redundant transient details explain conditional removal and matching repla
     const unused = app.context.targetSecurityDetailsHtml({
         key: "example:unused", targetVersion: "2.0", status: "TRANSIENT_UNUSED"
     });
-    assert.match(unused, /no longer needed/);
+    assert.match(unused, /redundant/);
     assert.doesNotMatch(unused, /matching replacements/);
+});
+
+test("target-only redundant status becomes UNUSED only with nonempty raw inventories and no declaration at any version", () => {
+    const app = gui();
+    app.value(`targetSecurityScan = { targets: [{
+        key: "example:core", targetVersion: "2.0", status: "TRANSIENT_UNUSED"
+    }] }`);
+    const result = () => app.context.findTargetSecurity("dependency", "example:core", "2.0");
+    assert.equal(app.context.securityStatusLabel(result().status), "REDUNDANT");
+    app.value("lastLoadedData = { scans: [] }");
+    assert.equal(result().status, "TRANSIENT_UNUSED");
+    app.value(`lastLoadedData = { scans: [{
+        repository: "ignored-team/repo", declaredDependencyKeys: ["example:core"],
+        findings: [{key: "example:core", currentVersion: "1.0", status: "REMOVE"}]
+    }] }`);
+    assert.equal(result().status, "TRANSIENT_UNUSED");
+    app.value(`lastLoadedData = { scans: [{
+        declaredDependencyKeys: [], findings: [{key: "example:core", status: "ADD"}]
+    }] }`);
+    assert.equal(result().status, "UNUSED");
+    assert.equal(app.context.securityStatusLabel(result().status), "UNUSED");
+    assert.equal(app.context.securityStatusClass(result().status), "target-status-unused");
+    assert.match(app.context.targetSecurityDetailsHtml(result()), /currently scanned repository/);
+    assert.equal(app.value("targetSecurityScan.targets[0].status"), "TRANSIENT_UNUSED");
+    app.value("lastLoadedData = { scans: [{}] }");
+    assert.equal(result().status, "TRANSIENT_UNUSED");
 });
 
 test("failed repository refresh stops progress polling and permits another attempt", async () => {

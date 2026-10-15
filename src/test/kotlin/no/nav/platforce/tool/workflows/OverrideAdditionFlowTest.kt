@@ -169,6 +169,14 @@ class OverrideAdditionFlowTest {
                 .toSet(),
         )
         assertEquals(removed, findings.filter { it.status == DependencyStatus.REMOVE }.map { it.key }.toSet())
+        assertEquals(
+            present + encoder,
+            view
+                .get("alice", targets)
+                .single()
+                .declaredDependencyKeys
+                ?.toSet(),
+        )
         // No bandaids are present in the repository. Databind's individual graph proves whether it also fixes core.
         assertEquals(expected, findings.filter { it.status == DependencyStatus.ADD }.map { it.key }.toSet())
         val parent = findings.single { it.key == encoder }

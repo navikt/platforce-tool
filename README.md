@@ -63,6 +63,14 @@ failures are exposed to the GUI and obsolete jobs cannot publish results.
 
 ## Application behavior
 
+Target Versions labels redundant transient targets **REDUNDANT**, not REMOVE.
+With a nonempty repository inventory cache, a redundant target absent from all
+raw dependency declarations is shown as grey **UNUSED** with a highlighted trash
+button. This checks all cached repositories at any declared version, including
+ignored repositories; an empty cache leaves REDUNDANT. UNUSED means absent from
+currently scanned repositories, not necessarily from inaccessible or unscanned
+repositories. Repository PR actions continue to use **REMOVE**.
+
 `/internal/files` retains separate per-user diagnostics for the latest dependency
 and BOM resolutions: `build.gradle` and `build-bom.gradle`. BOM output, unresolved
 findings, timings and resolution reports use the same `-bom` suffix before their

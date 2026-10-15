@@ -208,6 +208,7 @@ class DependencyScanner(
         return RepositoryDependencyScan(
             repository = inventory.repository,
             scannedAt = inventory.scannedAt,
+            declaredDependencyKeys = inventory.dependencies.keys.sorted(),
             findings = findings,
             untrackedDependencies = untrackedDependencies,
             untrackedPlugins = untrackedPlugins,

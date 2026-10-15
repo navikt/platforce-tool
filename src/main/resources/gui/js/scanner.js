@@ -485,6 +485,10 @@ async function loadData() {
         scans: scanData || []
     };
 
+    if (targetSecurityScan?.targets?.some(target => target.status === "TRANSIENT_UNUSED")) {
+        captureTargetDrafts();
+        renderTargetTables();
+    }
     render(lastLoadedData);
 
     renderIgnoredRepositories();

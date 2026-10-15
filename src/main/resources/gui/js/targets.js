@@ -106,7 +106,8 @@ function renderTable(containerId, entries, type) {
                 `
                 : ""
         }
-            <button class="icon-btn remove-btn" title="Remove">
+            <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
+                    title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
             </button>
         
@@ -189,7 +190,8 @@ function renderTable(containerId, entries, type) {
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
             ${securityStatusHtml(securityTarget)}
-            <button class="icon-btn remove-btn" title="Remove">
+            <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
+                    title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
             </button>
         

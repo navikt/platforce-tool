@@ -2,7 +2,14 @@ function findTargetSecurity(type, key, version) {
     const results = type === "platform_bom"
         ? targetSecurityScan?.platformBoms
         : type === "dependency" ? targetSecurityScan?.targets : null;
-    return results?.find(target => target.key === key && target.targetVersion === version) ?? null;
+    const target = results?.find(target => target.key === key && target.targetVersion === version) ?? null;
+    if (type !== "dependency" || target?.status !== "TRANSIENT_UNUSED") return target;
+    const scans = lastLoadedData?.scans;
+    if (scans?.length && scans.every(scan => Array.isArray(scan.declaredDependencyKeys)) &&
+        !scans.some(scan => scan.declaredDependencyKeys.includes(key))) {
+        return { ...target, status: "UNUSED" };
+    }
+    return target;
 }
 
 function platformBomSecurityDetailsHtml(security) {
@@ -92,6 +99,9 @@ function securityStatusClass(status) {
 
         case "TRANSIENT_UNUSED":
             return "target-status-remove";
+
+        case "UNUSED":
+            return "target-status-unused";
 
         default:
             return "target-status-unknown";
@@ -325,6 +335,12 @@ function targetSecurityDetailsHtml(security) {
         }
     }
 
+    if (security.status === "UNUSED") {
+        html += `<div>Not declared in any currently scanned repository.
+            This redundant transient target can be removed from Target Versions using the trash button.
+            Unscanned repositories are not covered by this check.</div>`;
+    }
+
     if (security.status === "TRANSIENT_UNUSED") {
         html += `
             <div>
@@ -334,7 +350,7 @@ function targetSecurityDetailsHtml(security) {
                            <li>${escapeHtml(replacement.dependency)} ${escapeHtml(replacement.targetVersion)}</li>
                        `).join("")}</ul>
                        Repositories without matching replacements keep this override.`
-                    : "This transient override is no longer needed and is marked for removal from repositories"}
+                    : "This transient override is redundant. Keep the target while scanned repositories still declare it; repository findings suggest removal where appropriate."}
             </div>
         `;
     }
@@ -361,7 +377,10 @@ function securityStatusLabel(status) {
             return "VULNERABLE";
 
         case "TRANSIENT_UNUSED":
-            return "REMOVE";
+            return "REDUNDANT";
+
+        case "UNUSED":
+            return "UNUSED";
 
         default:
             return "?";
