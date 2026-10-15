@@ -3,6 +3,7 @@ package no.nav.platforce.tool.workflows
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.resolution.GradleTargetResolutionService
 import no.nav.platforce.tool.resolution.ResolutionDebugFiles
+import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.targets.TargetVersionsState
 import no.nav.platforce.tool.targets.fingerprint
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -68,6 +69,36 @@ class GradleResolutionReportTest {
         assertTrue(task["executedGradleVersion"].asString.isNotBlank())
         assertTrue(task["taskElapsedMs"].asDouble >= configurations.sumOf { it["durationMs"].asDouble })
         assertTrue(report["measurementNotes"].asString.contains("OSV"))
+    }
+
+    @Test
+    fun `normal and BOM scans use the system temp directory and clean up failed projects`() {
+        val capturedDirectory = directory.resolve("project-directory.txt")
+        val launcher = launcher("pwd -P > '$capturedDirectory'\nexit 19")
+        val store = ResolutionDebugFiles(directory.resolve("files"))
+        val service = GradleTargetResolutionService(launcher, debugFiles = store)
+
+        for (bom in listOf(false, true)) {
+            assertThrows(IllegalStateException::class.java) {
+                if (bom) {
+                    service.resolveCoverage(
+                        "alice",
+                        targets.copy(platformBoms = mutableMapOf("example:bom" to "1.0")),
+                        TargetResolution(targets.gradleVersion, emptyList(), emptyMap()),
+                        targets.dependencies.keys,
+                    )
+                } else {
+                    service.resolve("alice", targets)
+                }
+            }
+
+            val projectDir = Path.of(capturedDirectory.readText().trim())
+            assertEquals(Path.of(System.getProperty("java.io.tmpdir")).toRealPath(), projectDir.parent)
+            assertTrue(projectDir.fileName.toString().startsWith("platforce-gradle-resolution-"))
+            assertTrue(Files.notExists(projectDir))
+            val buildFile = if (bom) "build-bom.gradle" else "build.gradle"
+            assertTrue(Files.exists(store.inspectionDirectory("alice").resolve(buildFile)))
+        }
     }
 
     @Test

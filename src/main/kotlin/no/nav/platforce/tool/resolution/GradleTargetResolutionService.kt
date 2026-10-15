@@ -64,11 +64,7 @@ class GradleTargetResolutionService(
 
         val debugDir = debugFiles.start(username)
         debugFiles.startInspection(username, bom)
-        val projectDir =
-            Files.createTempDirectory(
-                Path.of("build", "resolution-projects").createDirectories().toAbsolutePath(),
-                "platforce-gradle-resolution-",
-            )
+        val projectDir = Files.createTempDirectory("platforce-gradle-resolution-")
         var failure: Exception? = null
         var status = "RUNNING"
 
