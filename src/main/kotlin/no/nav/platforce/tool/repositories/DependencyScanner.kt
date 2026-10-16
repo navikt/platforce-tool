@@ -242,15 +242,20 @@ class DependencyScanner(
             securityResult.targets.associateBy { it.key }
         val declarations = inventory?.declarations.orEmpty().filter { !it.platformBom }
 
-        fun coversConfigurations(
+        fun coversPlannedConfigurations(
             consumer: String,
             provider: String,
             version: String,
         ): Boolean {
+            val declaredVersion =
+                findings
+                    .firstOrNull {
+                        it.kind == DependencyKind.DEPENDENCY && it.key == provider && it.targetVersion == version
+                    }?.currentVersion
             val configurations = declarations.filter { it.key == consumer }.map { it.configuration }.toSet()
             return configurations.isNotEmpty() &&
                 configurations.all { configuration ->
-                    declarations.any { it.key == provider && it.version == version && it.configuration == configuration }
+                    declarations.any { it.key == provider && it.version == declaredVersion && it.configuration == configuration }
                 }
         }
 
@@ -260,16 +265,22 @@ class DependencyScanner(
                     val result = securityByKey[finding.key]
                     finding.kind == DependencyKind.DEPENDENCY &&
                         result?.status == TargetSecurityStatus.TRANSIENT_UNUSED &&
-                        finding.currentVersion == result.targetVersion &&
+                        finding.currentVersion != null &&
                         (
                             result.replacementDependencies.isEmpty() ||
                                 result.replacementDependencies.all { replacement ->
                                     val present =
                                         findings.any {
                                             it.kind == DependencyKind.DEPENDENCY && it.key == replacement.dependency &&
-                                                it.currentVersion == replacement.targetVersion
+                                                it.currentVersion != null && it.targetVersion == replacement.targetVersion &&
+                                                securityByKey[it.key]?.targetVersion == replacement.targetVersion &&
+                                                securityByKey[it.key]?.status in
+                                                setOf(TargetSecurityStatus.OK, TargetSecurityStatus.OK_TRANSIENT)
                                         }
-                                    present && coversConfigurations(finding.key, replacement.dependency, replacement.targetVersion)
+                                    present &&
+                                        declarations.any { it.key == finding.key && it.configuration == "implementation" } &&
+                                        declarations.filter { it.key == finding.key }.all { it.configuration == "implementation" } &&
+                                        coversPlannedConfigurations(finding.key, replacement.dependency, replacement.targetVersion)
                                 }
                         )
                 }.map { it.key }
@@ -336,8 +347,9 @@ class DependencyScanner(
                             .firstOrNull { provider ->
                                 provider.kind == DependencyKind.DEPENDENCY &&
                                     provider.key in presentDependencies &&
-                                    provider.currentVersion == provider.targetVersion &&
-                                    coversConfigurations(finding.key, provider.key, provider.targetVersion) &&
+                                    provider.currentVersion != null &&
+                                    provider.targetVersion == securityByKey[provider.key]?.targetVersion &&
+                                    coversPlannedConfigurations(finding.key, provider.key, provider.targetVersion) &&
                                     "${provider.key}:${provider.targetVersion}" in reason.causedBy &&
                                     securityByKey[provider.key]?.status in
                                     setOf(
@@ -404,6 +416,11 @@ class DependencyScanner(
                         )
                 }
 
+                return@forEach
+            }
+
+            if (finding.key in removableTransients) {
+                enriched += finding.copy(status = DependencyStatus.REMOVE, relatedTo = emptyList())
                 return@forEach
             }
 

@@ -61,13 +61,23 @@ class OverrideAdditionFlowTest {
     }
 
     @Test
-    fun `older databind does not justify removing matching core`() {
+    fun `older databind is updated and matching core removed in one PR`() {
         runFlow(databindIncludesCore = true, present = setOf(core, databind), databindVersion = "3.0.1")
     }
 
     @Test
-    fun `newer unscanned databind does not justify removing matching core`() {
+    fun `newer databind is aligned to scanned target and core removed in one PR`() {
         runFlow(databindIncludesCore = true, present = setOf(core, databind), databindVersion = "3.2.0")
+    }
+
+    @Test
+    fun `outdated databind and core produce one update and one removal in the same PR`() {
+        runFlow(
+            databindIncludesCore = true,
+            present = setOf(core, databind),
+            databindVersion = "3.0.1",
+            coreVersion = "3.0.1",
+        )
     }
 
     @Test
@@ -80,12 +90,13 @@ class OverrideAdditionFlowTest {
         present: Set<String> = emptySet(),
         databindVersion: String = "3.1.7",
         databindConfiguration: String = "implementation",
+        coreVersion: String = "3.1.7",
     ) {
         val source =
             "dependencies {\n    implementation '$encoder:9.0'\n" +
                 present.joinToString("") {
                     val configuration = if (it == databind) databindConfiguration else "implementation"
-                    "    $configuration '$it:${if (it == databind) databindVersion else "3.1.7"}'\n"
+                    "    $configuration '$it:${if (it == databind) databindVersion else coreVersion}'\n"
                 } + "}"
         val github = RecordingGithubClient(mapOf("build.gradle" to source))
         val scanner = DependencyScanner(github)
@@ -143,7 +154,7 @@ class OverrideAdditionFlowTest {
         val expected = selected - present
         val removed =
             if (databindIncludesCore && core in present && databind in present &&
-                databindVersion == "3.1.7" && databindConfiguration == "implementation"
+                databindConfiguration == "implementation"
             ) {
                 setOf(core)
             } else {
@@ -186,6 +197,16 @@ class OverrideAdditionFlowTest {
         DependencyPullRequestService(github, view).createPullRequest("example", "repository", "alice", targets)
         val updated = GradleDependencyParser().parse(github.updatedFiles["build.gradle"] ?: source)
         assertEquals((present - removed) + expected + encoder, updated.dependencies.keys)
+        if (databind in present) {
+            assertEquals("3.1.7", updated.dependencies[databind])
+        }
+        if (core in removed && databindVersion != "3.1.7") {
+            assertEquals(DependencyStatus.REMOVE, findings.single { it.key == core }.status)
+            assertEquals(
+                if (databindVersion == "3.0.1") DependencyStatus.UPDATE else DependencyStatus.AHEAD,
+                findings.single { it.key == databind }.status,
+            )
+        }
         if (databindIncludesCore) {
             assertFalse(github.pullRequestBody.orEmpty().contains("ADD $core:"))
         }
