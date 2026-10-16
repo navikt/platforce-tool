@@ -109,9 +109,9 @@ function renderRepo(repoView, scanMap, container) {
     const hasActionable = findings.some(f =>
         f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD" || f.status === "REMOVE"
     );
-    const prPrerequisite = !normalSecurityReady ? "Scan first"
+    const prPrerequisite = !normalSecurityReady ? "Run security scan first"
         : ((findings.some(f => f.kind === "PLATFORM_BOM") || untrackedPlatformBoms.length) && !bomSecurityReady)
-            ? "BOM scan first" : null;
+            ? "Run BOM scan first" : null;
 
     const addBadge =
         add > 0
@@ -203,9 +203,20 @@ function renderRepo(repoView, scanMap, container) {
                     Refresh
                 </button>
 
+                <span class="pr-prerequisite-slot">
+                    ${prPrerequisite ? `<span class="pr-prerequisite-icon" role="img" tabindex="0"
+                        aria-label="${prPrerequisite}" title="${prPrerequisite}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M12 7v5l3 2"/>
+                        </svg>
+                    </span>` : ""}
+                </span>
+
                 ${
                 prPrerequisite
-                    ? `<button class="pr-button disabled" disabled>${prPrerequisite}</button>`
+                    ? `<button class="pr-button create-pr-button disabled" disabled>Create PR</button>`
                     : hasActionable
                     ? `<button
                                data-repo="${repo}"
@@ -213,7 +224,7 @@ function renderRepo(repoView, scanMap, container) {
                                onclick="event.stopPropagation(); createPr('${repo}')">
                                Create PR
                            </button>`
-                    : `<span class="pr-button disabled">Create PR</span>`
+                    : `<button class="pr-button create-pr-button disabled" disabled>Create PR</button>`
             }
             `
     }

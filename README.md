@@ -119,9 +119,12 @@ Partial coverage retains the remaining ADDs. Adding a missing BOM instead of mul
 dependency ADDs remains out of scope. These scans analyze supported target
 declarations, not arbitrary repository Gradle rules.
 
-Repository PR buttons require a completed normal security scan (Scan first).
+Repository PR buttons require a completed normal security scan.
 Repositories declaring a platform BOM, including untracked BOMs, additionally
-require a completed BOM coverage scan (BOM scan first). The backend enforces the
+require a completed BOM coverage scan. Create PR keeps its label and size when
+disabled; a clock icon between Refresh and Create PR explains the missing scan
+in its tooltip. The icon space is reserved even when no scan is missing.
+The backend enforces the
 same prerequisites before making GitHub changes.
 
 ### Local mock GUI

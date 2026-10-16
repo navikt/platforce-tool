@@ -219,6 +219,30 @@ button:hover {
     pointer-events: none;
 }
 
+.repo-actions .refresh-button {
+    margin-right: 0;
+}
+
+.create-pr-button {
+    box-sizing: border-box;
+    width: 90px;
+    flex-shrink: 0;
+}
+
+.pr-prerequisite-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    flex: 0 0 18px;
+}
+
+.pr-prerequisite-icon {
+    display: inline-flex;
+    color: #946200;
+    cursor: help;
+}
+
 .btn-primary {
     margin-top: 10px;
     padding: 10px 14px;

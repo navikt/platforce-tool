@@ -373,13 +373,18 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
         { appendChild() {} }
     );
     render();
-    assert.match(card.innerHTML, /disabled>Scan first/);
+    assert.match(card.innerHTML, /disabled>Create PR/);
+    assert.match(card.innerHTML, /aria-label="Run security scan first"/);
+    assert.match(card.innerHTML, /class="pr-prerequisite-slot"/);
     app.value("normalSecurityReady = true");
     render();
-    assert.match(card.innerHTML, /disabled>BOM scan first/);
+    assert.match(card.innerHTML, /disabled>Create PR/);
+    assert.match(card.innerHTML, /aria-label="Run BOM scan first"/);
     app.value("bomSecurityReady = true");
     render();
-    assert.doesNotMatch(card.innerHTML, /BOM scan first/);
+    assert.doesNotMatch(card.innerHTML, /pr-prerequisite-icon/);
+    assert.match(card.innerHTML, /class="pr-prerequisite-slot"/);
+    assert.match(card.innerHTML, /class="pr-button create-pr-button disabled" disabled>Create PR/);
     assert.match(card.innerHTML, /1 UNTRKD/);
     assert.match(card.innerHTML, /platform BOMs \(1\)/);
     assert.match(card.innerHTML, /data-kind="PLATFORM_BOM"/);
@@ -390,6 +395,7 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
         currentVersion: "4.2.17.Final", targetVersion: "4.2.18.Final", status: "UPDATE"
     }];
     render();
+    assert.match(card.innerHTML, /class="pr-button create-pr-button"/);
     assert.match(card.innerHTML, /class="pill">PLATFORM BOM/);
     assert.match(card.innerHTML, /row platform_bom-row/);
     assert.match(card.innerHTML, /1 UPDATE/);
