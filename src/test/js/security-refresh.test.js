@@ -412,6 +412,26 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
     assert.match(card.innerHTML, /data-toggle-details="true"/);
 });
 
+test("dependency usage searches raw inventories at any version including ignored repositories", () => {
+    const app = gui();
+    assert.equal(app.context.dependencyUsageAvailable(), false);
+    assert.match(app.context.dependencyUsageButtonHtml(), /disabled/);
+    app.value(`lastLoadedData = { scans: [
+        { repository: "team/old", declaredDependencyKeys: ["example:library"], findings: [{ key: "example:library", currentVersion: "1.0" }] },
+        { repository: "team/current", declaredDependencyKeys: ["example:library"], findings: [{ key: "example:library", currentVersion: "2.0" }] },
+        { repository: "ignored/repo", declaredDependencyKeys: ["example:library"] },
+        { repository: "team/add-only", declaredDependencyKeys: [], findings: [{ key: "example:library", status: "ADD" }] }
+    ] }; ignoredRepositories = ["ignored/repo"]`);
+    assert.equal(app.context.dependencyUsageAvailable(), true);
+    assert.doesNotMatch(app.context.dependencyUsageButtonHtml(), /disabled/);
+    assert.deepEqual(Array.from(app.context.dependencyUsageRepositories("example:library")), [
+        "ignored/repo", "team/current", "team/old"
+    ]);
+    assert.deepEqual(Array.from(app.context.dependencyUsageRepositories("example:absent")), []);
+    app.value("lastLoadedData = { scans: [{ repository: 'unknown/repo' }] }");
+    assert.equal(app.context.dependencyUsageAvailable(), false);
+});
+
 test("coverage-only BOM details do not claim managed catalog health", () => {
     const app = gui();
     const result = { key: "example:bom", targetVersion: "1.0", scope: "COVERAGE_ONLY", coverage: [] };

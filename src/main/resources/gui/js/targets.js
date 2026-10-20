@@ -103,6 +103,7 @@ function renderTable(containerId, entries, type) {
                         title="${isTransient ? "Transient dependency" : "Mark as transient"}">
                         ${BANDAGE_SVG}
                     </button>
+                    ${dependencyUsageButtonHtml()}
                 `
                 : ""
         }
@@ -121,6 +122,7 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
+        if (type === "dependency") bindDependencyUsage(row);
         if (type === "dependency") {
             row.querySelector(".transient-btn").onclick = () => {
                 const transient =
@@ -190,6 +192,7 @@ function renderTable(containerId, entries, type) {
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
             ${securityStatusHtml(securityTarget)}
+            ${type === "dependency" ? dependencyUsageButtonHtml() : ""}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -205,6 +208,7 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
+        if (type === "dependency") bindDependencyUsage(newRow);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
             newRow.querySelector(".target-status-pill");
@@ -218,6 +222,72 @@ function renderTable(containerId, entries, type) {
         vInput.value = "";
     };
     container.appendChild(addRow);
+}
+
+function dependencyUsageAvailable() {
+    const scans = lastLoadedData?.scans;
+    return !!scans?.length && scans.every(scan => Array.isArray(scan.declaredDependencyKeys));
+}
+
+function dependencyUsageRepositories(key) {
+    return [...new Set((lastLoadedData?.scans || [])
+        .filter(scan => scan.declaredDependencyKeys?.includes(key))
+        .map(scan => scan.repository))]
+        .sort();
+}
+
+function dependencyUsageButtonHtml() {
+    const available = dependencyUsageAvailable();
+    return `<button type="button" class="icon-btn dependency-usage-btn" aria-label="Show repositories using this dependency"
+        aria-expanded="false" title="${available ? "Show repositories using this dependency" : "Run Dependency Scanner first"}"
+        ${available ? "" : "disabled"}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/>
+            <path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+        </svg>
+    </button>`;
+}
+
+function bindDependencyUsage(row) {
+    const button = row.querySelector(".dependency-usage-btn");
+    const details = document.createElement("div");
+    details.className = "dependency-usage-details hidden";
+    row.appendChild(details);
+    button.onclick = () => {
+        const expanded = button.getAttribute("aria-expanded") !== "true";
+        button.setAttribute("aria-expanded", String(expanded));
+        details.classList.toggle("hidden", !expanded);
+        if (!expanded) return;
+        const key = row.querySelector(".key").value.trim();
+        const repositories = dependencyUsageRepositories(key);
+        details.replaceChildren();
+        const heading = document.createElement("p");
+        heading.textContent = `${repositories.length} scanned repositories declare ${key} (any version).`;
+        details.appendChild(heading);
+        const list = document.createElement("ul");
+        repositories.forEach(repository => {
+            const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.textContent = repository;
+            link.href = `https://github.com/${repository.split("/").map(encodeURIComponent).join("/")}`;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            item.appendChild(link);
+            list.appendChild(item);
+        });
+        details.appendChild(list);
+    };
+}
+
+function refreshDependencyUsageButtons() {
+    const available = dependencyUsageAvailable();
+    document.querySelectorAll(".dependency-usage-btn").forEach(button => {
+        button.disabled = !available;
+        button.title = available ? "Show repositories using this dependency" : "Run Dependency Scanner first";
+        button.setAttribute("aria-expanded", "false");
+        button.closest(".target-row").querySelector(".dependency-usage-details").classList.add("hidden");
+    });
 }
 
 function readTargetInputs() {

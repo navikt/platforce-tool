@@ -809,6 +809,47 @@ button:hover {
     border-radius: 6px;
 }
 
+#depsTable .target-row {
+    grid-template-columns: 300px 110px 90px 28px 28px 28px;
+}
+
+#depsTable .remove-btn {
+    grid-column: 6;
+}
+
+#depsTable .dependency-usage-btn {
+    grid-column: 5;
+}
+
+.dependency-usage-btn:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+}
+
+.dependency-usage-details {
+    grid-column: 1 / -1;
+    padding: 0 8px 8px;
+}
+
+.dependency-usage-details p {
+    margin: 8px 0;
+}
+
+.dependency-usage-details ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.dependency-usage-details a {
+    color: #202733;
+    text-decoration: none;
+}
+
+.dependency-usage-details a:hover,
+.dependency-usage-details a:focus-visible {
+    text-decoration: underline;
+}
+
 .target-row input[type="text"],
 .add-row input[type="text"] {
     width: 100%;

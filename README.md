@@ -71,6 +71,12 @@ ignored repositories; an empty cache leaves REDUNDANT. UNUSED means absent from
 currently scanned repositories, not necessarily from inaccessible or unscanned
 repositories. Repository PR actions continue to use **REMOVE**.
 
+Dependency target rows have a crosshair button between the transient override
+and delete buttons. After repository inventories are available, it expands a
+count and linked list of all cached repositories declaring that coordinate at
+any version, including ignored repositories. Suggested ADDs do not count as
+declarations; inaccessible or unscanned repositories are not included.
+
 `/internal/files` retains separate per-user diagnostics for the latest dependency
 and BOM resolutions: `build.gradle` and `build-bom.gradle`. BOM output, unresolved
 findings, timings and resolution reports use the same `-bom` suffix before their

@@ -504,6 +504,7 @@ async function loadData() {
         repos: repoViewData || [],
         scans: scanData || []
     };
+    refreshDependencyUsageButtons();
 
     if (targetSecurityScan?.targets?.some(target => target.status === "TRANSIENT_UNUSED")) {
         captureTargetDrafts();
