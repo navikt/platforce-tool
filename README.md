@@ -110,7 +110,10 @@ NO COVERAGE, not that the entire BOM is safe. Saving targets invalidates both
 scan modes.
 
 Separate dependency-plus-BOM graphs show which vulnerable transitive versions a
-normal or enforced platform fixes. Repository enrichment omits redundant ADDs
+normal `platform(...)` fixes. `enforcedPlatform(...)` coverage is not scanned;
+its declarations still support version tracking and updates, but cannot suppress
+ADDs using ordinary platform evidence. COVERS uses the same green as OK;
+NO COVERAGE stays neutral. Repository enrichment omits redundant ADDs
 only when dependency/BOM versions match the scanned targets and declarations
 share a configuration. This initial coverage proof requires a single platform
 declaration: multiple platforms, unknown scope relationships and mismatched

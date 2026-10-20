@@ -7,11 +7,10 @@ object GradleBomResolutionScript {
             doLast {
                 def bomStarted = System.nanoTime()
                 def sequence = 0
-                def resolveBomGraph = { bomKey, bomVersion, enforced, dependencyKey, dependencyVersion ->
+                def resolveBomGraph = { bomKey, bomVersion, dependencyKey, dependencyVersion ->
                     def configuration = configurations.create("bomResolution_" + sequence++)
                     def notation = bomKey + ':' + bomVersion
-                    dependencies.add(configuration.name,
-                        enforced ? dependencies.enforcedPlatform(notation) : dependencies.platform(notation))
+                    dependencies.add(configuration.name, dependencies.platform(notation))
                     dependencies.add(configuration.name, dependencyKey + ':' + dependencyVersion)
                     def started = System.nanoTime()
                     def result = configuration.incoming.resolutionResult
@@ -61,7 +60,7 @@ object GradleBomResolutionScript {
                         kind: 'bom-coverage',
                         dependency: dependencyKey,
                         bom: notation,
-                        enforcedPlatform: enforced,
+                        enforcedPlatform: false,
                         durationMs: (System.nanoTime() - started) / 1000000.0,
                         rootCount: roots.size(),
                         status: 'READY'
@@ -75,14 +74,12 @@ object GradleBomResolutionScript {
                 configuredPlatformBoms.each { bomKey, bomVersion ->
                     def coverage = []
                     configuredTargetDependencies.each { dependencyKey, dependencyVersion ->
-                        [false, true].each { enforced ->
-                            coverage << [
-                                dependency: dependencyKey,
-                                targetVersion: dependencyVersion,
-                                enforcedPlatform: enforced,
-                                roots: resolveBomGraph(bomKey, bomVersion, enforced, dependencyKey, dependencyVersion).roots
-                            ]
-                        }
+                        coverage << [
+                            dependency: dependencyKey,
+                            targetVersion: dependencyVersion,
+                            enforcedPlatform: false,
+                            roots: resolveBomGraph(bomKey, bomVersion, dependencyKey, dependencyVersion).roots
+                        ]
                     }
                     report.platformBoms[bomKey] = [version: bomVersion, managed: [], coverage: coverage]
                 }

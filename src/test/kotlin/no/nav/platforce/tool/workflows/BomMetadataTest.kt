@@ -161,14 +161,13 @@ class BomMetadataTest {
         assertTrue(bom["managed"].asJsonArray.isEmpty)
         assertTrue(result["individual"].asJsonObject.entrySet().isEmpty())
         assertTrue(result["roots"].asJsonArray.isEmpty)
-        assertEquals(4, bom["coverage"].asJsonArray.size())
+        assertEquals(2, bom["coverage"].asJsonArray.size())
         bom["coverage"].asJsonArray.forEach { coverage ->
             val candidate = coverage.asJsonObject
             val root = candidate["roots"].asJsonArray.single().asJsonObject
+            assertEquals(false, candidate["enforcedPlatform"].asBoolean)
             val expected =
-                if (candidate["dependency"].asString == "example:higher-library" &&
-                    !candidate["enforcedPlatform"].asBoolean
-                ) {
+                if (candidate["dependency"].asString == "example:higher-library") {
                     "5.0"
                 } else {
                     "4.0"
@@ -185,7 +184,7 @@ class BomMetadataTest {
         val native = result["platformBoms"].asJsonObject["example:native"].asJsonObject
         assertTrue(native["managed"].asJsonArray.isEmpty)
         val timings = JsonParser.parseString(directory.resolve("gradle-configuration-timings.json").readText()).asJsonObject
-        assertEquals(8, timings["configurations"].asJsonArray.size())
+        assertEquals(4, timings["configurations"].asJsonArray.size())
         assertTrue(timings["configurations"].asJsonArray.all { it.asJsonObject["kind"].asString == "bom-coverage" })
         assertTrue(timings["taskElapsedMs"].asDouble > 0)
 
@@ -205,14 +204,18 @@ class BomMetadataTest {
         assertEquals(baseline.roots, coverage.roots)
         assertEquals(baseline.individual, coverage.individual)
         assertEquals(setOf("example:bom", "example:native"), coverage.platformBoms.keys)
-        assertTrue(coverage.platformBoms.values.all { it.coverage.size == 2 && it.coverage.all { c -> c.dependency == "example:library" } })
+        assertTrue(
+            coverage.platformBoms.values.all {
+                it.coverage.size == 1 && it.coverage.all { c -> c.dependency == "example:library" && !c.enforcedPlatform }
+            },
+        )
         val inspection = debug.inspectionDirectory("alice")
         val buildFile = inspection.resolve("build-bom.gradle").readText()
         assertTrue("targetResolution" !in buildFile)
         assertTrue("example:never-resolve" !in buildFile)
         assertTrue("example:higher-library" !in buildFile)
         val serviceTimings = JsonParser.parseString(inspection.resolve("gradle-configuration-timings-bom.json").readText()).asJsonObject
-        assertEquals(4, serviceTimings["configurations"].asJsonArray.size())
+        assertEquals(2, serviceTimings["configurations"].asJsonArray.size())
         assertTrue(inspection.resolve("gradle-resolution-report-bom.json").readText().contains("gradleProcessMs"))
     }
 }

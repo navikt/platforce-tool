@@ -145,18 +145,18 @@ object LocalFrontendFixtures {
                     null,
                     emptyList(),
                     0,
-                    listOf(false, true).map { enforced ->
+                    listOf(
                         PlatformBomCoverage(
                             WEB,
                             targets.dependencies[WEB] ?: "3.0.0",
-                            enforced,
+                            false,
                             if (key == PLATFORM_BOM && !version.startsWith("2.")) {
                                 listOf(OverrideReason(JSON, "2.0.0", "2.0.0", "1.0.0", listOf("$key:$version")))
                             } else {
                                 emptyList()
                             },
-                        )
-                    },
+                        ),
+                    ),
                 )
             }
         return TargetSecurityScan(emptyList(), results, boms)

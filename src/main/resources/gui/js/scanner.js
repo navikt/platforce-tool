@@ -209,7 +209,11 @@ function renderRepo(repoView, scanMap, container) {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <circle cx="12" cy="12" r="9"/>
-                            <path d="M12 7v5l3 2"/>
+                            ${normalSecurityReady
+                                ? `<path d="M12 6v4l3 1"/>
+                                   <text x="12" y="17" text-anchor="middle" fill="currentColor" stroke="none"
+                                       font-family="sans-serif" font-size="6.5" font-weight="700">BOM</text>`
+                                : `<path d="M12 7v5l3 2"/>`}
                         </svg>
                     </span>` : ""}
                 </span>

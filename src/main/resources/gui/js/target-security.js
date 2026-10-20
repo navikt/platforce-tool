@@ -90,7 +90,7 @@ function securityStatusHtml(security) {
     }
     if (security.scope === "COVERAGE_ONLY") {
         const covers = security.coverage?.some(item => item.overrides?.length);
-        return `<button class="target-status-pill target-status-unknown" title="Show BOM coverage details">${covers ? "COVERS" : "NO COVERAGE"}</button>`;
+        return `<button class="target-status-pill ${covers ? "target-status-ok" : "target-status-unknown"}" title="Show BOM coverage details">${covers ? "COVERS" : "NO COVERAGE"}</button>`;
     }
 
     return `

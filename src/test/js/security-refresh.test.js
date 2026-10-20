@@ -375,11 +375,13 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
     render();
     assert.match(card.innerHTML, /disabled>Create PR/);
     assert.match(card.innerHTML, /aria-label="Run security scan first"/);
+    assert.doesNotMatch(card.innerHTML, />BOM<\/text>/);
     assert.match(card.innerHTML, /class="pr-prerequisite-slot"/);
     app.value("normalSecurityReady = true");
     render();
     assert.match(card.innerHTML, /disabled>Create PR/);
     assert.match(card.innerHTML, /aria-label="Run BOM scan first"/);
+    assert.match(card.innerHTML, />BOM<\/text>/);
     app.value("bomSecurityReady = true");
     render();
     assert.doesNotMatch(card.innerHTML, /pr-prerequisite-icon/);
@@ -414,6 +416,10 @@ test("coverage-only BOM details do not claim managed catalog health", () => {
     const app = gui();
     const result = { key: "example:bom", targetVersion: "1.0", scope: "COVERAGE_ONLY", coverage: [] };
     assert.match(app.context.securityStatusHtml(result), /NO COVERAGE/);
+    assert.match(app.context.securityStatusHtml(result), /target-status-unknown/);
+    assert.match(app.context.securityStatusHtml({
+        ...result, coverage: [{ enforcedPlatform: false, overrides: [{ dependency: "example:child" }] }]
+    }), /target-status-ok"[^>]*>COVERS/);
     const details = app.context.platformBomSecurityDetailsHtml(result);
     assert.match(details, /Unused managed modules are not audited/);
     assert.doesNotMatch(details, /No vulnerabilities found|managed modules checked independently/);
