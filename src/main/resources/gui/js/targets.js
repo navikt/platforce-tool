@@ -263,7 +263,7 @@ function bindDependencyUsage(row) {
         const repositories = dependencyUsageRepositories(key);
         details.replaceChildren();
         const heading = document.createElement("p");
-        heading.textContent = `${repositories.length} scanned repositories declare ${key} (any version).`;
+        heading.textContent = `${repositories.length} scanned repositories declare ${key}.`;
         details.appendChild(heading);
         const list = document.createElement("ul");
         repositories.forEach(repository => {
