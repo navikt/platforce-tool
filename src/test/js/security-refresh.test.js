@@ -432,6 +432,24 @@ test("dependency usage searches raw inventories at any version including ignored
     assert.equal(app.context.dependencyUsageAvailable(), false);
 });
 
+test("platform BOM usage is separate from ordinary dependencies with the same coordinate", () => {
+    const app = gui();
+    assert.equal(app.context.dependencyUsageAvailable("platform_bom"), false);
+    assert.match(app.context.dependencyUsageButtonHtml("platform_bom"), /disabled/);
+    app.value(`lastLoadedData = { scans: [
+        { repository: "team/ordinary", declaredDependencyKeys: ["example:bom"], declaredPlatformBomKeys: [] },
+        { repository: "team/old-bom", declaredDependencyKeys: [], declaredPlatformBomKeys: ["example:bom"] },
+        { repository: "ignored/current-bom", declaredDependencyKeys: [], declaredPlatformBomKeys: ["example:bom"] }
+    ] }`);
+    assert.equal(app.context.dependencyUsageAvailable("platform_bom"), true);
+    assert.doesNotMatch(app.context.dependencyUsageButtonHtml("platform_bom"), /disabled/);
+    assert.match(app.context.dependencyUsageButtonHtml("platform_bom"), /using this platform BOM/);
+    assert.deepEqual(Array.from(app.context.dependencyUsageRepositories("example:bom", "platform_bom")), [
+        "ignored/current-bom", "team/old-bom"
+    ]);
+    assert.deepEqual(Array.from(app.context.dependencyUsageRepositories("example:bom")), ["team/ordinary"]);
+});
+
 test("coverage-only BOM details do not claim managed catalog health", () => {
     const app = gui();
     const result = { key: "example:bom", targetVersion: "1.0", scope: "COVERAGE_ONLY", coverage: [] };

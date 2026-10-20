@@ -76,6 +76,8 @@ and delete buttons. After repository inventories are available, it expands a
 count and linked list of all cached repositories declaring that coordinate at
 any version, including ignored repositories. Suggested ADDs do not count as
 declarations; inaccessible or unscanned repositories are not included.
+Platform BOM rows have the same crosshair before delete, searching declared
+platform BOM coordinates independently of ordinary dependencies.
 
 `/internal/files` retains separate per-user diagnostics for the latest dependency
 and BOM resolutions: `build.gradle` and `build-bom.gradle`. BOM output, unresolved

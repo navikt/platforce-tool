@@ -113,6 +113,8 @@ class PlatformBomFlowTest {
         comparisons.forEach { (version, status) ->
             val tracked = targets.copy(platformBoms = mutableMapOf(key to version, "example:missing" to "1.0"))
             val scan = scanner.compare(inventory, tracked)
+            assertEquals(listOf("example:other", key), scan.declaredPlatformBomKeys)
+            assertEquals(listOf(key), scan.declaredDependencyKeys)
             assertEquals(status, scan.findings.single { it.kind == DependencyKind.PLATFORM_BOM }.status)
             assertEquals(listOf(UntrackedPlatformBom("example:other", "4.0")), scan.untrackedPlatformBoms)
             val security =

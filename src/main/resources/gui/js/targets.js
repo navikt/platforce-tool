@@ -103,10 +103,10 @@ function renderTable(containerId, entries, type) {
                         title="${isTransient ? "Transient dependency" : "Mark as transient"}">
                         ${BANDAGE_SVG}
                     </button>
-                    ${dependencyUsageButtonHtml()}
                 `
                 : ""
         }
+            ${type === "dependency" || type === "platform_bom" ? dependencyUsageButtonHtml(type) : ""}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -122,7 +122,7 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
-        if (type === "dependency") bindDependencyUsage(row);
+        if (type === "dependency" || type === "platform_bom") bindDependencyUsage(row, type);
         if (type === "dependency") {
             row.querySelector(".transient-btn").onclick = () => {
                 const transient =
@@ -192,7 +192,7 @@ function renderTable(containerId, entries, type) {
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
             ${securityStatusHtml(securityTarget)}
-            ${type === "dependency" ? dependencyUsageButtonHtml() : ""}
+            ${type === "dependency" || type === "platform_bom" ? dependencyUsageButtonHtml(type) : ""}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -208,7 +208,7 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
-        if (type === "dependency") bindDependencyUsage(newRow);
+        if (type === "dependency" || type === "platform_bom") bindDependencyUsage(newRow, type);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
             newRow.querySelector(".target-status-pill");
@@ -224,22 +224,25 @@ function renderTable(containerId, entries, type) {
     container.appendChild(addRow);
 }
 
-function dependencyUsageAvailable() {
+function dependencyUsageAvailable(type = "dependency") {
     const scans = lastLoadedData?.scans;
-    return !!scans?.length && scans.every(scan => Array.isArray(scan.declaredDependencyKeys));
+    const field = type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
+    return !!scans?.length && scans.every(scan => Array.isArray(scan[field]));
 }
 
-function dependencyUsageRepositories(key) {
+function dependencyUsageRepositories(key, type = "dependency") {
+    const field = type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
     return [...new Set((lastLoadedData?.scans || [])
-        .filter(scan => scan.declaredDependencyKeys?.includes(key))
+        .filter(scan => scan[field]?.includes(key))
         .map(scan => scan.repository))]
         .sort();
 }
 
-function dependencyUsageButtonHtml() {
-    const available = dependencyUsageAvailable();
-    return `<button type="button" class="icon-btn dependency-usage-btn" aria-label="Show repositories using this dependency"
-        aria-expanded="false" title="${available ? "Show repositories using this dependency" : "Run Dependency Scanner first"}"
+function dependencyUsageButtonHtml(type = "dependency") {
+    const available = dependencyUsageAvailable(type);
+    const label = type === "platform_bom" ? "Show repositories using this platform BOM" : "Show repositories using this dependency";
+    return `<button type="button" class="icon-btn dependency-usage-btn" data-usage-type="${type}" aria-label="${label}"
+        aria-expanded="false" title="${available ? label : "Run Dependency Scanner first"}"
         ${available ? "" : "disabled"}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
@@ -249,7 +252,7 @@ function dependencyUsageButtonHtml() {
     </button>`;
 }
 
-function bindDependencyUsage(row) {
+function bindDependencyUsage(row, type = "dependency") {
     const button = row.querySelector(".dependency-usage-btn");
     const details = document.createElement("div");
     details.className = "dependency-usage-details hidden";
@@ -260,7 +263,7 @@ function bindDependencyUsage(row) {
         details.classList.toggle("hidden", !expanded);
         if (!expanded) return;
         const key = row.querySelector(".key").value.trim();
-        const repositories = dependencyUsageRepositories(key);
+        const repositories = dependencyUsageRepositories(key, type);
         details.replaceChildren();
         const heading = document.createElement("p");
         heading.textContent = `${repositories.length} scanned repositories declare ${key}.`;
@@ -281,10 +284,11 @@ function bindDependencyUsage(row) {
 }
 
 function refreshDependencyUsageButtons() {
-    const available = dependencyUsageAvailable();
     document.querySelectorAll(".dependency-usage-btn").forEach(button => {
+        const type = button.dataset.usageType;
+        const available = dependencyUsageAvailable(type);
         button.disabled = !available;
-        button.title = available ? "Show repositories using this dependency" : "Run Dependency Scanner first";
+        button.title = available ? button.getAttribute("aria-label") : "Run Dependency Scanner first";
         button.setAttribute("aria-expanded", "false");
         button.closest(".target-row").querySelector(".dependency-usage-details").classList.add("hidden");
     });
