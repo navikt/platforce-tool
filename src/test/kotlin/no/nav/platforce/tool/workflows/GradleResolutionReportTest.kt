@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
@@ -99,6 +101,56 @@ class GradleResolutionReportTest {
             val buildFile = if (bom) "build-bom.gradle" else "build.gradle"
             assertTrue(Files.exists(store.inspectionDirectory("alice").resolve(buildFile)))
         }
+    }
+
+    @Test
+    fun `plugin output and progress are inspectable before Gradle exits`() {
+        val release = directory.resolve("release")
+        val launcher =
+            launcher(
+                """
+                echo 'Resolving plugin metadata: example.plugin:1.0'
+                echo '{"taskElapsedMs":1,"configurations":[{"dependency":"example.plugin","status":"RUNNING"}]}' > gradle-configuration-timings.json
+                for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                    if [ -f '$release' ]; then break; fi
+                    sleep 1
+                done
+                echo 'Synthetic Gradle completion'
+                exit 19
+                """.trimIndent(),
+            )
+        val store = ResolutionDebugFiles(directory.resolve("files"))
+        val service = GradleTargetResolutionService(launcher, debugFiles = store)
+        val running =
+            CompletableFuture.runAsync {
+                assertThrows(IllegalStateException::class.java) {
+                    service.resolvePlugins("alice", targets.copy(plugins = mutableMapOf("example.plugin" to "1.0")))
+                }
+            }
+        try {
+            val inspection = store.inspectionDirectory("alice")
+            val output = inspection.resolve("gradle-output-plugins.txt")
+            val timings = inspection.resolve("gradle-configuration-timings-plugins.json")
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while ((!Files.exists(output) || !output.readText().contains("Resolving plugin metadata") || !Files.exists(timings)) &&
+                System.nanoTime() < deadline
+            ) {
+                Thread.sleep(50)
+            }
+            assertTrue(output.readText().contains("Resolving plugin metadata"))
+            assertTrue(timings.readText().contains("RUNNING"))
+            assertTrue(!running.isDone)
+        } finally {
+            release.writeText("continue")
+            running.get(20, TimeUnit.SECONDS)
+        }
+        assertTrue(
+            store
+                .inspectionDirectory("alice")
+                .resolve("gradle-output-plugins.txt")
+                .readText()
+                .contains("Synthetic Gradle completion"),
+        )
     }
 
     @Test

@@ -9,6 +9,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteRecursively
@@ -153,6 +154,19 @@ class GradleTargetResolutionService(
                 runGradle(
                     gradleHome = gradleHome,
                     projectDir = projectDir,
+                    publishProgress = {
+                        for (name in listOf(
+                            "gradle-output.txt",
+                            "gradle-unresolved-dependencies.txt",
+                            "gradle-configuration-timings.json",
+                        )) {
+                            val source = projectDir.resolve(name)
+                            if (source.exists()) {
+                                Files.copy(source, debugDir.resolve(name), StandardCopyOption.REPLACE_EXISTING)
+                            }
+                        }
+                        debugFiles.publishInspection(username, debugDir, mode)
+                    },
                 )
             }
 
@@ -279,6 +293,7 @@ class GradleTargetResolutionService(
     private fun runGradle(
         gradleHome: Path,
         projectDir: Path,
+        publishProgress: () -> Unit,
     ) {
         val executable =
             gradleHome
@@ -322,6 +337,7 @@ class GradleTargetResolutionService(
                 "platforceResolve",
             ).directory(projectDir.toFile())
                 .redirectErrorStream(true)
+                .redirectOutput(projectDir.resolve("gradle-output.txt").toFile())
                 .apply {
                     environment()["GRADLE_USER_HOME"] =
                         projectDir
@@ -335,13 +351,21 @@ class GradleTargetResolutionService(
                         "-Djava.io.tmpdir=$gradleTmpDir"
                 }.start()
 
-        val output =
-            process.inputStream
-                .bufferedReader()
-                .use { it.readText() }
-        projectDir.resolve("gradle-output.txt").writeText(output)
-
-        val exitCode = process.waitFor()
+        val exitCode =
+            try {
+                publishProgress()
+                while (!process.waitFor(2, TimeUnit.SECONDS)) {
+                    publishProgress()
+                }
+                publishProgress()
+                process.exitValue()
+            } finally {
+                if (process.isAlive) {
+                    process.descendants().forEach { it.destroyForcibly() }
+                    process.destroyForcibly()
+                    process.waitFor()
+                }
+            }
 
         if (exitCode != 0) {
             throw IllegalStateException(
@@ -351,7 +375,7 @@ class GradleTargetResolutionService(
                     appendLine("Project: $projectDir")
                     appendLine("Exit code: $exitCode")
                     appendLine()
-                    appendLine(output)
+                    appendLine(projectDir.resolve("gradle-output.txt").readText())
                 },
             )
         }

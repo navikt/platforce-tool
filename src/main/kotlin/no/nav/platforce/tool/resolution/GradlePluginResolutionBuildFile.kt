@@ -31,6 +31,13 @@ class GradlePluginResolutionBuildFile {
                 doLast {
                     def started = System.nanoTime()
                     def timings = []
+                    def writeTimings = {
+                        file('gradle-configuration-timings.json').text = groovy.json.JsonOutput.toJson([
+                            taskElapsedMs: (System.nanoTime() - started) / 1000000.0,
+                            executedGradleVersion: gradle.gradleVersion, configurations: timings
+                        ])
+                    }
+                    writeTimings()
                     def unresolved = file('gradle-unresolved-dependencies.txt')
                     unresolved.text = ''
                     def unresolvedNode = { dependency ->
@@ -64,6 +71,11 @@ class GradlePluginResolutionBuildFile {
                     def individual = [:]
                     pluginConfigurations.each { id, configuration ->
                         def configurationStarted = System.nanoTime()
+                        println("Resolving plugin metadata: " + id + ':' + configuredPlugins[id])
+                        def timing = [configuration: configuration.name, kind: 'plugin',
+                            dependency: id, status: 'RUNNING']
+                        timings << timing
+                        writeTimings()
                         def roots = []
                         try {
                             configuration.incoming.resolutionResult.root.dependencies.each { dependency ->
@@ -80,16 +92,14 @@ class GradlePluginResolutionBuildFile {
                                 resolutionError: failure.message ?: failure.class.simpleName]]
                         }
                         individual[id] = roots
-                        timings << [configuration: configuration.name, kind: 'plugin',
-                            dependency: id, rootCount: roots.size(),
-                            durationMs: (System.nanoTime() - configurationStarted) / 1000000.0,
-                            status: 'READY']
+                        timing.rootCount = roots.size()
+                        timing.durationMs = (System.nanoTime() - configurationStarted) / 1000000.0
+                        timing.status = 'READY'
+                        writeTimings()
+                        println("Finished plugin metadata: " + id + ':' + configuredPlugins[id])
                     }
                     file('resolution.json').text = groovy.json.JsonOutput.toJson([roots: [], individual: individual])
-                    file('gradle-configuration-timings.json').text = groovy.json.JsonOutput.toJson([
-                        taskElapsedMs: (System.nanoTime() - started) / 1000000.0,
-                        executedGradleVersion: gradle.gradleVersion, configurations: timings
-                    ])
+                    writeTimings()
                 }
             }
             """.trimIndent()

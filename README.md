@@ -86,6 +86,10 @@ reports use the matching `-bom` or `-plugins` suffix before their extension.
 Starting a fresh run clears only that mode's previous diagnostics;
 cached resolution reuse leaves the files unchanged. Publishing these files uses
 local copies only, without extra resolution or security scans.
+While Gradle runs, output and available progress files are refreshed about every
+two seconds. Plugin output identifies the marker currently being resolved;
+plugin timings include RUNNING entries before resolution finishes. Reload files
+in `/internal/files` to inspect progress.
 
 When several missing vulnerability overrides are required, repository enrichment
 prefers a target whose scanned individual graph covers multiple requirements.
