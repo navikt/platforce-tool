@@ -9,6 +9,7 @@ import no.nav.platforce.tool.repositories.RepositoryViewService
 import no.nav.platforce.tool.resolution.ResolutionStatus
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.resolution.TargetResolutionSnapshot
+import no.nav.platforce.tool.security.PluginSecuritySnapshot
 import no.nav.platforce.tool.security.SecurityScanSnapshot
 import no.nav.platforce.tool.security.SecurityScanStatus
 import no.nav.platforce.tool.security.TargetSecurityScan
@@ -46,6 +47,21 @@ class LocalFrontendApi(
     private var resolutionReadyAt: Long? = null
     private var securityReadyAt: Long? = 0L
     private var bomSecurityReadyAt: Long? = null
+    private var pluginSecurityReadyAt: Long? = null
+
+    private fun pluginSecurity(): PluginSecuritySnapshot {
+        val status =
+            when {
+                pluginSecurityReadyAt == null -> SecurityScanStatus.IDLE
+                now() < checkNotNull(pluginSecurityReadyAt) -> SecurityScanStatus.RUNNING
+                else -> SecurityScanStatus.READY
+            }
+        return PluginSecuritySnapshot(
+            status,
+            fingerprint(targets),
+            if (status == SecurityScanStatus.READY) LocalFrontendFixtures.pluginSecurity(targets) else null,
+        )
+    }
 
     private fun securityResult(): TargetSecurityScan {
         val result = LocalFrontendFixtures.security(targets)
@@ -194,7 +210,16 @@ class LocalFrontendApi(
                 resolutionReadyAt = null
                 securityReadyAt = null
                 bomSecurityReadyAt = null
+                pluginSecurityReadyAt = null
                 Response(Status.OK).body("updated")
+            },
+            "/internal/api/plugin-security/start" bind Method.GET to {
+                if (pluginSecurity().status != SecurityScanStatus.RUNNING) pluginSecurityReadyAt = now() + 1200
+                json(pluginSecurity(), Status.ACCEPTED)
+            },
+            "/internal/api/plugin-security" bind Method.GET to {
+                val snapshot = pluginSecurity()
+                json(snapshot, if (snapshot.status == SecurityScanStatus.RUNNING) Status.ACCEPTED else Status.OK)
             },
             "/internal/api/target-resolution/start" bind Method.GET to {
                 if (resolutionReadyAt == null) resolutionReadyAt = now() + 1200

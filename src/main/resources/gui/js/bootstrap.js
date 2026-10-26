@@ -71,6 +71,9 @@ document
 document.getElementById("scanBoms")
     .addEventListener("click", () => scanTargetSecurity(true));
 
+document.getElementById("scanPlugins")
+    .addEventListener("click", scanPluginSecurity);
+
 document
     .getElementById("saveIgnored")
     .addEventListener("click", async () => {
@@ -112,6 +115,7 @@ async function init() {
     await loadData();
 
     await loadCachedTargetSecurity();
+    await loadCachedPluginSecurity();
     renderTargetTables();
     if (lastLoadedData?.repos) render(lastLoadedData);
 

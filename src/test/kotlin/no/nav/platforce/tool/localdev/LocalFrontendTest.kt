@@ -21,6 +21,46 @@ class LocalFrontendTest {
     lateinit var directory: Path
 
     @Test
+    fun `separate plugin scan is idle until approved progresses independently and target saves invalidate it`() {
+        var time = 10_000L
+        val handler = LocalFrontendApi(directory) { time }.handler
+
+        fun get(path: String) = handler(Request(Method.GET, path))
+
+        fun pluginSnapshot() = JsonParser.parseString(get("/internal/api/plugin-security").bodyString()).asJsonObject
+
+        assertEquals("IDLE", pluginSnapshot()["status"].asString)
+        assertEquals(Status.ACCEPTED, get("/internal/api/plugin-security/start").status)
+        val running = pluginSnapshot()
+        assertEquals("RUNNING", running["status"].asString)
+        assertFalse(running.has("result"))
+        assertEquals(
+            "READY",
+            JsonParser.parseString(get("/internal/api/target-resolution/security").bodyString()).asJsonObject["status"].asString,
+        )
+        time += 1500
+        val ready = pluginSnapshot()
+        assertEquals("READY", ready["status"].asString)
+        assertEquals(running["targetFingerprint"], ready["targetFingerprint"])
+        val plugins = ready["result"].asJsonObject["plugins"].asJsonArray.map { it.asJsonObject }
+        assertEquals(setOf("OK", "VULNERABLE"), plugins.map { it["status"].asString }.toSet())
+        assertTrue(plugins.all { it["relatedTo"].asJsonArray.isEmpty })
+        assertEquals(1, plugins.single { it["status"].asString == "VULNERABLE" }["vulnerableDependencies"].asJsonArray.size())
+
+        val targets = JsonParser.parseString(get("/internal/api/target-versions").bodyString()).asJsonObject
+        targets["plugins"].asJsonObject.addProperty("java", "")
+        targets["plugins"].asJsonObject.addProperty("example.missing", "1.0")
+        handler(Request(Method.POST, "/internal/api/target-versions/update").body(targets.toString()))
+        assertEquals("IDLE", pluginSnapshot()["status"].asString)
+        get("/internal/api/plugin-security/start")
+        time += 1500
+        val changed = pluginSnapshot()["result"].asJsonObject["plugins"].asJsonArray.map { it.asJsonObject }
+        assertEquals("UNSUPPORTED", changed.single { it["key"].asString == "java" }["status"].asString)
+        assertEquals("UNRESOLVED", changed.single { it["key"].asString == "example.missing" }["status"].asString)
+        assertTrue(changed.single { it["key"].asString == "example.missing" }["error"].asString.isNotBlank())
+    }
+
+    @Test
     fun `BOM targets start untracked can be saved and accept legacy payloads`() {
         val handler = LocalFrontendApi(directory).handler
 

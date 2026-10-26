@@ -44,12 +44,28 @@ class GradleTargetResolutionService(
             individual = baseline.individual,
         )
 
+    fun resolvePlugins(
+        username: String,
+        state: TargetVersionsState,
+    ): TargetResolution =
+        execute(
+            username,
+            state,
+            GradlePluginResolutionBuildFile().create(
+                state.plugins.filter { (id, version) ->
+                    unsupportedPluginReason(id, version) == null
+                },
+            ),
+            mode = ResolutionDebugFiles.Mode.PLUGINS,
+        )
+
     @OptIn(ExperimentalPathApi::class)
     private fun execute(
         username: String,
         state: TargetVersionsState,
         buildFile: String,
         bom: Boolean = state.platformBoms.isNotEmpty(),
+        mode: ResolutionDebugFiles.Mode = if (bom) ResolutionDebugFiles.Mode.BOM else ResolutionDebugFiles.Mode.NORMAL,
     ): TargetResolution {
         val startedAt = Instant.now()
         val started = System.nanoTime()
@@ -63,8 +79,13 @@ class GradleTargetResolutionService(
         }
 
         val debugDir = debugFiles.start(username)
-        debugFiles.startInspection(username, bom)
-        val projectDir = Files.createTempDirectory("platforce-gradle-resolution-")
+        debugFiles.startInspection(username, mode)
+        val projectDir =
+            if (mode == ResolutionDebugFiles.Mode.PLUGINS) {
+                Files.createDirectory(debugDir.resolve("plugin-metadata-project"))
+            } else {
+                Files.createTempDirectory("platforce-gradle-resolution-")
+            }
         var failure: Exception? = null
         var status = "RUNNING"
 
@@ -96,7 +117,7 @@ class GradleTargetResolutionService(
                 )
             }
             Files.copy(projectDir.resolve("build.gradle"), debugDir.resolve("build.gradle"), StandardCopyOption.REPLACE_EXISTING)
-            debugFiles.publishInspection(username, debugDir, bom)
+            debugFiles.publishInspection(username, debugDir, mode)
             projectDir.resolve("gradle-unresolved-dependencies.txt").writeText(
                 "Gradle resolution task has not started. See gradle-output.txt and gradle-resolution-report.json if execution fails.\n",
             )
@@ -200,7 +221,7 @@ class GradleTargetResolutionService(
                         .create()
                         .toJson(report),
                 )
-                debugFiles.publishInspection(username, debugDir, bom)
+                debugFiles.publishInspection(username, debugDir, mode)
             } catch (e: Exception) {
                 log.error(e) { "Could not publish Gradle debug artifacts" }
                 if (failure != null) failure.addSuppressed(e) else throw e

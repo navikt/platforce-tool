@@ -2,6 +2,7 @@ package no.nav.platforce.tool.targets
 
 import com.google.gson.Gson
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
+import no.nav.platforce.tool.security.PluginSecurityScanner
 import no.nav.platforce.tool.security.TargetSecurityScanner
 import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
@@ -12,6 +13,7 @@ import org.http4k.routing.bind
 fun targetVersionsRoutes(
     resolutionScanner: GradleTargetResolutionScanner,
     securityScanner: TargetSecurityScanner,
+    pluginSecurityScanner: PluginSecurityScanner? = null,
 ) = listOf(
     "/internal/api/target-versions" bind Method.GET to { request ->
         val context = request.userContext()
@@ -28,6 +30,7 @@ fun targetVersionsRoutes(
 
         securityScanner.invalidate(context.username)
         resolutionScanner.invalidate(context.username)
+        pluginSecurityScanner?.invalidate(context.username)
 
         Response(Status.OK).body("updated")
     },

@@ -12,6 +12,7 @@ let lastLoadedData = [];
 let ignoredRepositories = [];
 
 let targetSecurityScan = null;
+let pluginSecurityScan = null;
 let targetScanGeneration = 0;
 let normalSecurityReady = false;
 let bomSecurityReady = false;

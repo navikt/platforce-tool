@@ -1,4 +1,7 @@
 function findTargetSecurity(type, key, version) {
+    if (type === "plugin") {
+        return pluginSecurityScan?.plugins?.find(target => target.key === key && target.targetVersion === version) ?? null;
+    }
     if (type === "platform_bom" && !bomSecurityReady) return null;
     if (type === "dependency" && !normalSecurityReady) return null;
     const results = type === "platform_bom"
@@ -12,6 +15,27 @@ function findTargetSecurity(type, key, version) {
         return { ...target, status: "UNUSED" };
     }
     return target;
+}
+
+function pluginSecurityDetailsHtml(security) {
+    return `<div class="finding-details target-security-detail">
+        <h4>${escapeHtml(security.key)} ${escapeHtml(security.targetVersion)}</h4>
+        <p>Published plugin metadata and transitive build-time dependencies only.
+            The plugin was not applied or executed. This is not a scan of the repository's actual build classpath.</p>
+        ${security.error ? `<p>${escapeHtml(security.error)}</p>` : ""}
+        ${security.status === "OK" ? "<p>No known vulnerabilities found in the resolved plugin dependency tree.</p>" : ""}
+        ${(security.vulnerableDependencies || []).map(item => `<div class="target-security-vulnerability">
+            <strong>${escapeHtml(item.dependency.group)}:${escapeHtml(item.dependency.name)}</strong>
+            ${escapeHtml(item.dependency.version)}
+            <ul>${(item.vulnerabilities || []).map(v => `<li>${escapeHtml(v.id)}:
+                ${escapeHtml(v.summary || "")}
+                ${v.fixedVersions?.length ? `(module fixes: ${v.fixedVersions.map(escapeHtml).join(", ")})` : ""}
+            </li>`).join("")}</ul>
+        </div>`).join("")}
+        ${security.status === "VULNERABLE" ? `<p>Consider upgrading the plugin and rescanning.
+            Module fix versions are not plugin version suggestions.
+            Application dependencies and BOMs do not override the plugin classpath.</p>` : ""}
+    </div>`;
 }
 
 function platformBomSecurityDetailsHtml(security) {
@@ -401,6 +425,12 @@ function securityStatusLabel(status) {
 
         case "UNUSED":
             return "UNUSED";
+
+        case "UNRESOLVED":
+            return "UNRESOLVED";
+
+        case "UNSUPPORTED":
+            return "UNSUPPORTED";
 
         default:
             return "?";

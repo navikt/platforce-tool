@@ -119,7 +119,8 @@ test("bootstrap preserves startup order, selected team, cached security and unca
         "/internal/api/ignored-repositories": { repositories: ["ignored/repo"] },
         "/internal/api/target-resolution/security": {
             status: "READY", normalReady: true, bomReady: true, result: security
-        }
+        },
+        "/internal/api/plugin-security": { status: "IDLE" }
     };
     const app = browser(async (url, options) => {
         assert.ok(Object.hasOwn(data, url), `Unexpected startup request ${url}`);
@@ -135,7 +136,7 @@ test("bootstrap preserves startup order, selected team, cached security and unca
     // Let the actual bootstrap initialization finish, without invoking init a second time.
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(calls.map(([url]) => url), Object.keys(data));
-    for (const [url, options] of calls.slice(1, -1)) {
+    for (const [url, options] of calls.slice(1).filter(([url]) => url !== "/internal/api/target-resolution/security")) {
         assert.equal(options.cache, "no-store", `Cache policy for ${url}`);
     }
     assert.deepEqual(renders, ["scanner", "ignored", "targets", "scanner"]);

@@ -450,6 +450,87 @@ test("platform BOM usage is separate from ordinary dependencies with the same co
     assert.deepEqual(Array.from(app.context.dependencyUsageRepositories("example:bom")), ["team/ordinary"]);
 });
 
+test("plugin scan uses a separate job and shows results only at matching saved versions", async () => {
+    const app = gui();
+    const plugin = { key: "example.plugin", targetVersion: "1.0", status: "OK" };
+    app.responses(url => {
+        assert.match(url, /^\/internal\/api\/plugin-security/);
+        return url.endsWith("/start")
+            ? { status: "RUNNING", targetFingerprint: "plugins" }
+            : { status: "READY", targetFingerprint: "plugins", result: { plugins: [plugin] } };
+    });
+    await app.context.scanPluginSecurity();
+    assert.deepEqual(app.calls, [
+        ["/internal/api/plugin-security/start", "GET"], ["/internal/api/plugin-security", "GET"]
+    ]);
+    assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "1.0").status, "OK");
+    assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "2.0"), null);
+    assert.equal(app.context.findTargetSecurity("dependency", "example.plugin", "1.0"), null);
+    assert.equal(app.value("normalSecurityReady"), false);
+    assert.equal(app.value("bomSecurityReady"), false);
+    assert.equal(app.element("scanPlugins").disabled, false);
+});
+
+test("plugin scan rejects stale jobs and reports errors explicitly", async () => {
+    const app = gui();
+    app.responses(url => url.endsWith("/start")
+        ? { status: "RUNNING", targetFingerprint: "old" }
+        : { status: "READY", targetFingerprint: "new", result: { plugins: [] } });
+    await app.context.scanPluginSecurity();
+    assert.equal(app.value("pluginSecurityScan"), null);
+    assert.match(app.element("pluginScanStatus").textContent, /FAILED: Target versions changed/);
+    app.responses(() => ({ status: "FAILED", error: "Gradle unavailable" }));
+    await app.context.scanPluginSecurity();
+    assert.match(app.element("pluginScanStatus").textContent, /FAILED: Gradle unavailable/);
+});
+
+test("saving during plugin scanning discards old results", async () => {
+    const app = gui();
+    app.responses(url => {
+        if (!url.endsWith("/start")) app.value("targetScanGeneration++");
+        return url.endsWith("/start")
+            ? { status: "RUNNING", targetFingerprint: "same" }
+            : { status: "READY", targetFingerprint: "same", result: { plugins: [] } };
+    });
+    await app.context.scanPluginSecurity();
+    assert.equal(app.value("pluginSecurityScan"), null);
+});
+
+test("cached plugin results remain independent from normal security and save invalidation", async () => {
+    const app = gui();
+    app.responses(() => ({
+        status: "READY", result: { plugins: [{ key: "example.plugin", targetVersion: "1.0", status: "UNRESOLVED", error: "Missing marker" }] }
+    }));
+    await app.context.loadCachedPluginSecurity();
+    assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "1.0").status, "UNRESOLVED");
+    await app.context.applyTargetSecurityResult({ status: "IDLE", normalReady: false, bomReady: false });
+    assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "1.0").status, "UNRESOLVED");
+    app.responses(url => url === "/internal/api/target-versions/update" ? {} : repositoryResponse(url));
+    await app.context.saveTargets();
+    assert.equal(app.value("pluginSecurityScan"), null);
+    assert.equal(app.element("pluginScanStatus").hidden, true);
+});
+
+test("plugin findings explain build-time scope and never suggest application override additions", () => {
+    const app = gui();
+    const html = app.context.pluginSecurityDetailsHtml({
+        key: "example.plugin", targetVersion: "1.0", status: "VULNERABLE",
+        vulnerableDependencies: [{
+            dependency: { group: "example", name: "unsafe", version: "1.0" },
+            suggestedVersion: { dependency: "example:unsafe", version: "2.0" },
+            vulnerabilities: [{ id: "TEST-PLUGIN", summary: "<unsafe>", fixedVersions: ["2.0"] }]
+        }]
+    });
+    assert.match(html, /not applied or executed/);
+    assert.match(html, /not plugin version suggestions/);
+    assert.match(html, /&lt;unsafe&gt;/);
+    assert.doesNotMatch(html, /applySecurityUpgrade|onclick/);
+    for (const status of ["UNRESOLVED", "UNSUPPORTED"]) {
+        assert.match(app.context.securityStatusHtml({ status }), new RegExp(status));
+        assert.match(app.context.pluginSecurityDetailsHtml({ key: "id", status, error: "Missing <marker>" }), /Missing &lt;marker&gt;/);
+    }
+});
+
 test("coverage-only BOM details do not claim managed catalog health", () => {
     const app = gui();
     const result = { key: "example:bom", targetVersion: "1.0", scope: "COVERAGE_ONLY", coverage: [] };

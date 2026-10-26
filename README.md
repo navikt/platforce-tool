@@ -79,10 +79,11 @@ declarations; inaccessible or unscanned repositories are not included.
 Platform BOM rows have the same crosshair before delete, searching declared
 platform BOM coordinates independently of ordinary dependencies.
 
-`/internal/files` retains separate per-user diagnostics for the latest dependency
-and BOM resolutions: `build.gradle` and `build-bom.gradle`. BOM output, unresolved
-findings, timings and resolution reports use the same `-bom` suffix before their
-extension. Starting a fresh run clears only that mode's previous diagnostics;
+`/internal/files` retains separate per-user diagnostics for the latest dependency,
+BOM and plugin resolutions: `build.gradle`, `build-bom.gradle` and
+`build-plugins.gradle`. Output, unresolved findings, timings and resolution
+reports use the matching `-bom` or `-plugins` suffix before their extension.
+Starting a fresh run clears only that mode's previous diagnostics;
 cached resolution reuse leaves the files unchanged. Publishing these files uses
 local copies only, without extra resolution or security scans.
 
@@ -116,6 +117,22 @@ There is no complete managed-module audit and no rerun of the baseline graphs.
 Unused managed versions are not checked. Coverage results say COVERS or
 NO COVERAGE, not that the entire BOM is safe. Saving targets invalidates both
 scan modes.
+
+**Scan plugins** is a separate, optional scan of saved plugin targets. It resolves
+each published marker (`plugin.id:plugin.id.gradle.plugin:version`) and its
+transitive Maven dependencies independently, then checks those versions with OSV.
+It does not apply the target plugins, load their classes, run repository build
+scripts, or resolve their JAR files for execution. This is metadata analysis,
+not a sandbox or a scan of the repository's actual Gradle build classpath.
+
+Plugin rows show **OK**, **VULNERABLE**, **UNRESOLVED**, or **UNSUPPORTED**.
+Missing markers, incomplete trees and unsupported declarations never count as OK.
+Build-time dependencies are kept separate from production dependencies and BOMs:
+application overrides cannot justify OK_OVERRIDDEN for a plugin. Module fix
+versions shown in details are not plugin version suggestions and do not create
+application dependency ADDs. Upgrade the plugin target and rescan instead.
+Plugin scans have their own per-user cache; saving targets invalidates it.
+They do not change the normal/BOM prerequisites for creating PRs.
 
 Separate dependency-plus-BOM graphs show which vulnerable transitive versions a
 normal `platform(...)` fixes. `enforcedPlatform(...)` coverage is not scanned;

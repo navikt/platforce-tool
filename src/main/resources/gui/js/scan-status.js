@@ -468,3 +468,77 @@ async function startOrWaitForSecurity(includeBoms = false) {
         `Unexpected security scan status: ${snapshot.status}`
     );
 }
+
+async function fetchPluginSecurity(start = false) {
+    const response = await fetch("/internal/api/plugin-security" + (start ? "/start" : ""), { cache: "no-store" });
+    const snapshot = await response.json();
+    if (!response.ok || snapshot.status === "FAILED") {
+        throw new Error(snapshot.error || `Plugin scan failed: HTTP ${response.status}`);
+    }
+    return snapshot;
+}
+
+async function loadCachedPluginSecurity() {
+    const generation = targetScanGeneration;
+    try {
+        const snapshot = await fetchPluginSecurity();
+        if (generation === targetScanGeneration) {
+            pluginSecurityScan = snapshot.status === "READY" ? snapshot.result : null;
+            if (snapshot.status === "RUNNING") {
+                const status = document.getElementById("pluginScanStatus");
+                status.hidden = false;
+                status.textContent = "Plugin scan is running. Click Scan plugins to follow its progress.";
+            }
+        }
+    } catch (error) {
+        console.error("Could not load plugin security", error);
+        if (generation !== targetScanGeneration) return;
+        const status = document.getElementById("pluginScanStatus");
+        status.hidden = false;
+        status.textContent = error.message;
+    }
+}
+
+async function scanPluginSecurity() {
+    const button = document.getElementById("scanPlugins");
+    if (button.disabled) return;
+    const generation = targetScanGeneration;
+    const status = document.getElementById("pluginScanStatus");
+    button.disabled = true;
+    button.textContent = "SCANNING...";
+    status.hidden = false;
+    status.textContent = "Resolving published plugin metadata and checking OSV. Plugins are not applied or executed.";
+    pluginSecurityScan = null;
+    captureTargetDrafts();
+    renderTargetTables();
+    try {
+        let snapshot = await fetchPluginSecurity(true);
+        const fingerprint = snapshot.targetFingerprint;
+        while (snapshot.status === "RUNNING") {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (generation !== targetScanGeneration) return;
+            snapshot = await fetchPluginSecurity();
+            if (snapshot.targetFingerprint !== fingerprint) {
+                throw new Error("Target versions changed during plugin scanning. Run Scan plugins again.");
+            }
+        }
+        if (generation !== targetScanGeneration) return;
+        if (snapshot.status !== "READY" || !snapshot.result) {
+            throw new Error(`Plugin scan did not complete: ${snapshot.status}`);
+        }
+        pluginSecurityScan = snapshot.result;
+        captureTargetDrafts();
+        renderTargetTables();
+        const incomplete = snapshot.result.plugins.filter(plugin =>
+            plugin.status === "UNRESOLVED" || plugin.status === "UNSUPPORTED").length;
+        status.textContent = incomplete
+            ? `Plugin scan finished with ${incomplete} unresolved or unsupported plugins. See their details.`
+            : "Plugin scan complete. Results cover published build-time dependencies, not production runtime dependencies.";
+    } catch (error) {
+        console.error("Plugin security scan failed", error);
+        if (generation === targetScanGeneration) status.textContent = `FAILED: ${error.message}`;
+    } finally {
+        button.disabled = false;
+        button.textContent = "Scan plugins";
+    }
+}

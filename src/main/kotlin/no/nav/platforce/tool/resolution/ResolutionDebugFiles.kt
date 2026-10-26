@@ -12,6 +12,8 @@ import kotlin.io.path.writeText
 class ResolutionDebugFiles(
     private val baseDir: Path = Path.of("/tmp/files"),
 ) {
+    enum class Mode { NORMAL, BOM, PLUGINS }
+
     private val artifactNames =
         listOf(
             "build.gradle",
@@ -27,10 +29,16 @@ class ResolutionDebugFiles(
     fun startInspection(
         username: String,
         bom: Boolean,
+    ) = startInspection(username, if (bom) Mode.BOM else Mode.NORMAL)
+
+    @Synchronized
+    fun startInspection(
+        username: String,
+        mode: Mode,
     ) {
         val directory = inspectionDirectory(username)
         Files.createDirectories(directory)
-        artifactNames.forEach { Files.deleteIfExists(directory.resolve(inspectionName(it, bom))) }
+        artifactNames.forEach { Files.deleteIfExists(directory.resolve(inspectionName(it, mode))) }
     }
 
     @Synchronized
@@ -38,6 +46,13 @@ class ResolutionDebugFiles(
         username: String,
         runDirectory: Path,
         bom: Boolean,
+    ) = publishInspection(username, runDirectory, if (bom) Mode.BOM else Mode.NORMAL)
+
+    @Synchronized
+    fun publishInspection(
+        username: String,
+        runDirectory: Path,
+        mode: Mode,
     ) {
         val directory = inspectionDirectory(username)
         Files.createDirectories(directory)
@@ -49,7 +64,7 @@ class ResolutionDebugFiles(
                     Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING)
                     Files.move(
                         temporary,
-                        directory.resolve(inspectionName(name, bom)),
+                        directory.resolve(inspectionName(name, mode)),
                         StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING,
                     )
@@ -62,11 +77,12 @@ class ResolutionDebugFiles(
 
     private fun inspectionName(
         name: String,
-        bom: Boolean,
+        mode: Mode,
     ): String {
-        if (!bom) return name
+        if (mode == Mode.NORMAL) return name
         val extension = name.lastIndexOf('.')
-        return name.substring(0, extension) + "-bom" + name.substring(extension)
+        val suffix = if (mode == Mode.BOM) "-bom" else "-plugins"
+        return name.substring(0, extension) + suffix + name.substring(extension)
     }
 
     fun start(username: String): Path {

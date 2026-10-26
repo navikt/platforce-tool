@@ -26,6 +26,7 @@ data class ResolvedDependency(
     val version: String,
     val requestedVersion: String?,
     val dependencies: List<ResolvedDependency>,
+    val resolutionError: String? = null,
 ) {
     val key: String
         get() = if (group != null) "$group:$name" else name

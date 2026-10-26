@@ -116,7 +116,8 @@ function renderTable(containerId, entries, type) {
             securityTarget
                 ? `
                 <div class="target-security-details hidden">
-                    ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
+                    ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget)
+                        : type === "plugin" ? pluginSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
                 </div>
             `
                 : ""
@@ -202,7 +203,8 @@ function renderTable(containerId, entries, type) {
             securityTarget
                 ? `
                 <div class="target-security-details hidden">
-                    ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
+                    ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget)
+                        : type === "plugin" ? pluginSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
                 </div>
             `
                 : ""
@@ -402,6 +404,8 @@ async function saveTargets() {
 
         targetScanGeneration++;
         targetSecurityScan = null;
+        pluginSecurityScan = null;
+        document.getElementById("pluginScanStatus").hidden = true;
         normalSecurityReady = false;
         bomSecurityReady = false;
         updateBomScanButton();

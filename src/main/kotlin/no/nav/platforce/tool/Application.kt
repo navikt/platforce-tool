@@ -26,8 +26,11 @@ import no.nav.platforce.tool.resolution.GradleTargetResolutionService
 import no.nav.platforce.tool.resolution.ResolutionDebugFiles
 import no.nav.platforce.tool.resolution.targetResolutionRoutes
 import no.nav.platforce.tool.security.OsvVulnerabilityService
+import no.nav.platforce.tool.security.PluginSecurityScanner
+import no.nav.platforce.tool.security.PluginSecurityService
 import no.nav.platforce.tool.security.TargetSecurityScanner
 import no.nav.platforce.tool.security.TargetSecurityService
+import no.nav.platforce.tool.security.pluginSecurityRoutes
 import no.nav.platforce.tool.security.targetSecurityRoutes
 import no.nav.platforce.tool.targets.targetVersionsRoutes
 import no.nav.platforce.tool.user.selectedTeamRoutes
@@ -89,6 +92,8 @@ class Application {
     private val targetSecurityService = TargetSecurityService(osvVulnerabilityService)
 
     private val targetSecurityScanner = TargetSecurityScanner(targetSecurityService, gradleTargetResolutionScanner)
+    private val pluginSecurityScanner =
+        PluginSecurityScanner(gradleTargetResolutionService::resolvePlugins, PluginSecurityService(osvVulnerabilityService))
 
     private val dependencyScanner = DependencyScanner(githubClient)
 
@@ -107,10 +112,11 @@ class Application {
             *databaseAdminRoutes().toTypedArray(),
             *targetResolutionRoutes(gradleTargetResolutionScanner).toTypedArray(),
             *targetSecurityRoutes(targetSecurityScanner).toTypedArray(),
+            *pluginSecurityRoutes(pluginSecurityScanner).toTypedArray(),
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
             *selectedTeamRoutes().toTypedArray(),
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService, dependencyScanViewService).toTypedArray(),
-            *targetVersionsRoutes(gradleTargetResolutionScanner, targetSecurityScanner).toTypedArray(),
+            *targetVersionsRoutes(gradleTargetResolutionScanner, targetSecurityScanner, pluginSecurityScanner).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
             *repositoryViewRoutes(naisClient, githubClient, dependencyScanViewService, repositoryViewService).toTypedArray(),

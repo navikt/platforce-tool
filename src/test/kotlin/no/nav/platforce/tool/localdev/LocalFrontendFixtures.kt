@@ -3,9 +3,13 @@ package no.nav.platforce.tool.localdev
 import no.nav.platforce.tool.gradle.GradleDependencyParser
 import no.nav.platforce.tool.repositories.RepositoryDependencyInventory
 import no.nav.platforce.tool.resolution.ResolvedDependency
+import no.nav.platforce.tool.resolution.unsupportedPluginReason
 import no.nav.platforce.tool.security.OverrideReason
 import no.nav.platforce.tool.security.PlatformBomCoverage
 import no.nav.platforce.tool.security.PlatformBomSecurityResult
+import no.nav.platforce.tool.security.PluginSecurityResult
+import no.nav.platforce.tool.security.PluginSecurityScan
+import no.nav.platforce.tool.security.PluginSecurityStatus
 import no.nav.platforce.tool.security.TargetSecurityResult
 import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.security.TargetSecurityStatus
@@ -83,6 +87,42 @@ object LocalFrontendFixtures {
         key: String,
         version: String,
     ) = ResolvedDependency(key.substringBefore(":"), key.substringAfter(":"), version, version, emptyList())
+
+    fun pluginSecurity(targets: TargetVersionsState): PluginSecurityScan =
+        PluginSecurityScan(
+            targets.plugins.toSortedMap().map { (id, version) ->
+                val unsupported = unsupportedPluginReason(id, version)
+                val advisory =
+                    Vulnerability(
+                        "DEMO-PLUGIN-001",
+                        "Synthetic plugin implementation vulnerability for local development; not a real advisory.",
+                        emptyList(),
+                        emptyList(),
+                        listOf("2.0.0"),
+                    )
+                when {
+                    unsupported != null ->
+                        PluginSecurityResult(id, version, PluginSecurityStatus.UNSUPPORTED, error = unsupported)
+                    id == "org.jetbrains.kotlin.jvm" ->
+                        PluginSecurityResult(id, version, PluginSecurityStatus.OK)
+                    id == "org.springframework.boot" ->
+                        PluginSecurityResult(
+                            id,
+                            version,
+                            PluginSecurityStatus.VULNERABLE,
+                            listOf(advisory),
+                            listOf(VulnerableDependency(resolved("example:plugin-runtime", "1.0.0"), listOf(advisory))),
+                        )
+                    else ->
+                        PluginSecurityResult(
+                            id,
+                            version,
+                            PluginSecurityStatus.UNRESOLVED,
+                            error = "No synthetic published plugin marker fixture for $id:$version",
+                        )
+                }
+            },
+        )
 
     fun security(targets: TargetVersionsState): TargetSecurityScan {
         val vulnerability =
