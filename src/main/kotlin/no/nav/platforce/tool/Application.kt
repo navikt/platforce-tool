@@ -32,6 +32,8 @@ import no.nav.platforce.tool.security.TargetSecurityScanner
 import no.nav.platforce.tool.security.TargetSecurityService
 import no.nav.platforce.tool.security.pluginSecurityRoutes
 import no.nav.platforce.tool.security.targetSecurityRoutes
+import no.nav.platforce.tool.targets.AvailableVersionsService
+import no.nav.platforce.tool.targets.availableVersionsRoutes
 import no.nav.platforce.tool.targets.targetVersionsRoutes
 import no.nav.platforce.tool.user.selectedTeamRoutes
 import no.nav.platforce.tool.user.withUserCacheControl
@@ -113,6 +115,7 @@ class Application {
             *targetResolutionRoutes(gradleTargetResolutionScanner).toTypedArray(),
             *targetSecurityRoutes(targetSecurityScanner).toTypedArray(),
             *pluginSecurityRoutes(pluginSecurityScanner).toTypedArray(),
+            *availableVersionsRoutes(AvailableVersionsService(httpClient)).toTypedArray(),
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
             *selectedTeamRoutes().toTypedArray(),
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService, dependencyScanViewService).toTypedArray(),

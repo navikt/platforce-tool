@@ -50,6 +50,7 @@ test("HTML loads every frontend feature file once, with shared definitions first
         "js/api.js",
         "js/scanner.js",
         "js/targets.js",
+        "js/target-upgrades.js",
         "js/target-security.js",
         "js/scan-status.js",
         "js/ignored.js",

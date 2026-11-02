@@ -810,15 +810,73 @@ button:hover {
 }
 
 #depsTable .target-row {
-    grid-template-columns: 300px 110px 90px 28px 28px 28px;
+    grid-template-columns: 300px 110px 90px 28px 28px 28px 28px;
 }
 
 #depsTable .remove-btn {
-    grid-column: 6;
+    grid-column: 7;
 }
 
 #depsTable .dependency-usage-btn {
+    grid-column: 6;
+}
+
+#depsTable .target-upgrade-btn {
     grid-column: 5;
+}
+
+#platformBomsTable .target-row {
+    grid-template-columns: 300px 110px 90px 28px 28px 28px;
+}
+
+#platformBomsTable .target-upgrade-btn {
+    grid-column: 4;
+}
+
+#platformBomsTable .dependency-usage-btn {
+    grid-column: 5;
+}
+
+#platformBomsTable .remove-btn {
+    grid-column: 6;
+}
+
+.target-upgrade-details {
+    grid-column: 1 / -1;
+    padding: 8px;
+}
+
+.target-upgrade-details p {
+    margin: 8px 0;
+}
+
+.target-upgrade-details input[type="checkbox"] {
+    width: auto;
+}
+
+.target-upgrade-list {
+    max-height: 240px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.target-upgrade-list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 3px 0;
+}
+
+.target-upgrade-version {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    padding: 4px;
+    text-decoration: underline;
+    cursor: pointer;
 }
 
 .dependency-usage-btn:disabled {
@@ -961,7 +1019,7 @@ button:hover {
 .target-grid {
     display: grid;
 
-    grid-template-columns: minmax(625px, 625px) minmax(650px, 700px) auto;
+    grid-template-columns: minmax(625px, 625px) minmax(700px, 740px) auto;
 
 
     gap: 14px;

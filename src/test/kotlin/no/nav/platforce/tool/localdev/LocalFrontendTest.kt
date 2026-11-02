@@ -34,10 +34,13 @@ class LocalFrontendTest {
         val running = pluginSnapshot()
         assertEquals("RUNNING", running["status"].asString)
         assertFalse(running.has("result"))
+        assertEquals("RESOLUTION", running["phase"].asString)
         assertEquals(
             "READY",
             JsonParser.parseString(get("/internal/api/target-resolution/security").bodyString()).asJsonObject["status"].asString,
         )
+        time += 1500
+        assertEquals("OSV", pluginSnapshot()["phase"].asString)
         time += 1500
         val ready = pluginSnapshot()
         assertEquals("READY", ready["status"].asString)
@@ -53,7 +56,7 @@ class LocalFrontendTest {
         handler(Request(Method.POST, "/internal/api/target-versions/update").body(targets.toString()))
         assertEquals("IDLE", pluginSnapshot()["status"].asString)
         get("/internal/api/plugin-security/start")
-        time += 1500
+        time += 3000
         val changed = pluginSnapshot()["result"].asJsonObject["plugins"].asJsonArray.map { it.asJsonObject }
         assertEquals("UNSUPPORTED", changed.single { it["key"].asString == "java" }["status"].asString)
         assertEquals("UNRESOLVED", changed.single { it["key"].asString == "example.missing" }["status"].asString)
@@ -117,7 +120,7 @@ class LocalFrontendTest {
             assertEquals(200, page.statusCode())
             assertTrue(page.body().contains("id=\"container\""))
             val scripts = Regex("""<script\s+src="([^"]+)"""").findAll(page.body()).map { it.groupValues[1] }.toList()
-            assertEquals(9, scripts.size)
+            assertEquals(10, scripts.size)
             scripts.forEach { asset ->
                 assertEquals(200, get(asset).statusCode(), asset)
             }

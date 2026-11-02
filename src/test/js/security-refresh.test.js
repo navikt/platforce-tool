@@ -453,16 +453,26 @@ test("platform BOM usage is separate from ordinary dependencies with the same co
 test("plugin scan uses a separate job and shows results only at matching saved versions", async () => {
     const app = gui();
     const plugin = { key: "example.plugin", targetVersion: "1.0", status: "OK" };
+    let polls = 0;
     app.responses(url => {
         assert.match(url, /^\/internal\/api\/plugin-security/);
-        return url.endsWith("/start")
-            ? { status: "RUNNING", targetFingerprint: "plugins" }
+        if (url.endsWith("/start")) return { status: "RUNNING", targetFingerprint: "plugins", phase: "RESOLUTION" };
+        // The backend reports when Gradle resolution is finished and OSV lookup has started.
+        return ++polls === 1
+            ? { status: "RUNNING", targetFingerprint: "plugins", phase: "OSV" }
             : { status: "READY", targetFingerprint: "plugins", result: { plugins: [plugin] } };
     });
     await app.context.scanPluginSecurity();
     assert.deepEqual(app.calls, [
-        ["/internal/api/plugin-security/start", "GET"], ["/internal/api/plugin-security", "GET"]
+        ["/internal/api/plugin-security/start", "GET"],
+        ["/internal/api/plugin-security", "GET"],
+        ["/internal/api/plugin-security", "GET"]
     ]);
+    // The plugin box walks through the same steps as the dependency SCAN box.
+    const pluginSteps = app.steps.filter(([id]) => id.startsWith("pluginStep")).map(step => step.join(" "));
+    assert.ok(pluginSteps.indexOf("pluginStepResolution DONE") < pluginSteps.indexOf("pluginStepOsv RUNNING"));
+    assert.equal(pluginSteps.at(-1), "pluginStepDone DONE");
+    assert.equal(app.element("pluginScanMessage").textContent, "DONE");
     assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "1.0").status, "OK");
     assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "2.0"), null);
     assert.equal(app.context.findTargetSecurity("dependency", "example.plugin", "1.0"), null);
@@ -478,10 +488,10 @@ test("plugin scan rejects stale jobs and reports errors explicitly", async () =>
         : { status: "READY", targetFingerprint: "new", result: { plugins: [] } });
     await app.context.scanPluginSecurity();
     assert.equal(app.value("pluginSecurityScan"), null);
-    assert.match(app.element("pluginScanStatus").textContent, /FAILED: Target versions changed/);
+    assert.match(app.element("pluginScanMessage").textContent, /FAILED: Target versions changed/);
     app.responses(() => ({ status: "FAILED", error: "Gradle unavailable" }));
     await app.context.scanPluginSecurity();
-    assert.match(app.element("pluginScanStatus").textContent, /FAILED: Gradle unavailable/);
+    assert.match(app.element("pluginScanMessage").textContent, /FAILED: Gradle unavailable/);
 });
 
 test("saving during plugin scanning discards old results", async () => {

@@ -5,6 +5,7 @@ import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.resolution.unsupportedPluginReason
 import no.nav.platforce.tool.scanning.ScanJobSnapshot
+import no.nav.platforce.tool.scanning.ScanJobStatus
 import no.nav.platforce.tool.scanning.UserScanJobs
 import no.nav.platforce.tool.scanning.scanExecutor
 import no.nav.platforce.tool.targets.TargetVersionsState
@@ -13,6 +14,7 @@ import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.routing.bind
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 
 enum class PluginSecurityStatus {
@@ -36,11 +38,17 @@ data class PluginSecurityScan(
     val plugins: List<PluginSecurityResult>,
 )
 
+enum class PluginScanPhase {
+    RESOLUTION,
+    OSV,
+}
+
 data class PluginSecuritySnapshot(
     val status: SecurityScanStatus,
     val targetFingerprint: String,
     val result: PluginSecurityScan? = null,
     val error: String? = null,
+    val phase: PluginScanPhase? = null,
 )
 
 class PluginSecurityService(
@@ -119,28 +127,41 @@ class PluginSecurityScanner(
     service: PluginSecurityService,
     executor: ExecutorService = scanExecutor("plugin-security"),
 ) {
+    private val phases = ConcurrentHashMap<String, PluginScanPhase>()
     private val jobs =
         UserScanJobs(executor) { username: String, state: TargetVersionsState ->
-            val supported = state.plugins.any { (id, version) -> unsupportedPluginReason(id, version) == null }
-            val resolution =
-                if (supported) resolve(username, state) else TargetResolution(state.gradleVersion, emptyList(), emptyMap())
-            service.scan(resolution, state)
+            try {
+                phases[username] = PluginScanPhase.RESOLUTION
+                val supported = state.plugins.any { (id, version) -> unsupportedPluginReason(id, version) == null }
+                val resolution =
+                    if (supported) resolve(username, state) else TargetResolution(state.gradleVersion, emptyList(), emptyMap())
+                phases[username] = PluginScanPhase.OSV
+                service.scan(resolution, state)
+            } finally {
+                phases.remove(username)
+            }
         }
 
     fun start(
         username: String,
         targetState: TargetVersionsState,
-    ): PluginSecuritySnapshot = jobs.start(username, targetState, refreshReady = true).toPluginSnapshot()
+    ): PluginSecuritySnapshot = jobs.start(username, targetState, refreshReady = true).toPluginSnapshot(username)
 
     fun get(
         username: String,
         targetState: TargetVersionsState,
-    ): PluginSecuritySnapshot = jobs.get(username, targetState).toPluginSnapshot()
+    ): PluginSecuritySnapshot = jobs.get(username, targetState).toPluginSnapshot(username)
 
     fun invalidate(username: String) = jobs.invalidate(username)
 
-    private fun ScanJobSnapshot<PluginSecurityScan>.toPluginSnapshot() =
-        PluginSecuritySnapshot(SecurityScanStatus.valueOf(status.name), targetFingerprint, result, error)
+    private fun ScanJobSnapshot<PluginSecurityScan>.toPluginSnapshot(username: String) =
+        PluginSecuritySnapshot(
+            SecurityScanStatus.valueOf(status.name),
+            targetFingerprint,
+            result,
+            error,
+            phase = if (status == ScanJobStatus.RUNNING) phases[username] ?: PluginScanPhase.RESOLUTION else null,
+        )
 }
 
 fun pluginSecurityRoutes(scanner: PluginSecurityScanner) =

@@ -6,6 +6,7 @@ import no.nav.platforce.tool.resolution.GradleTargetResolutionService
 import no.nav.platforce.tool.resolution.ResolutionDebugFiles
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.resolution.TargetResolution
+import no.nav.platforce.tool.security.PluginScanPhase
 import no.nav.platforce.tool.security.PluginSecurityScanner
 import no.nav.platforce.tool.security.PluginSecurityService
 import no.nav.platforce.tool.security.PluginSecurityStatus
@@ -272,6 +273,45 @@ class PluginSecurityFlowTest {
         executor.runNext()
         assertEquals("1.0", requests.last().second.plugins["example.trap"])
         assertEquals(SecurityScanStatus.IDLE, scanner.get("alice", state).status)
+    }
+
+    @Test
+    fun `running plugin jobs report whether Gradle resolution or the OSV lookup is in progress`() {
+        val executor = QueuedExecutor()
+        val observed = mutableListOf<PluginScanPhase?>()
+        lateinit var scanner: PluginSecurityScanner
+        // Each stage records the phase that a polling GUI would see at that moment.
+        val osv =
+            object : VulnerabilityService {
+                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
+                    observed += scanner.get("alice", state).phase
+                    return vulnerabilityService.find(dependencies)
+                }
+            }
+        scanner =
+            PluginSecurityScanner(
+                { username, targets ->
+                    observed += scanner.get(username, targets).phase
+                    TargetResolution(
+                        "8.14.4",
+                        emptyList(),
+                        mapOf(
+                            "example.trap" to listOf(marker("example.trap", node("trap"))),
+                            "example.safe" to listOf(marker("example.safe", node("safe"))),
+                        ),
+                    )
+                },
+                PluginSecurityService(osv),
+                executor,
+            )
+
+        assertEquals(PluginScanPhase.RESOLUTION, scanner.start("alice", state).phase, "A queued job starts with resolution")
+        executor.runNext()
+
+        assertEquals(PluginScanPhase.RESOLUTION, observed.first())
+        assertTrue(observed.drop(1).isNotEmpty() && observed.drop(1).all { it == PluginScanPhase.OSV })
+        assertEquals(SecurityScanStatus.READY, scanner.get("alice", state).status)
+        assertNull(scanner.get("alice", state).phase, "Finished jobs have no running phase")
     }
 
     @Test

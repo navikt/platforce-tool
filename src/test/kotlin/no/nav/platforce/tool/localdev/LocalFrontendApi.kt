@@ -9,14 +9,18 @@ import no.nav.platforce.tool.repositories.RepositoryViewService
 import no.nav.platforce.tool.resolution.ResolutionStatus
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.resolution.TargetResolutionSnapshot
+import no.nav.platforce.tool.security.PluginScanPhase
 import no.nav.platforce.tool.security.PluginSecuritySnapshot
 import no.nav.platforce.tool.security.SecurityScanSnapshot
 import no.nav.platforce.tool.security.SecurityScanStatus
 import no.nav.platforce.tool.security.TargetSecurityScan
+import no.nav.platforce.tool.targets.AvailableVersion
+import no.nav.platforce.tool.targets.AvailableVersions
 import no.nav.platforce.tool.targets.TargetVersionsState
 import no.nav.platforce.tool.targets.fingerprint
 import no.nav.platforce.tool.targets.snapshot
 import no.nav.platforce.tool.workflows.RecordingGithubClient
+import org.apache.maven.artifact.versioning.ComparableVersion
 import org.http4k.core.HttpHandler
 import org.http4k.core.Method
 import org.http4k.core.Request
@@ -60,6 +64,12 @@ class LocalFrontendApi(
             status,
             fingerprint(targets),
             if (status == SecurityScanStatus.READY) LocalFrontendFixtures.pluginSecurity(targets) else null,
+            phase =
+                if (status == SecurityScanStatus.RUNNING) {
+                    if (checkNotNull(pluginSecurityReadyAt) - now() > 1200) PluginScanPhase.RESOLUTION else PluginScanPhase.OSV
+                } else {
+                    null
+                },
         )
     }
 
@@ -188,6 +198,22 @@ class LocalFrontendApi(
                     )
             },
             "/internal/api/target-versions" bind Method.GET to { json(targets) },
+            "/internal/api/target-versions/available" bind Method.GET to { request ->
+                val key = request.query("key").orEmpty()
+                val current = request.query("currentVersion").orEmpty()
+                val major = current.substringBefore('.').toIntOrNull() ?: 1
+                json(
+                    AvailableVersions(
+                        key,
+                        current,
+                        listOf(
+                            AvailableVersion("${major + 1}.1.0-RC1", prerelease = true, majorUpgrade = true),
+                            AvailableVersion("${major + 1}.0.0", prerelease = false, majorUpgrade = true),
+                            AvailableVersion("$major.99.0", prerelease = false, majorUpgrade = false),
+                        ).filter { ComparableVersion(it.version) > ComparableVersion(current) },
+                    ),
+                )
+            },
             "/internal/api/target-versions/update" bind Method.POST to { request ->
                 val parsed = body(request)
                 require(parsed["plugins"]?.isJsonObject == true && parsed["dependencies"]?.isJsonObject == true) {
@@ -214,7 +240,7 @@ class LocalFrontendApi(
                 Response(Status.OK).body("updated")
             },
             "/internal/api/plugin-security/start" bind Method.GET to {
-                if (pluginSecurity().status != SecurityScanStatus.RUNNING) pluginSecurityReadyAt = now() + 1200
+                if (pluginSecurity().status != SecurityScanStatus.RUNNING) pluginSecurityReadyAt = now() + 2400
                 json(pluginSecurity(), Status.ACCEPTED)
             },
             "/internal/api/plugin-security" bind Method.GET to {

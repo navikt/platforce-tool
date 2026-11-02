@@ -106,7 +106,7 @@ function renderTable(containerId, entries, type) {
                 `
                 : ""
         }
-            ${type === "dependency" || type === "platform_bom" ? dependencyUsageButtonHtml(type) : ""}
+            ${type === "dependency" || type === "platform_bom" ? targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type) : ""}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -123,7 +123,10 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
-        if (type === "dependency" || type === "platform_bom") bindDependencyUsage(row, type);
+        if (type === "dependency" || type === "platform_bom") {
+            bindDependencyUsage(row, type);
+            bindTargetUpgrades(row, type);
+        }
         if (type === "dependency") {
             row.querySelector(".transient-btn").onclick = () => {
                 const transient =
@@ -193,7 +196,7 @@ function renderTable(containerId, entries, type) {
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
             ${securityStatusHtml(securityTarget)}
-            ${type === "dependency" || type === "platform_bom" ? dependencyUsageButtonHtml(type) : ""}
+            ${type === "dependency" || type === "platform_bom" ? targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type) : ""}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -210,7 +213,10 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
-        if (type === "dependency" || type === "platform_bom") bindDependencyUsage(newRow, type);
+        if (type === "dependency" || type === "platform_bom") {
+            bindDependencyUsage(newRow, type);
+            bindTargetUpgrades(newRow, type);
+        }
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
             newRow.querySelector(".target-status-pill");

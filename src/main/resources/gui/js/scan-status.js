@@ -478,6 +478,44 @@ async function fetchPluginSecurity(start = false) {
     return snapshot;
 }
 
+function showPluginScanDetails(message = "") {
+    const container = document.getElementById("pluginScanStatus");
+    container.hidden = false;
+    container.innerHTML = `
+        <div id="pluginScanSteps">
+            <div id="pluginStepResolution" class="target-scan-step">
+                <span class="step-status">WAITING</span>
+                <span>Resolve published plugin metadata (not applied or executed)</span>
+            </div>
+            <div id="pluginStepOsv" class="target-scan-step">
+                <span class="step-status">WAITING</span>
+                <span>Query OSV for vulnerabilities</span>
+            </div>
+            <div id="pluginStepDone" class="target-scan-step">
+                <span class="step-status">WAITING</span>
+                <span>Update security status</span>
+            </div>
+        </div>
+        <div id="pluginScanMessage" style="margin-top:8px"></div>
+    `;
+    showPluginScanMessage(message);
+}
+
+function showPluginScanMessage(message) {
+    const element = document.getElementById("pluginScanMessage");
+    element.textContent = message;
+    element.hidden = !message;
+}
+
+function updatePluginScanSteps(phase) {
+    if (phase === "OSV") {
+        updateScanStep("pluginStepResolution", "DONE");
+        updateScanStep("pluginStepOsv", "RUNNING");
+    } else {
+        updateScanStep("pluginStepResolution", "RUNNING");
+    }
+}
+
 async function loadCachedPluginSecurity() {
     const generation = targetScanGeneration;
     try {
@@ -485,9 +523,8 @@ async function loadCachedPluginSecurity() {
         if (generation === targetScanGeneration) {
             pluginSecurityScan = snapshot.status === "READY" ? snapshot.result : null;
             if (snapshot.status === "RUNNING") {
-                const status = document.getElementById("pluginScanStatus");
-                status.hidden = false;
-                status.textContent = "Plugin scan is running. Click Scan plugins to follow its progress.";
+                showPluginScanDetails("Plugin scan is running. Click Scan plugins to follow its progress.");
+                updatePluginScanSteps(snapshot.phase);
             }
         }
     } catch (error) {
@@ -503,11 +540,10 @@ async function scanPluginSecurity() {
     const button = document.getElementById("scanPlugins");
     if (button.disabled) return;
     const generation = targetScanGeneration;
-    const status = document.getElementById("pluginScanStatus");
     button.disabled = true;
     button.textContent = "SCANNING...";
-    status.hidden = false;
-    status.textContent = "Resolving published plugin metadata and checking OSV. Plugins are not applied or executed.";
+    showPluginScanDetails();
+    updateScanStep("pluginStepResolution", "RUNNING");
     pluginSecurityScan = null;
     captureTargetDrafts();
     renderTargetTables();
@@ -515,6 +551,7 @@ async function scanPluginSecurity() {
         let snapshot = await fetchPluginSecurity(true);
         const fingerprint = snapshot.targetFingerprint;
         while (snapshot.status === "RUNNING") {
+            updatePluginScanSteps(snapshot.phase);
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (generation !== targetScanGeneration) return;
             snapshot = await fetchPluginSecurity();
@@ -526,17 +563,25 @@ async function scanPluginSecurity() {
         if (snapshot.status !== "READY" || !snapshot.result) {
             throw new Error(`Plugin scan did not complete: ${snapshot.status}`);
         }
+        updateScanStep("pluginStepResolution", "DONE");
+        updateScanStep("pluginStepOsv", "DONE");
         pluginSecurityScan = snapshot.result;
         captureTargetDrafts();
         renderTargetTables();
+        updateScanStep("pluginStepDone", "DONE");
         const incomplete = snapshot.result.plugins.filter(plugin =>
             plugin.status === "UNRESOLVED" || plugin.status === "UNSUPPORTED").length;
-        status.textContent = incomplete
-            ? `Plugin scan finished with ${incomplete} unresolved or unsupported plugins. See their details.`
-            : "Plugin scan complete. Results cover published build-time dependencies, not production runtime dependencies.";
+        showPluginScanMessage(incomplete
+            ? `DONE with ${incomplete} unresolved or unsupported plugins. See their details.`
+            : "DONE");
     } catch (error) {
         console.error("Plugin security scan failed", error);
-        if (generation === targetScanGeneration) status.textContent = `FAILED: ${error.message}`;
+        if (generation === targetScanGeneration) {
+            updateScanStep("pluginStepResolution", "FAILED");
+            updateScanStep("pluginStepOsv", "FAILED");
+            updateScanStep("pluginStepDone", "FAILED");
+            showPluginScanMessage(`FAILED: ${error.message}`);
+        }
     } finally {
         button.disabled = false;
         button.textContent = "Scan plugins";
