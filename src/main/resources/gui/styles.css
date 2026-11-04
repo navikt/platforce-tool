@@ -129,9 +129,9 @@ body {
 .target-section.dependencies > .target-section-header {
     display: grid;
     grid-template-columns: var(--dependency-target-columns);
-    align-items: center;
+    align-items: end;
     gap: 8px;
-    padding: 1px 5px;
+    padding: 1px 5px 13px;
 }
 
 .target-section.dependencies {
@@ -140,18 +140,23 @@ body {
 
 .target-section.dependencies > .target-section-header .section-pill {
     justify-self: start;
+    margin-bottom: 0;
 }
 
 .target-section.dependencies > .target-section-header #scanTargets {
-    justify-self: start;
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: center;
 }
 
 .target-section.dependencies > .target-section-header #targetScanStatus {
-    grid-column: 3 / 5;
+    grid-column: 1 / -1;
+    grid-row: 2;
 }
 
 #upgradeAllDependencies {
     grid-column: 5;
+    grid-row: 1;
 }
 
 #upgradeAllDependencies .spinner {
