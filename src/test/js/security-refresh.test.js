@@ -450,6 +450,21 @@ test("platform BOM usage is separate from ordinary dependencies with the same co
     assert.deepEqual(Array.from(app.context.dependencyUsageRepositories("example:bom")), ["team/ordinary"]);
 });
 
+test("plugin usage searches declared plugin IDs independently of dependency and BOM coordinates", () => {
+    const app = gui();
+    assert.equal(app.context.dependencyUsageAvailable("plugin"), false);
+    app.value(`lastLoadedData = { scans: [
+        { repository: "team/old-plugin", declaredPluginKeys: ["example.plugin"] },
+        { repository: "team/new-plugin", declaredPluginKeys: ["example.plugin"] },
+        { repository: "team/other", declaredPluginKeys: [], declaredDependencyKeys: ["example.plugin"] }
+    ] }`);
+    assert.equal(app.context.dependencyUsageAvailable("plugin"), true);
+    assert.deepEqual(Array.from(app.context.dependencyUsageRepositories("example.plugin", "plugin")), [
+        "team/new-plugin", "team/old-plugin"
+    ]);
+    assert.match(app.context.dependencyUsageButtonHtml("plugin"), /using this plugin/);
+});
+
 test("plugin scan uses a separate job and shows results only at matching saved versions", async () => {
     const app = gui();
     const plugin = { key: "example.plugin", targetVersion: "1.0", status: "OK" };

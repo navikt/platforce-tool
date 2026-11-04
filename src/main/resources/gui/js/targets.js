@@ -106,7 +106,7 @@ function renderTable(containerId, entries, type) {
                 `
                 : ""
         }
-            ${type === "dependency" || type === "platform_bom" ? targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type) : ""}
+            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -123,10 +123,8 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
-        if (type === "dependency" || type === "platform_bom") {
-            bindDependencyUsage(row, type);
-            bindTargetUpgrades(row, type);
-        }
+        bindDependencyUsage(row, type);
+        bindTargetUpgrades(row, type);
         if (type === "dependency") {
             row.querySelector(".transient-btn").onclick = () => {
                 const transient =
@@ -196,7 +194,7 @@ function renderTable(containerId, entries, type) {
             <input class="key" value="${k}" />
             <input class="version" value="${v}" />
             ${securityStatusHtml(securityTarget)}
-            ${type === "dependency" || type === "platform_bom" ? targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type) : ""}
+            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -213,10 +211,8 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
-        if (type === "dependency" || type === "platform_bom") {
-            bindDependencyUsage(newRow, type);
-            bindTargetUpgrades(newRow, type);
-        }
+        bindDependencyUsage(newRow, type);
+        bindTargetUpgrades(newRow, type);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
             newRow.querySelector(".target-status-pill");
@@ -232,14 +228,18 @@ function renderTable(containerId, entries, type) {
     container.appendChild(addRow);
 }
 
+function declaredTargetKeysField(type) {
+    return type === "plugin" ? "declaredPluginKeys" : type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
+}
+
 function dependencyUsageAvailable(type = "dependency") {
     const scans = lastLoadedData?.scans;
-    const field = type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
+    const field = declaredTargetKeysField(type);
     return !!scans?.length && scans.every(scan => Array.isArray(scan[field]));
 }
 
 function dependencyUsageRepositories(key, type = "dependency") {
-    const field = type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
+    const field = declaredTargetKeysField(type);
     return [...new Set((lastLoadedData?.scans || [])
         .filter(scan => scan[field]?.includes(key))
         .map(scan => scan.repository))]
@@ -248,7 +248,7 @@ function dependencyUsageRepositories(key, type = "dependency") {
 
 function dependencyUsageButtonHtml(type = "dependency") {
     const available = dependencyUsageAvailable(type);
-    const label = type === "platform_bom" ? "Show repositories using this platform BOM" : "Show repositories using this dependency";
+    const label = type === "plugin" ? "Show repositories using this plugin" : type === "platform_bom" ? "Show repositories using this platform BOM" : "Show repositories using this dependency";
     return `<button type="button" class="icon-btn dependency-usage-btn" data-usage-type="${type}" aria-label="${label}"
         aria-expanded="false" title="${available ? label : "Run Dependency Scanner first"}"
         ${available ? "" : "disabled"}>

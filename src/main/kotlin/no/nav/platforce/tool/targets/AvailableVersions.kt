@@ -58,15 +58,18 @@ class AvailableVersionsService(
         username: String,
         key: String,
         currentVersion: String,
+        kind: String = "dependency",
     ): AvailableVersions {
-        require(key.length <= 300 && coordinatePattern.matches(key)) { "Use a Maven coordinate in group:artifact format" }
+        require(kind in setOf("dependency", "platform_bom", "plugin")) { "Unsupported target kind" }
+        val coordinate = if (kind == "plugin") "$key:$key.gradle.plugin" else key
+        require(key.length <= 300 && coordinatePattern.matches(coordinate)) { "Use a valid Maven coordinate or plugin ID" }
         require(versionPattern.matches(currentVersion) && !currentVersion.endsWith('+') && !currentVersion.startsWith("latest.")) {
             "Use a concrete current version"
         }
-        val cacheKey = CacheKey(username, key)
+        val cacheKey = CacheKey(username, "$kind:$coordinate")
         val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now() < it.expiresAt } }
         val versions =
-            cached?.versions ?: loadVersions(key).also { loaded ->
+            cached?.versions ?: loadVersions(coordinate, kind == "plugin").also { loaded ->
                 synchronized(cache) {
                     cache.entries.removeIf { now() >= it.value.expiresAt }
                     cache[cacheKey] = CachedVersions(now() + TimeUnit.MINUTES.toMillis(5), loaded)
@@ -98,9 +101,13 @@ class AvailableVersionsService(
             ?.trimStart('0')
             ?.ifEmpty { "0" }
 
-    private fun loadVersions(key: String): List<String> {
+    private fun loadVersions(
+        key: String,
+        plugin: Boolean,
+    ): List<String> {
         val (group, artifact) = key.split(':')
-        for (repository in repositories) {
+        val sources = if (plugin) listOf("https://plugins.gradle.org/m2") else repositories
+        for (repository in sources) {
             val url = repository.toHttpUrl().newBuilder()
             group.split('.').forEach(url::addPathSegment)
             url.addPathSegment(artifact).addPathSegment("maven-metadata.xml")
@@ -112,7 +119,7 @@ class AvailableVersionsService(
                 return parseVersions(bytes)
             }
         }
-        throw IOException("No published Maven metadata found for $key in Maven Central or Confluent")
+        throw IOException("No published Maven metadata found for $key in ${if (plugin) "Plugin Portal" else "Maven Central or Confluent"}")
     }
 
     private fun parseVersions(bytes: ByteArray): List<String> {

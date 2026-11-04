@@ -16,6 +16,27 @@ import org.junit.jupiter.api.Test
 import java.io.IOException
 
 class AvailableVersionsTest {
+    @Test
+    fun `plugin upgrades use marker metadata from Plugin Portal and keep the original ID`() {
+        val urls = mutableListOf<String>()
+        val service =
+            AvailableVersionsService(
+                client { url ->
+                    urls += url
+                    200 to metadata("1.0", "1.1", "2.0", "2.1-RC1")
+                },
+            )
+        val result = service.available("alice", "example.plugin", "1.0", "plugin")
+        assertEquals("example.plugin", result.key)
+        assertEquals(listOf("2.1-RC1", "2.0", "1.1"), result.versions.map { it.version })
+        assertEquals(listOf("https://plugins.gradle.org/m2/example/plugin/example.plugin.gradle.plugin/maven-metadata.xml"), urls)
+        service.available("alice", "example.plugin", "1.0", "plugin")
+        assertEquals(1, urls.size)
+        assertThrows(IllegalArgumentException::class.java) {
+            service.available("alice", "../example", "1.0", "plugin")
+        }
+    }
+
     private fun metadata(vararg versions: String) =
         "<metadata><versioning><versions>${versions.joinToString("") { "<version>$it</version>" }}</versions></versioning></metadata>"
 

@@ -11,6 +11,7 @@ data class RepositoryDependencyScan(
     val untrackedPlatformBoms: List<UntrackedPlatformBom> = emptyList(),
     val declaredDependencyKeys: List<String>? = null,
     val declaredPlatformBomKeys: List<String>? = null,
+    val declaredPluginKeys: List<String>? = null,
 )
 
 data class DependencyFinding(

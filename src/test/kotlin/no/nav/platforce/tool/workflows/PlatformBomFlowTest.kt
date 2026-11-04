@@ -30,6 +30,18 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class PlatformBomFlowTest {
+    @Test
+    fun `repository usage includes tracked and untracked plugin IDs regardless of version`() {
+        val scanner = DependencyScanner(RecordingGithubClient())
+        val inventory =
+            inventory("example:library" to "1.0").copy(
+                plugins = mapOf("example.untracked" to "2.0", "example.tracked" to "1.0"),
+            )
+        val targets = TargetVersionsState(mutableMapOf("example.tracked" to "3.0"), mutableMapOf(), "8.0")
+        val scan = scanner.compare(inventory, targets)
+        assertEquals(listOf("example.tracked", "example.untracked"), scan.declaredPluginKeys)
+    }
+
     private val key = "example:platform"
     private val parser = GradleDependencyParser()
     private val scanner = DependencyScanner(RecordingGithubClient())

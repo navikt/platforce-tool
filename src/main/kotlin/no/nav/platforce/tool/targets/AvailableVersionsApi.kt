@@ -15,7 +15,13 @@ fun availableVersionsRoutes(service: AvailableVersionsService) =
             val context = request.userContext()
             val log = KotlinLogging.logger { }
             try {
-                val result = service.available(context.username, request.query("key").orEmpty(), request.query("currentVersion").orEmpty())
+                val result =
+                    service.available(
+                        context.username,
+                        request.query("key").orEmpty(),
+                        request.query("currentVersion").orEmpty(),
+                        request.query("kind") ?: "dependency",
+                    )
                 Response(Status.OK).header("Content-Type", "application/json").body(Gson().toJson(result))
             } catch (failure: IllegalArgumentException) {
                 log.warn { "Invalid version lookup request: ${failure.message}" }

@@ -210,6 +210,7 @@ class DependencyScanner(
             scannedAt = inventory.scannedAt,
             declaredDependencyKeys = inventory.dependencies.keys.sorted(),
             declaredPlatformBomKeys = inventory.platformBoms.keys.sorted(),
+            declaredPluginKeys = inventory.plugins.keys.sorted(),
             findings = findings,
             untrackedDependencies = untrackedDependencies,
             untrackedPlugins = untrackedPlugins,

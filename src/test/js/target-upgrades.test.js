@@ -52,12 +52,12 @@ const result = {
 };
 
 test("upgrade button works without scan data, fetches only on open and drafts dependencies or BOMs without saving", async () => {
-    for (const type of ["dependency", "platform_bom"]) {
+    for (const type of ["dependency", "platform_bom", "plugin"]) {
         const ui = app();
         let calls = 0;
         ui.context.fetch = async (url, options) => {
             calls++;
-            assert.equal(url, "/internal/api/target-versions/available?key=example%3Alibrary&currentVersion=1.0");
+            assert.equal(url, "/internal/api/target-versions/available?key=example%3Alibrary&currentVersion=1.0" + (type === "plugin" ? "&kind=plugin" : ""));
             assert.equal(options.cache, "no-store");
             return { ok: true, json: async () => result };
         };
@@ -130,7 +130,7 @@ test("prerelease-only results show the empty state rather than offering unstable
 });
 
 test("repository usage reuses the security details box and shows GitHub icons instead of bullets", () => {
-    for (const type of ["dependency", "platform_bom"]) {
+    for (const type of ["dependency", "platform_bom", "plugin"]) {
         const ui = app();
         vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/targets.js"), "utf8"), ui.context);
         ui.context.dependencyUsageRepositories = (key, usageType) => {

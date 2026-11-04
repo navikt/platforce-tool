@@ -7,9 +7,9 @@ function targetUpgradeButtonHtml() {
     </button>`;
 }
 
-async function fetchAvailableUpgrades(key, currentVersion) {
+async function fetchAvailableUpgrades(key, currentVersion, type = "dependency") {
     const response = await fetch(
-        `/internal/api/target-versions/available?key=${encodeURIComponent(key)}&currentVersion=${encodeURIComponent(currentVersion)}`,
+        `/internal/api/target-versions/available?key=${encodeURIComponent(key)}&currentVersion=${encodeURIComponent(currentVersion)}${type === "plugin" ? "&kind=plugin" : ""}`,
         { cache: "no-store" }
     );
     const result = await response.json();
@@ -149,12 +149,12 @@ function bindTargetUpgrades(row, type) {
         panel.classList.remove("hidden");
         details.innerHTML = '<p role="status">Loading available versions...</p>';
         try {
-            const result = await fetchAvailableUpgrades(key, currentVersion);
+            const result = await fetchAvailableUpgrades(key, currentVersion, type);
             if (id !== requestId || !row.isConnected) return;
             renderAvailableUpgrades(details, result, type, (kind, coordinate, version) => {
                 if (keyInput.value.trim() !== key || versionInput.value.trim() !== currentVersion) return;
                 addDraftTarget(kind, coordinate, version);
-                const containerId = type === "platform_bom" ? "platformBomsTable" : "depsTable";
+                const containerId = type === "platform_bom" ? "platformBomsTable" : type === "plugin" ? "pluginsTable" : "depsTable";
                 Array.from(document.querySelectorAll(`#${containerId} .target-row`))
                     .find(target => target.querySelector(".key")?.value === coordinate)
                     ?.querySelector(".version")?.focus();

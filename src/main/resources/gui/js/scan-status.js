@@ -329,7 +329,7 @@ async function scanTargetSecurity(includeBoms = false) {
     } finally {
         button.disabled = false;
         document.getElementById(includeBoms ? "scanTargets" : "scanBoms").disabled = false;
-        button.textContent = includeBoms ? "Scan BOMs" : "SCAN";
+        button.textContent = "SCAN";
         updateBomScanButton();
     }
 }
@@ -523,7 +523,7 @@ async function loadCachedPluginSecurity() {
         if (generation === targetScanGeneration) {
             pluginSecurityScan = snapshot.status === "READY" ? snapshot.result : null;
             if (snapshot.status === "RUNNING") {
-                showPluginScanDetails("Plugin scan is running. Click Scan plugins to follow its progress.");
+                showPluginScanDetails("Plugin scan is running. Click SCAN in Plugins to follow its progress.");
                 updatePluginScanSteps(snapshot.phase);
             }
         }
@@ -556,7 +556,7 @@ async function scanPluginSecurity() {
             if (generation !== targetScanGeneration) return;
             snapshot = await fetchPluginSecurity();
             if (snapshot.targetFingerprint !== fingerprint) {
-                throw new Error("Target versions changed during plugin scanning. Run Scan plugins again.");
+                throw new Error("Target versions changed during plugin scanning. Run SCAN in Plugins again.");
             }
         }
         if (generation !== targetScanGeneration) return;
@@ -584,6 +584,6 @@ async function scanPluginSecurity() {
         }
     } finally {
         button.disabled = false;
-        button.textContent = "Scan plugins";
+        button.textContent = "SCAN";
     }
 }
