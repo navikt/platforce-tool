@@ -74,6 +74,9 @@ document.getElementById("scanBoms")
 document.getElementById("scanPlugins")
     .addEventListener("click", scanPluginSecurity);
 
+document.getElementById("upgradeAllDependencies")
+    .addEventListener("click", upgradeAllDependencies);
+
 document
     .getElementById("saveIgnored")
     .addEventListener("click", async () => {

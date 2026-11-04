@@ -17,6 +17,72 @@ async function fetchAvailableUpgrades(key, currentVersion) {
     return result;
 }
 
+async function upgradeAllDependencies() {
+    const button = document.getElementById("upgradeAllDependencies");
+    if (button.disabled) return;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    const generation = targetScanGeneration;
+    const rows = Array.from(document.querySelectorAll("#depsTable .target-row"))
+        .map(row => ({
+            row,
+            key: row.querySelector(".key")?.value.trim(),
+            version: row.querySelector(".version")?.value.trim()
+        }))
+        .filter(target => target.key && target.version);
+    const upgrades = [];
+    const errors = [];
+    closeTargetSaveMessage(true);
+    try {
+        for (const target of rows) {
+            if (generation !== targetScanGeneration) {
+                showTargetSaveMessage("Target versions changed. Run Upgrade all again.", false);
+                return;
+            }
+            try {
+                const result = await fetchAvailableUpgrades(target.key, target.version);
+                const major = target.version.match(/^\d+/)?.[0].replace(/^0+(?=\d)/, "");
+                const candidate = result.versions.find(version =>
+                    !version.prerelease && !version.majorUpgrade && major !== undefined &&
+                    version.version.match(/^\d+/)?.[0].replace(/^0+(?=\d)/, "") === major);
+                if (candidate) upgrades.push({ ...target, next: candidate.version });
+            } catch (error) {
+                console.error("Bulk dependency upgrade lookup failed", error);
+                errors.push(`${target.key}: ${error.message}`);
+            }
+        }
+        if (generation !== targetScanGeneration) {
+            showTargetSaveMessage("Target versions changed. Run Upgrade all again.", false);
+            return;
+        }
+        captureTargetDrafts();
+        const changes = [];
+        for (const target of upgrades) {
+            if (!target.row.isConnected ||
+                target.row.querySelector(".key").value.trim() !== target.key ||
+                target.row.querySelector(".version").value.trim() !== target.version) {
+                errors.push(`${target.key}: changed during lookup; skipped.`);
+                continue;
+            }
+            targetState.dependencies[target.key] = target.next;
+            targetState.drafted.add(`DEPENDENCY:${target.key}`);
+            changes.push(`${target.key} ${target.version} -> ${target.next}`);
+        }
+        if (changes.length) renderTargetTables();
+        const summary = changes.length
+            ? `Drafted upgrades:\n${changes.join("\n")}`
+            : errors.length ? "No upgrades drafted." : "No non-major updates available.";
+        showTargetSaveMessage(
+            summary + (errors.length ? `\nLookup issues:\n${errors.join("\n")}` : ""),
+            errors.length === 0,
+            false
+        );
+    } finally {
+        button.disabled = false;
+        button.setAttribute("aria-busy", "false");
+    }
+}
+
 function renderAvailableUpgrades(panel, result, type, selectVersion) {
     panel.replaceChildren();
     const heading = document.createElement("h4");

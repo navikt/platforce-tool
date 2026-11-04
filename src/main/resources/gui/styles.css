@@ -122,6 +122,24 @@ body {
     display: none;
 }
 
+#targetSaveMessageText {
+    white-space: pre-line;
+}
+
+.target-section.dependencies > .target-section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+#upgradeAllDependencies {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
 .save-banner-close {
     flex-shrink: 0;
     padding: 2px 8px;

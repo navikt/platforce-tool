@@ -158,3 +158,88 @@ test("repository usage reuses the security details box and shows GitHub icons in
         assert.equal(wrapper.classList.contains("hidden"), true);
     }
 });
+
+function bulkApp(dependencies) {
+    const ui = app();
+    const button = element("button");
+    const rows = Object.entries(dependencies).map(([key, version]) => {
+        const row = element();
+        const keyInput = { value: key };
+        const versionInput = { value: version };
+        row.querySelector = selector => selector === ".key" ? keyInput : versionInput;
+        return row;
+    });
+    const messages = [];
+    let renders = 0;
+    ui.context.document.getElementById = () => button;
+    ui.context.document.querySelectorAll = () => rows;
+    ui.context.targetScanGeneration = 0;
+    ui.context.targetState = { dependencies: { ...dependencies }, drafted: new Set(), plugins: { plugin: "1.0" } };
+    ui.context.captureTargetDrafts = () => {};
+    ui.context.closeTargetSaveMessage = () => {};
+    ui.context.showTargetSaveMessage = (...args) => messages.push(args);
+    ui.context.renderTargetTables = () => renders++;
+    return { ...ui, button, rows, messages, renders: () => renders };
+}
+
+test("Upgrade all drafts only the latest stable same-major dependency upgrades and reports every change", async () => {
+    const ui = bulkApp({ "example:first": "1.0", "example:second": "2.0", "example:latest": "3.0" });
+    ui.context.fetchAvailableUpgrades = async (key) => ({
+        versions: key === "example:latest" ? [] : [
+            { version: "9.0", majorUpgrade: true },
+            { version: "2.9-RC1", prerelease: true },
+            { version: key === "example:first" ? "1.9" : "2.9", majorUpgrade: false },
+            { version: key === "example:first" ? "1.1" : "2.1", majorUpgrade: false }
+        ]
+    });
+    await ui.context.upgradeAllDependencies();
+    assert.deepEqual(ui.context.targetState.dependencies, {
+        "example:first": "1.9", "example:second": "2.9", "example:latest": "3.0"
+    });
+    assert.deepEqual([...ui.context.targetState.drafted], ["DEPENDENCY:example:first", "DEPENDENCY:example:second"]);
+    assert.equal(ui.context.targetState.plugins.plugin, "1.0");
+    assert.equal(ui.renders(), 1);
+    assert.match(ui.messages[0][0], /example:first 1.0 -> 1.9\nexample:second 2.0 -> 2.9/);
+    assert.deepEqual(ui.messages[0].slice(1), [true, false]);
+    assert.equal(ui.button.disabled, false);
+});
+
+test("Upgrade all reports no eligible updates and does not draft major or prerelease-only results", async () => {
+    const ui = bulkApp({ "example:library": "1.0" });
+    ui.context.fetchAvailableUpgrades = async () => ({
+        versions: [{ version: "2.0", majorUpgrade: true }, { version: "1.9-RC1", prerelease: true }]
+    });
+    await ui.context.upgradeAllDependencies();
+    assert.equal(ui.context.targetState.drafted.size, 0);
+    assert.equal(ui.renders(), 0);
+    assert.equal(ui.messages[0][0], "No non-major updates available.");
+});
+
+test("Upgrade all keeps successful drafts while explicitly reporting lookup failures", async () => {
+    const ui = bulkApp({ "example:good": "1.0", "example:bad": "1.0" });
+    ui.context.fetchAvailableUpgrades = async key => {
+        if (key === "example:bad") throw new Error("Metadata unavailable");
+        return { versions: [{ version: "1.1", majorUpgrade: false }] };
+    };
+    await ui.context.upgradeAllDependencies();
+    assert.equal(ui.context.targetState.dependencies["example:good"], "1.1");
+    assert.equal(ui.context.targetState.dependencies["example:bad"], "1.0");
+    assert.match(ui.messages[0][0], /example:bad: Metadata unavailable/);
+    assert.equal(ui.messages[0][1], false);
+});
+
+test("Upgrade all does not overwrite edits or saved targets while lookups are running", async () => {
+    for (const change of ["edit", "save", "remove"]) {
+        const ui = bulkApp({ "example:library": "1.0" });
+        ui.context.fetchAvailableUpgrades = async () => {
+            if (change === "save") ui.context.targetScanGeneration++;
+            if (change === "edit") ui.rows[0].querySelector(".version").value = "1.5";
+            if (change === "remove") ui.rows[0].isConnected = false;
+            return { versions: [{ version: "1.1", majorUpgrade: false }] };
+        };
+        await ui.context.upgradeAllDependencies();
+        assert.equal(ui.context.targetState.drafted.size, 0);
+        assert.equal(ui.renders(), 0);
+        assert.equal(ui.messages[0][1], false);
+    }
+});
