@@ -67,17 +67,15 @@ test("upgrade button works without scan data, fetches only on open and drafts de
         assert.equal(calls, 1);
         assert.equal(ui.button.getAttribute("aria-expanded"), "true");
         const panel = ui.row.children[0];
+        assert.match(panel.className, /\bfinding-details\b/);
+        assert.equal(panel.children.length, 2, "Only the heading and version list are shown");
+        assert.equal(panel.children[0].textContent, "Available upgrades for example:library");
         const list = panel.children.at(-1);
         assert.deepEqual(list.children.map(item => item.children[0].textContent), ["2.0", "1.1"]);
-        assert.match(list.children[0].children[1].textContent, /Major upgrade/);
+        assert.ok(list.children.every(item => item.children.length === 1), "Versions have no extra labels");
         list.children[0].children[0].onclick();
         assert.deepEqual(ui.drafts, [[type.toUpperCase(), "example:library", "2.0"]]);
         assert.equal(calls, 1, "Selecting a draft does not save or scan");
-        const checkbox = panel.children[2].children[0];
-        checkbox.checked = true;
-        checkbox.onchange();
-        assert.equal(list.children[0].children[0].textContent, "2.1-RC1");
-        assert.match(list.children[0].children[1].textContent, /Prerelease/);
         await ui.button.onclick();
         assert.equal(calls, 1, "Closing does not start another lookup");
         assert.equal(ui.button.getAttribute("aria-expanded"), "false");
@@ -113,6 +111,14 @@ test("lookup failures and empty results are explicit and a failed lookup can be 
     await ui.button.onclick();
     ui.context.fetch = async () => ({ ok: true, json: async () => ({ ...result, versions: [] }) });
     await ui.button.onclick();
-    assert.match(ui.row.children[0].children[3].textContent, /No newer stable versions/);
+    assert.match(ui.row.children[0].children[2].textContent, /No newer stable versions/);
     assert.deepEqual(ui.drafts, []);
+});
+
+test("prerelease-only results show the empty state rather than offering unstable upgrades", () => {
+    const ui = app();
+    const panel = element();
+    ui.context.renderAvailableUpgrades(panel, { ...result, versions: [result.versions[0]] }, "dependency", () => {});
+    assert.equal(panel.children[1].children.length, 0);
+    assert.match(panel.children[2].textContent, /No newer stable versions/);
 });

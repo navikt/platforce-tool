@@ -843,18 +843,14 @@ button:hover {
 
 .target-upgrade-details {
     grid-column: 1 / -1;
-    padding: 8px;
+    background: #eeeeee;
 }
 
 .target-upgrade-details p {
     margin: 8px 0;
 }
 
-.target-upgrade-details input[type="checkbox"] {
-    width: auto;
-}
-
-.target-upgrade-list {
+.target-upgrade-details .target-upgrade-list {
     max-height: 240px;
     overflow-y: auto;
     margin: 0;
@@ -863,10 +859,7 @@ button:hover {
 }
 
 .target-upgrade-list li {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 3px 0;
+    padding: 0;
 }
 
 .target-upgrade-version {
@@ -874,7 +867,7 @@ button:hover {
     color: inherit;
     background: transparent;
     border: 0;
-    padding: 4px;
+    padding: 2px 0;
     text-decoration: underline;
     cursor: pointer;
 }
@@ -1019,8 +1012,7 @@ button:hover {
 .target-grid {
     display: grid;
 
-    grid-template-columns: minmax(625px, 625px) minmax(700px, 740px) auto;
-
+    grid-template-columns: minmax(625px, 670px) minmax(700px, 705px) auto;
 
     gap: 14px;
 

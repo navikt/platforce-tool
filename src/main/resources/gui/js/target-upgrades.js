@@ -21,45 +21,27 @@ function renderAvailableUpgrades(panel, result, type, selectVersion) {
     panel.replaceChildren();
     const heading = document.createElement("strong");
     heading.textContent = `Available upgrades for ${result.key}`;
-    const note = document.createElement("p");
-    note.textContent = type === "platform_bom"
-        ? "Newer does not mean safe. Select a version to draft it, then save, run SCAN and Scan BOMs to check coverage."
-        : "Newer does not mean safe. Select a version to draft it, then save and run SCAN to check its resolved dependencies.";
-    const label = document.createElement("label");
-    const prereleases = document.createElement("input");
-    prereleases.type = "checkbox";
-    label.append(prereleases, " Include prereleases");
-    const summary = document.createElement("p");
-    summary.setAttribute("role", "status");
     const list = document.createElement("ul");
     list.className = "target-upgrade-list";
-    function renderVersions() {
-        list.replaceChildren();
-        const versions = result.versions.filter(candidate => prereleases.checked || !candidate.prerelease);
-        summary.textContent = versions.length
-            ? `${versions.length} newer ${prereleases.checked ? "" : "stable "}versions.`
-            : `No newer ${prereleases.checked ? "" : "stable "}versions found.`;
-        versions.forEach(candidate => {
-            const item = document.createElement("li");
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "target-upgrade-version";
-            button.textContent = candidate.version;
-            button.setAttribute("aria-label", `Draft ${result.key} version ${candidate.version}`);
-            button.onclick = () => selectVersion(type.toUpperCase(), result.key, candidate.version);
-            item.appendChild(button);
-            if (candidate.majorUpgrade || candidate.prerelease) {
-                const badge = document.createElement("span");
-                badge.textContent = [candidate.majorUpgrade ? "Major upgrade" : "", candidate.prerelease ? "Prerelease" : ""]
-                    .filter(Boolean).join(" / ");
-                item.appendChild(badge);
-            }
-            list.appendChild(item);
-        });
+    const versions = result.versions.filter(candidate => !candidate.prerelease);
+    versions.forEach(candidate => {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "target-upgrade-version";
+        button.textContent = candidate.version;
+        button.setAttribute("aria-label", `Draft ${result.key} version ${candidate.version}`);
+        button.onclick = () => selectVersion(type.toUpperCase(), result.key, candidate.version);
+        item.appendChild(button);
+        list.appendChild(item);
+    });
+    panel.append(heading, list);
+    if (!versions.length) {
+        const empty = document.createElement("p");
+        empty.setAttribute("role", "status");
+        empty.textContent = "No newer stable versions found.";
+        panel.appendChild(empty);
     }
-    prereleases.onchange = renderVersions;
-    panel.append(heading, note, label, summary, list);
-    renderVersions();
 }
 
 function bindTargetUpgrades(row, type) {
@@ -67,7 +49,7 @@ function bindTargetUpgrades(row, type) {
     const keyInput = row.querySelector(".key");
     const versionInput = row.querySelector(".version");
     const panel = document.createElement("div");
-    panel.className = "target-upgrade-details hidden";
+    panel.className = "target-upgrade-details finding-details hidden";
     row.appendChild(panel);
     let requestId = 0;
     function close() {
