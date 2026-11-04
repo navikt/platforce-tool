@@ -20,8 +20,10 @@ async function fetchAvailableUpgrades(key, currentVersion) {
 async function upgradeAllDependencies() {
     const button = document.getElementById("upgradeAllDependencies");
     if (button.disabled) return;
+    const original = button.innerHTML;
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
+    button.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
     const generation = targetScanGeneration;
     const rows = Array.from(document.querySelectorAll("#depsTable .target-row"))
         .map(row => ({
@@ -78,6 +80,7 @@ async function upgradeAllDependencies() {
             false
         );
     } finally {
+        button.innerHTML = original;
         button.disabled = false;
         button.setAttribute("aria-busy", "false");
     }

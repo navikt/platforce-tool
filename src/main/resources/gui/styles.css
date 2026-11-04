@@ -127,17 +127,35 @@ body {
 }
 
 .target-section.dependencies > .target-section-header {
-    display: flex;
-    align-items: baseline;
+    display: grid;
+    grid-template-columns: var(--dependency-target-columns);
+    align-items: center;
     gap: 8px;
+    padding: 1px 5px;
+}
+
+.target-section.dependencies {
+    --dependency-target-columns: 300px 110px 90px 28px 28px 28px 28px;
+}
+
+.target-section.dependencies > .target-section-header .section-pill {
+    justify-self: start;
+}
+
+.target-section.dependencies > .target-section-header #scanTargets {
+    justify-self: start;
+}
+
+.target-section.dependencies > .target-section-header #targetScanStatus {
+    grid-column: 3 / 5;
 }
 
 #upgradeAllDependencies {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
+    grid-column: 5;
+}
+
+#upgradeAllDependencies .spinner {
+    margin-right: 0;
 }
 
 .save-banner-close {
@@ -828,7 +846,7 @@ button:hover {
 }
 
 #depsTable .target-row {
-    grid-template-columns: 300px 110px 90px 28px 28px 28px 28px;
+    grid-template-columns: var(--dependency-target-columns);
 }
 
 #depsTable .remove-btn {

@@ -243,3 +243,23 @@ test("Upgrade all does not overwrite edits or saved targets while lookups are ru
         assert.equal(ui.messages[0][1], false);
     }
 });
+
+test("Upgrade all shows the shared spinner while waiting and restores its icon after completion or failure", async () => {
+    for (const fail of [false, true]) {
+        const ui = bulkApp({ "example:library": "1.0" });
+        ui.button.innerHTML = "<svg>upgrade icon</svg>";
+        let finish;
+        ui.context.fetchAvailableUpgrades = () => new Promise((resolve, reject) => {
+            finish = () => fail ? reject(new Error("Lookup failed")) : resolve({ versions: [] });
+        });
+        const pending = ui.context.upgradeAllDependencies();
+        assert.match(ui.button.innerHTML, /class="spinner"/);
+        assert.equal(ui.button.disabled, true);
+        assert.equal(ui.button.getAttribute("aria-busy"), "true");
+        finish();
+        await pending;
+        assert.equal(ui.button.innerHTML, "<svg>upgrade icon</svg>");
+        assert.equal(ui.button.disabled, false);
+        assert.equal(ui.button.getAttribute("aria-busy"), "false");
+    }
+});
