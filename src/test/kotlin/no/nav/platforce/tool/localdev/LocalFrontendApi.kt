@@ -52,6 +52,7 @@ class LocalFrontendApi(
     private var securityReadyAt: Long? = 0L
     private var bomSecurityReadyAt: Long? = null
     private var pluginSecurityReadyAt: Long? = null
+    private val upgradeScans = mutableMapOf<String, Long>()
 
     private fun pluginSecurity(): PluginSecuritySnapshot {
         val status =
@@ -198,6 +199,42 @@ class LocalFrontendApi(
                     )
             },
             "/internal/api/target-versions" bind Method.GET to { json(targets) },
+            *listOf(false, true)
+                .map { start ->
+                    ("/internal/api/target-versions/upgrade-security" + if (start) "/start" else "") bind Method.GET to { request ->
+                        val key = "${request.query("kind")}:${request.query("key")}:${request.query("currentVersion")}"
+                        if (start) upgradeScans.putIfAbsent(key, now() + 1200)
+                        val readyAt = upgradeScans[key]
+                        val status =
+                            when {
+                                readyAt == null -> "IDLE"
+                                now() < readyAt -> "RUNNING"
+                                else -> "READY"
+                            }
+                        val major =
+                            request
+                                .query("currentVersion")
+                                .orEmpty()
+                                .substringBefore('.')
+                                .toIntOrNull() ?: 1
+                        json(
+                            mapOf(
+                                "status" to status,
+                                "targetFingerprint" to fingerprint(targets),
+                                "result" to
+                                    if (status == "READY") {
+                                        listOf(
+                                            mapOf("version" to "${major + 1}.0.0", "status" to "VULNERABLE", "vulnerabilityCount" to 2),
+                                            mapOf("version" to "$major.99.0", "status" to "OK", "vulnerabilityCount" to 0),
+                                        )
+                                    } else {
+                                        null
+                                    },
+                            ),
+                            if (status == "RUNNING") Status.ACCEPTED else Status.OK,
+                        )
+                    }
+                }.toTypedArray(),
             "/internal/api/target-versions/available" bind Method.GET to { request ->
                 val key = request.query("key").orEmpty()
                 val current = request.query("currentVersion").orEmpty()
@@ -216,6 +253,7 @@ class LocalFrontendApi(
             },
             "/internal/api/target-versions/update" bind Method.POST to { request ->
                 val parsed = body(request)
+                upgradeScans.clear()
                 require(parsed["plugins"]?.isJsonObject == true && parsed["dependencies"]?.isJsonObject == true) {
                     "Expected plugins and dependencies objects"
                 }

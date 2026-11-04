@@ -918,6 +918,16 @@ button:hover {
     cursor: pointer;
 }
 
+.upgrade-scan-button {
+    margin-top: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+}
+
+.upgrade-security-result:empty {
+    display: none;
+}
+
 .dependency-usage-btn:disabled {
     opacity: 0.25;
     cursor: not-allowed;

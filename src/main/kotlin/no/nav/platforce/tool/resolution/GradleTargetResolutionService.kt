@@ -60,6 +60,12 @@ class GradleTargetResolutionService(
             mode = ResolutionDebugFiles.Mode.PLUGINS,
         )
 
+    fun resolveUpgradeCandidates(
+        username: String,
+        state: TargetVersionsState,
+        modules: Map<String, String>,
+    ): TargetResolution = execute(username, state, GradlePluginResolutionBuildFile().createModules(modules), bom = false)
+
     @OptIn(ExperimentalPathApi::class)
     private fun execute(
         username: String,

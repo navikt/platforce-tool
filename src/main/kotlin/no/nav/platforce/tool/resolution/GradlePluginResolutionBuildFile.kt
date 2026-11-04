@@ -9,22 +9,24 @@ import com.google.gson.Gson
 class GradlePluginResolutionBuildFile {
     fun create(plugins: Map<String, String>): String {
         require(plugins.all { (id, version) -> unsupportedPluginReason(id, version) == null })
-        val json = Gson().toJson(plugins.toSortedMap()).replace("\\", "\\\\").replace("'", "\\'")
+        return createModules(plugins.toSortedMap().mapValues { (id, version) -> "$id:$id.gradle.plugin:$version" })
+    }
+
+    fun createModules(modules: Map<String, String>): String {
+        require(modules.values.all { it.matches(Regex("""[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9][A-Za-z0-9._+-]*""")) })
+        val json = Gson().toJson(modules).replace("\\", "\\\\").replace("'", "\\'")
         return """
             plugins { id 'java' }
             repositories {
                 mavenCentral()
                 maven { url = uri('https://plugins.gradle.org/m2/') }
+                maven { url = uri('https://packages.confluent.io/maven/') }
             }
             def configuredPlugins = new groovy.json.JsonSlurper().parseText('$json')
             def pluginConfigurations = [:]
             configuredPlugins.eachWithIndex { entry, index ->
                 def configuration = configurations.create("pluginMetadata_" + index)
-                dependencies.add(configuration.name, [
-                    group: entry.key,
-                    name: entry.key + '.gradle.plugin',
-                    version: entry.value
-                ])
+                dependencies.add(configuration.name, entry.value)
                 pluginConfigurations[entry.key] = configuration
             }
             tasks.register('platforceResolve') {

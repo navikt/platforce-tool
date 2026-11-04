@@ -14,6 +14,7 @@ fun targetVersionsRoutes(
     resolutionScanner: GradleTargetResolutionScanner,
     securityScanner: TargetSecurityScanner,
     pluginSecurityScanner: PluginSecurityScanner? = null,
+    upgradeSecurityScanner: UpgradeSecurityScanner? = null,
 ) = listOf(
     "/internal/api/target-versions" bind Method.GET to { request ->
         val context = request.userContext()
@@ -31,6 +32,7 @@ fun targetVersionsRoutes(
         securityScanner.invalidate(context.username)
         resolutionScanner.invalidate(context.username)
         pluginSecurityScanner?.invalidate(context.username)
+        upgradeSecurityScanner?.invalidate(context.username)
 
         Response(Status.OK).body("updated")
     },

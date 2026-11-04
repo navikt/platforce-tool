@@ -7,7 +7,8 @@ const vm = require("node:vm");
 function element(tag = "div") {
     const classes = new Set();
     return {
-        tag, children: [], attributes: {}, value: "", isConnected: true,
+        tag, children: [], attributes: {}, dataset: {}, value: "", isConnected: true,
+        querySelector(selector) { return this.children.find(child => child.className?.split(" ").includes(selector.slice(1))); },
         classList: {
             add: value => classes.add(value),
             remove: value => classes.delete(value),
@@ -27,6 +28,7 @@ function app() {
     const drafts = [];
     const context = vm.createContext({
         document: { createElement: element, querySelectorAll: () => [] },
+        targetScanGeneration: 0,
         console: { error() {} },
         fetch: () => { throw new Error("Unexpected request"); },
         addDraftTarget: (...args) => drafts.push(args)
@@ -56,6 +58,7 @@ test("upgrade button works without scan data, fetches only on open and drafts de
         const ui = app();
         let calls = 0;
         ui.context.fetch = async (url, options) => {
+            if (url.includes("upgrade-security")) return { ok: true, json: async () => ({ status: "IDLE" }) };
             calls++;
             assert.equal(url, "/internal/api/target-versions/available?key=example%3Alibrary&currentVersion=1.0" + (type === "plugin" ? "&kind=plugin" : ""));
             assert.equal(options.cache, "no-store");
@@ -71,14 +74,14 @@ test("upgrade button works without scan data, fetches only on open and drafts de
         assert.match(wrapper.className, /\btarget-security-details\b/);
         const panel = wrapper.children[0];
         assert.equal(panel.className, "finding-details target-security-detail");
-        assert.equal(panel.children.length, 2, "Only the heading and version list are shown");
+        assert.equal(panel.children.length, type === "platform_bom" ? 2 : 4);
         assert.equal(panel.children[0].tag, "h4");
         assert.equal(panel.children[0].textContent, "Available upgrades for example:library");
-        const list = panel.children.at(-1);
+        const list = panel.children[1];
         assert.deepEqual(list.children.map(item => item.children[0].textContent), ["2.0", "1.1"]);
-        assert.equal(list.children[0].children[1].textContent, "Major upgrade");
-        assert.equal(list.children[0].children[1].className, "target-version-pill");
-        assert.equal(list.children[1].children.length, 1, "Non-major upgrades have no badge");
+        assert.equal(list.children[0].children[2].textContent, "Major upgrade");
+        assert.equal(list.children[0].children[2].className, "target-version-pill");
+        assert.equal(list.children[1].children.length, 2, "Non-major upgrades have no major badge");
         list.children[0].children[0].onclick();
         assert.deepEqual(ui.drafts, [[type.toUpperCase(), "example:library", "2.0"]]);
         assert.equal(calls, 1, "Selecting a draft does not save or scan");
@@ -252,6 +255,7 @@ test("Upgrade all shows the shared spinner while waiting and restores its icon a
         ui.context.fetchAvailableUpgrades = () => new Promise((resolve, reject) => {
             finish = () => fail ? reject(new Error("Lookup failed")) : resolve({ versions: [] });
         });
+
         const pending = ui.context.upgradeAllDependencies();
         assert.match(ui.button.innerHTML, /class="spinner"/);
         assert.equal(ui.button.disabled, true);
@@ -262,4 +266,41 @@ test("Upgrade all shows the shared spinner while waiting and restores its icon a
         assert.equal(ui.button.disabled, false);
         assert.equal(ui.button.getAttribute("aria-busy"), "false");
     }
+});
+
+test("dropdown security scans are opt-in, poll results and reuse cached vulnerability badges on reopen", async () => {
+            const ui = app();
+            const calls = [];
+            let cached = false;
+            ui.context.setTimeout = callback => callback();
+            ui.context.fetch = async url => {
+                calls.push(url);
+                const snapshot = url.includes("/start")
+                    ? { status: "RUNNING", targetFingerprint: "saved" }
+                    : cached || calls.length > 2
+                        ? { status: "READY", targetFingerprint: "saved", result: [
+                            { version: "2.0", status: "VULNERABLE", vulnerabilityCount: 2 },
+                            { version: "1.1", status: "UNRESOLVED", error: "Missing metadata" }
+                        ] }
+                        : { status: "IDLE", targetFingerprint: "saved" };
+                return { ok: true, json: async () => snapshot };
+            };
+            const panel = element();
+            ui.context.renderAvailableUpgrades(panel, result, "dependency", () => {});
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(calls.length, 1);
+            assert.ok(!calls[0].includes("/start"));
+            const scan = panel.children[2];
+            await scan.onclick();
+            const badges = panel.children[1].children.map(item => item.children[1]);
+            assert.equal(badges[0].textContent, "2 vulnerabilities");
+            assert.equal(badges[1].textContent, "UNRESOLVED");
+            assert.equal(badges[1].title, "Missing metadata");
+            assert.equal(scan.disabled, false);
+            cached = true;
+            const reopened = element();
+            ui.context.renderAvailableUpgrades(reopened, result, "dependency", () => {});
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(reopened.children[1].children[0].children[1].textContent, "2 vulnerabilities");
+            assert.equal(calls.filter(url => url.includes("/start")).length, 1);
 });

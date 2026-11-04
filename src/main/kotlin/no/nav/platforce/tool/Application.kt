@@ -33,8 +33,10 @@ import no.nav.platforce.tool.security.TargetSecurityService
 import no.nav.platforce.tool.security.pluginSecurityRoutes
 import no.nav.platforce.tool.security.targetSecurityRoutes
 import no.nav.platforce.tool.targets.AvailableVersionsService
+import no.nav.platforce.tool.targets.UpgradeSecurityScanner
 import no.nav.platforce.tool.targets.availableVersionsRoutes
 import no.nav.platforce.tool.targets.targetVersionsRoutes
+import no.nav.platforce.tool.targets.upgradeSecurityRoutes
 import no.nav.platforce.tool.user.selectedTeamRoutes
 import no.nav.platforce.tool.user.withUserCacheControl
 import okhttp3.OkHttpClient
@@ -48,6 +50,7 @@ import org.http4k.server.Http4kServer
 import org.http4k.server.Netty
 import org.http4k.server.asServer
 import java.io.File
+import java.nio.file.Path
 
 class Application {
     private val log = KotlinLogging.logger { }
@@ -90,6 +93,13 @@ class Application {
         )
 
     private val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
+    private val availableVersionsService = AvailableVersionsService(httpClient)
+    private val upgradeSecurityScanner =
+        UpgradeSecurityScanner(
+            availableVersionsService,
+            GradleTargetResolutionService(debugFiles = ResolutionDebugFiles(Path.of("/tmp/files/upgrade-scans")))::resolveUpgradeCandidates,
+            osvVulnerabilityService,
+        )
 
     private val targetSecurityService = TargetSecurityService(osvVulnerabilityService)
 
@@ -115,11 +125,17 @@ class Application {
             *targetResolutionRoutes(gradleTargetResolutionScanner).toTypedArray(),
             *targetSecurityRoutes(targetSecurityScanner).toTypedArray(),
             *pluginSecurityRoutes(pluginSecurityScanner).toTypedArray(),
-            *availableVersionsRoutes(AvailableVersionsService(httpClient)).toTypedArray(),
+            *availableVersionsRoutes(availableVersionsService).toTypedArray(),
+            *upgradeSecurityRoutes(upgradeSecurityScanner).toTypedArray(),
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
             *selectedTeamRoutes().toTypedArray(),
             *dependencyScanRoutes(dependencyScanCache, dependencyScanner, pullRequestService, dependencyScanViewService).toTypedArray(),
-            *targetVersionsRoutes(gradleTargetResolutionScanner, targetSecurityScanner, pluginSecurityScanner).toTypedArray(),
+            *targetVersionsRoutes(
+                gradleTargetResolutionScanner,
+                targetSecurityScanner,
+                pluginSecurityScanner,
+                upgradeSecurityScanner,
+            ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
             *repositoryViewRoutes(naisClient, githubClient, dependencyScanViewService, repositoryViewService).toTypedArray(),

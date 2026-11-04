@@ -86,7 +86,7 @@ async function upgradeAllDependencies() {
     }
 }
 
-function renderAvailableUpgrades(panel, result, type, selectVersion) {
+function renderAvailableUpgrades(panel, result, type, selectVersion, currentVersion = result.currentVersion) {
     panel.replaceChildren();
     const heading = document.createElement("h4");
     heading.textContent = `Available upgrades for ${result.key}`;
@@ -102,6 +102,10 @@ function renderAvailableUpgrades(panel, result, type, selectVersion) {
         button.setAttribute("aria-label", `Draft ${result.key} version ${candidate.version}`);
         button.onclick = () => selectVersion(type.toUpperCase(), result.key, candidate.version);
         item.appendChild(button);
+        const security = document.createElement("span");
+        security.className = "upgrade-security-result";
+        security.dataset.version = candidate.version;
+        item.appendChild(security);
         if (candidate.majorUpgrade) {
             const badge = document.createElement("span");
             badge.className = "target-version-pill";
@@ -111,6 +115,74 @@ function renderAvailableUpgrades(panel, result, type, selectVersion) {
         list.appendChild(item);
     });
     panel.append(heading, list);
+    if (versions.length && type !== "platform_bom") {
+        const scan = document.createElement("button");
+        scan.type = "button";
+        scan.className = "btn-secondary upgrade-scan-button";
+        scan.textContent = "SCAN";
+        scan.title = "Resolve all listed stable versions independently and check their transitive dependencies with OSV";
+        panel.appendChild(scan);
+        const message = document.createElement("p");
+        message.setAttribute("role", "status");
+        panel.appendChild(message);
+        const generation = targetScanGeneration;
+        const active = () => panel.isConnected && list.isConnected && generation === targetScanGeneration;
+        const apply = snapshot => {
+            for (const item of list.children) {
+                const badge = item.querySelector(".upgrade-security-result");
+                const finding = snapshot.result?.find(entry => entry.version === badge.dataset.version);
+                if (!finding) continue;
+                badge.className = `upgrade-security-result target-version-pill ${finding.status === "VULNERABLE" ? "target-status-vulnerable" : finding.status === "OK" ? "target-status-ok" : "target-status-unknown"}`;
+                badge.textContent = finding.status === "VULNERABLE"
+                    ? `${finding.vulnerabilityCount} vulnerabilities` : finding.status;
+                badge.title = finding.error || "Standalone resolved dependency tree, including transitives. No application overrides.";
+            }
+        };
+        const fetchSnapshot = async start => {
+            const response = await fetch(`/internal/api/target-versions/upgrade-security${start ? "/start" : ""}?kind=${type}&key=${encodeURIComponent(result.key)}&currentVersion=${encodeURIComponent(currentVersion)}`, { cache: "no-store" });
+            const snapshot = await response.json();
+            if (!response.ok) throw new Error(snapshot.error || `Upgrade scan failed: HTTP ${response.status}`);
+            return snapshot;
+        };
+        const follow = async snapshot => {
+            scan.disabled = true;
+            scan.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
+            try {
+                const fingerprint = snapshot.targetFingerprint;
+                while (snapshot.status === "RUNNING") {
+                    message.textContent = "Resolving candidate versions and checking OSV...";
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    if (!active()) return;
+                    snapshot = await fetchSnapshot(false);
+                    if (snapshot.targetFingerprint !== fingerprint) throw new Error("Targets changed. Reopen available upgrades.");
+                }
+                if (!active()) return;
+                if (snapshot.status !== "READY") throw new Error(snapshot.error || "Upgrade scan did not complete");
+                apply(snapshot);
+                message.textContent = "";
+            } finally {
+                scan.disabled = false;
+                scan.textContent = "SCAN";
+            }
+        };
+        const report = error => {
+            console.error("Upgrade security scan failed", error);
+            if (active()) message.textContent = `FAILED: ${error.message}`;
+        };
+        scan.onclick = async () => {
+            if (scan.disabled) return;
+            scan.disabled = true;
+            scan.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
+            try { await follow(await fetchSnapshot(true)); } catch (error) { report(error); }
+            finally { scan.disabled = false; scan.textContent = "SCAN"; }
+        };
+        fetchSnapshot(false).then(snapshot => {
+            if (!active()) return;
+            if (snapshot.status === "READY") apply(snapshot);
+            else if (snapshot.status === "RUNNING") return follow(snapshot);
+            else if (snapshot.status === "FAILED") throw new Error(snapshot.error);
+        }).catch(report);
+    }
     if (!versions.length) {
         const empty = document.createElement("p");
         empty.setAttribute("role", "status");
