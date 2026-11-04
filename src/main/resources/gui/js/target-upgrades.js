@@ -19,7 +19,7 @@ async function fetchAvailableUpgrades(key, currentVersion) {
 
 function renderAvailableUpgrades(panel, result, type, selectVersion) {
     panel.replaceChildren();
-    const heading = document.createElement("strong");
+    const heading = document.createElement("h4");
     heading.textContent = `Available upgrades for ${result.key}`;
     const list = document.createElement("ul");
     list.className = "target-upgrade-list";
@@ -33,6 +33,12 @@ function renderAvailableUpgrades(panel, result, type, selectVersion) {
         button.setAttribute("aria-label", `Draft ${result.key} version ${candidate.version}`);
         button.onclick = () => selectVersion(type.toUpperCase(), result.key, candidate.version);
         item.appendChild(button);
+        if (candidate.majorUpgrade) {
+            const badge = document.createElement("span");
+            badge.className = "target-version-pill";
+            badge.textContent = "Major upgrade";
+            item.appendChild(badge);
+        }
         list.appendChild(item);
     });
     panel.append(heading, list);
@@ -49,7 +55,10 @@ function bindTargetUpgrades(row, type) {
     const keyInput = row.querySelector(".key");
     const versionInput = row.querySelector(".version");
     const panel = document.createElement("div");
-    panel.className = "target-upgrade-details finding-details hidden";
+    panel.className = "target-security-details hidden";
+    const details = document.createElement("div");
+    details.className = "finding-details target-security-detail";
+    panel.appendChild(details);
     row.appendChild(panel);
     let requestId = 0;
     function close() {
@@ -69,11 +78,11 @@ function bindTargetUpgrades(row, type) {
         const currentVersion = versionInput.value.trim();
         button.setAttribute("aria-expanded", "true");
         panel.classList.remove("hidden");
-        panel.innerHTML = '<p role="status">Loading available versions...</p>';
+        details.innerHTML = '<p role="status">Loading available versions...</p>';
         try {
             const result = await fetchAvailableUpgrades(key, currentVersion);
             if (id !== requestId || !row.isConnected) return;
-            renderAvailableUpgrades(panel, result, type, (kind, coordinate, version) => {
+            renderAvailableUpgrades(details, result, type, (kind, coordinate, version) => {
                 if (keyInput.value.trim() !== key || versionInput.value.trim() !== currentVersion) return;
                 addDraftTarget(kind, coordinate, version);
                 const containerId = type === "platform_bom" ? "platformBomsTable" : "depsTable";
@@ -87,7 +96,7 @@ function bindTargetUpgrades(row, type) {
             const message = document.createElement("p");
             message.setAttribute("role", "alert");
             message.textContent = `Could not load versions: ${error.message}. Close and reopen to retry.`;
-            panel.replaceChildren(message);
+            details.replaceChildren(message);
         }
     };
 }

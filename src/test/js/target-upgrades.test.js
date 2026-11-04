@@ -11,6 +11,7 @@ function element(tag = "div") {
         classList: {
             add: value => classes.add(value),
             remove: value => classes.delete(value),
+            toggle: (value, force) => force ? classes.add(value) : classes.delete(value),
             contains: value => classes.has(value)
         },
         append(...children) { this.children.push(...children); },
@@ -66,13 +67,18 @@ test("upgrade button works without scan data, fetches only on open and drafts de
         await ui.button.onclick();
         assert.equal(calls, 1);
         assert.equal(ui.button.getAttribute("aria-expanded"), "true");
-        const panel = ui.row.children[0];
-        assert.match(panel.className, /\bfinding-details\b/);
+        const wrapper = ui.row.children[0];
+        assert.match(wrapper.className, /\btarget-security-details\b/);
+        const panel = wrapper.children[0];
+        assert.equal(panel.className, "finding-details target-security-detail");
         assert.equal(panel.children.length, 2, "Only the heading and version list are shown");
+        assert.equal(panel.children[0].tag, "h4");
         assert.equal(panel.children[0].textContent, "Available upgrades for example:library");
         const list = panel.children.at(-1);
         assert.deepEqual(list.children.map(item => item.children[0].textContent), ["2.0", "1.1"]);
-        assert.ok(list.children.every(item => item.children.length === 1), "Versions have no extra labels");
+        assert.equal(list.children[0].children[1].textContent, "Major upgrade");
+        assert.equal(list.children[0].children[1].className, "target-version-pill");
+        assert.equal(list.children[1].children.length, 1, "Non-major upgrades have no badge");
         list.children[0].children[0].onclick();
         assert.deepEqual(ui.drafts, [[type.toUpperCase(), "example:library", "2.0"]]);
         assert.equal(calls, 1, "Selecting a draft does not save or scan");
@@ -97,7 +103,7 @@ test("editing a target or removing its row while loading discards stale upgrade 
         }
         reply({ ok: true, json: async () => result });
         await pending;
-        assert.equal(ui.row.children[0].children.length, 0);
+        assert.equal(ui.row.children[0].children[0].children.length, 0);
         assert.deepEqual(ui.drafts, []);
     }
 });
@@ -107,11 +113,11 @@ test("lookup failures and empty results are explicit and a failed lookup can be 
     ui.context.bindTargetUpgrades(ui.row, "dependency");
     ui.context.fetch = async () => ({ ok: false, json: async () => ({ error: "Metadata unavailable" }) });
     await ui.button.onclick();
-    assert.match(ui.row.children[0].children[0].textContent, /Could not load versions: Metadata unavailable/);
+    assert.match(ui.row.children[0].children[0].children[0].textContent, /Could not load versions: Metadata unavailable/);
     await ui.button.onclick();
     ui.context.fetch = async () => ({ ok: true, json: async () => ({ ...result, versions: [] }) });
     await ui.button.onclick();
-    assert.match(ui.row.children[0].children[2].textContent, /No newer stable versions/);
+    assert.match(ui.row.children[0].children[0].children[2].textContent, /No newer stable versions/);
     assert.deepEqual(ui.drafts, []);
 });
 
@@ -121,4 +127,34 @@ test("prerelease-only results show the empty state rather than offering unstable
     ui.context.renderAvailableUpgrades(panel, { ...result, versions: [result.versions[0]] }, "dependency", () => {});
     assert.equal(panel.children[1].children.length, 0);
     assert.match(panel.children[2].textContent, /No newer stable versions/);
+});
+
+test("repository usage reuses the security details box and shows GitHub icons instead of bullets", () => {
+    for (const type of ["dependency", "platform_bom"]) {
+        const ui = app();
+        vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/targets.js"), "utf8"), ui.context);
+        ui.context.dependencyUsageRepositories = (key, usageType) => {
+            assert.equal(key, "example:library");
+            assert.equal(usageType, type);
+            return ["example/repository"];
+        };
+        ui.row.querySelector = selector => selector === ".dependency-usage-btn" ? ui.button : ui.key;
+        ui.context.bindDependencyUsage(ui.row, type);
+        ui.button.onclick();
+        const wrapper = ui.row.children[0];
+        assert.match(wrapper.className, /\btarget-security-details\b/);
+        const content = wrapper.children[0];
+        assert.equal(content.className, "finding-details target-security-detail");
+        assert.equal(content.children[0].tag, "h4");
+        const list = content.children[1];
+        assert.equal(list.className, "dependency-usage-list");
+        const [icon, link] = list.children[0].children;
+        assert.equal(icon.getAttribute("aria-hidden"), "true");
+        assert.match(icon.innerHTML, /<svg/);
+        assert.equal(link.textContent, "example/repository");
+        assert.equal(link.href, "https://github.com/example/repository");
+        assert.equal(link.rel, "noopener noreferrer");
+        ui.button.onclick();
+        assert.equal(wrapper.classList.contains("hidden"), true);
+    }
 });

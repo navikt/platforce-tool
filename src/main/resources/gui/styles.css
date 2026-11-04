@@ -841,16 +841,7 @@ button:hover {
     grid-column: 6;
 }
 
-.target-upgrade-details {
-    grid-column: 1 / -1;
-    background: #eeeeee;
-}
-
-.target-upgrade-details p {
-    margin: 8px 0;
-}
-
-.target-upgrade-details .target-upgrade-list {
+.target-security-detail .target-upgrade-list {
     max-height: 240px;
     overflow-y: auto;
     margin: 0;
@@ -859,6 +850,9 @@ button:hover {
 }
 
 .target-upgrade-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 0;
 }
 
@@ -877,18 +871,21 @@ button:hover {
     cursor: not-allowed;
 }
 
-.dependency-usage-details {
-    grid-column: 1 / -1;
-    padding: 0 8px 8px;
-}
-
-.dependency-usage-details p {
-    margin: 8px 0;
-}
-
-.dependency-usage-details ul {
+.target-security-detail .dependency-usage-list {
     margin: 0;
-    padding-left: 20px;
+    padding: 0;
+    list-style: none;
+}
+
+.dependency-usage-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dependency-usage-icon {
+    display: inline-flex;
+    flex-shrink: 0;
 }
 
 .dependency-usage-details a {
