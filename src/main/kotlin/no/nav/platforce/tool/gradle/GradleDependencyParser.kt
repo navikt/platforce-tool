@@ -66,7 +66,7 @@ class GradleDependencyParser {
             }.toList()
     }
 
-    private fun withoutComments(content: String): String {
+    internal fun withoutComments(content: String): String {
         val result = content.toCharArray()
         var index = 0
         var quote: Char? = null

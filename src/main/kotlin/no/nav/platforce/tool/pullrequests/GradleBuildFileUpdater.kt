@@ -97,6 +97,43 @@ class GradleBuildFileUpdater {
                     }
             }
 
-        return updated
+        return applyGradleCompatibility(updated)
+    }
+
+    // Keep generated PRs compatible with newer Gradle application and JUnit test execution APIs.
+    private fun applyGradleCompatibility(content: String): String {
+        val source = GradleDependencyParser().withoutComments(content)
+        val tokens = Regex("""(["'])(?:\\.|(?!\1)[^\\])*\1|\bmainClassName\b""")
+        var updated = content
+        tokens.findAll(source).filter { it.value == "mainClassName" }.toList().asReversed().forEach {
+            updated = updated.replaceRange(it.range, "mainClass")
+        }
+
+        val uncommented = GradleDependencyParser().withoutComments(updated)
+        val launcher =
+            Regex(
+                """(?m)^[ \t]*testRuntimeOnly\s*(?:\(\s*)?["']org\.junit\.platform:junit-platform-launcher(?::[^"']*)?["']""",
+            )
+        val declarations = GradleDependencyParser().declarations(updated)
+        if (launcher.containsMatchIn(uncommented) ||
+            declarations.any {
+                it.configuration == "testRuntimeOnly" && it.key == "org.junit.platform:junit-platform-launcher"
+            }
+        ) {
+            return updated
+        }
+        val junit =
+            Regex(
+                """(?m)^([ \t]*)(?:implementation|testImplementation)\s*(?:\(\s*)?["']org\.junit\.jupiter:junit-jupiter-[^"']+["']""",
+            ).find(uncommented) ?: return updated
+        val indentation = junit.groupValues[1]
+        val newline = if ("\r\n" in updated) "\r\n" else "\n"
+        val notation =
+            if (Regex("""(?:implementation|testImplementation)\s*\(""").containsMatchIn(junit.value)) {
+                """testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")"""
+            } else {
+                "testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'"
+            }
+        return updated.replaceRange(junit.range.first, junit.range.first, "$indentation$notation$newline")
     }
 }

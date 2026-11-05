@@ -83,6 +83,32 @@ class DependencyPullRequestFlowTest {
     }
 
     @Test
+    fun `wrapper-only PR also modernizes application and JUnit configuration`() {
+        val client =
+            RecordingGithubClient(
+                mapOf(
+                    "build.gradle" to
+                        """
+                        application {
+                            mainClassName = 'example.Main'
+                        }
+                        dependencies {
+                            testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.4'
+                        }
+                        """.trimIndent(),
+                    wrapperPath to "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.0-bin.zip\n",
+                ),
+            )
+        cache.update("alice", listOf(inventory("example:library" to "2.0.0")))
+        ready()
+        DependencyPullRequestService(client, view).createPullRequest("example", "repository", "alice", targets)
+        val build = client.updatedFiles.getValue("build.gradle")
+        assertTrue(build.contains("mainClass = 'example.Main'"))
+        assertTrue(build.contains("testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'"))
+        assertEquals("8.1", GradleWrapperParser().parse(client.updatedFiles.getValue(wrapperPath)))
+    }
+
+    @Test
     fun `matching dependencies do not create a branch or pull request`() {
         cache.update("alice", listOf(inventory("example:library" to "2.0.0").copy(gradleVersion = "8.1")))
         ready()

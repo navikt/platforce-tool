@@ -66,7 +66,7 @@ class DependencyPullRequestService(
             branchSha,
         )
 
-        if (buildGradleFindings.isNotEmpty()) {
+        if (buildGradleFindings.isNotEmpty() || wrapperFindings.isNotEmpty()) {
             val (filePath, currentContent) =
                 runCatching {
                     "build.gradle" to githubClient.getFile(owner, repo, "build.gradle")
@@ -75,23 +75,25 @@ class DependencyPullRequestService(
                 }
             val updatedContent = buildFileUpdater.apply(currentContent, actionable)
 
-            val fileSha =
-                githubClient.getFileSha(
+            if (updatedContent != currentContent) {
+                val fileSha =
+                    githubClient.getFileSha(
+                        owner,
+                        repo,
+                        filePath,
+                        branchName,
+                    )
+
+                githubClient.updateFile(
                     owner,
                     repo,
                     filePath,
+                    updatedContent,
+                    fileSha,
                     branchName,
+                    "chore: update Gradle dependencies and compatibility",
                 )
-
-            githubClient.updateFile(
-                owner,
-                repo,
-                filePath,
-                updatedContent,
-                fileSha,
-                branchName,
-                "chore: update Gradle dependencies",
-            )
+            }
         }
 
         if (wrapperFindings.isNotEmpty()) {
