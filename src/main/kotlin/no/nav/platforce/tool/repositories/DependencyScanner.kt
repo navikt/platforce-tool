@@ -537,14 +537,17 @@ class DependencyScanner(
         }
 
         return when {
-            VersionComparator.compare(current, target) < 0 ->
+            VersionComparator.compare(current, target) < 0 -> {
                 DependencyStatus.UPDATE
+            }
 
-            VersionComparator.compare(current, target) > 0 ->
+            VersionComparator.compare(current, target) > 0 -> {
                 DependencyStatus.AHEAD
+            }
 
-            else ->
+            else -> {
                 DependencyStatus.OK
+            }
         }
     }
 

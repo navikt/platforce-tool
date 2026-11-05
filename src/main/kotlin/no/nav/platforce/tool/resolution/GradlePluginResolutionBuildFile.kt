@@ -114,10 +114,14 @@ fun unsupportedPluginReason(
 ): String? =
     when {
         !id.matches(Regex("[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*")) -> "Invalid published plugin ID"
+
         id.startsWith("org.gradle.") || id in corePlugins -> "Gradle core plugins have no independently versioned published marker"
+
         version.isBlank() -> "A published plugin marker requires an explicit version"
+
         !version.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]*")) ||
             version.startsWith("latest.", ignoreCase = true) -> "Only explicit, literal plugin marker versions are supported"
+
         else -> null
     }
 

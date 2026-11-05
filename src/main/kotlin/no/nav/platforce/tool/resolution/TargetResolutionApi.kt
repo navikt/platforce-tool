@@ -21,22 +21,29 @@ fun targetResolutionRoutes(gradleTargetResolutionScanner: GradleTargetResolution
                     includeBoms = request.query("includeBoms") == "true",
                 )
             when (snapshot.status) {
-                ResolutionStatus.READY ->
+                ResolutionStatus.READY -> {
                     Response(Status.OK)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
-                ResolutionStatus.RUNNING ->
+                }
+
+                ResolutionStatus.RUNNING -> {
                     Response(Status.ACCEPTED)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
-                ResolutionStatus.FAILED ->
+                }
+
+                ResolutionStatus.FAILED -> {
                     Response(Status.INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
-                ResolutionStatus.IDLE ->
+                }
+
+                ResolutionStatus.IDLE -> {
                     Response(Status.ACCEPTED)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
+                }
             }
         },
         "/internal/api/target-resolution" bind Method.GET to { request ->

@@ -388,7 +388,7 @@ class TargetSecurityService(
 
         val result =
             when {
-                unresolvedVulnerabilities.isNotEmpty() ->
+                unresolvedVulnerabilities.isNotEmpty() -> {
                     TargetSecurityResult(
                         key = targetKey,
                         targetVersion = targetVersion,
@@ -400,8 +400,9 @@ class TargetSecurityService(
                         vulnerableDependencies = unresolvedVulnerabilities,
                         relatedTo = overrides,
                     )
+                }
 
-                else ->
+                else -> {
                     TargetSecurityResult(
                         key = targetKey,
                         targetVersion = targetVersion,
@@ -413,6 +414,7 @@ class TargetSecurityService(
                         vulnerableDependencies = vulnerableDependencies,
                         relatedTo = overrides,
                     )
+                }
             }
         return result
     }

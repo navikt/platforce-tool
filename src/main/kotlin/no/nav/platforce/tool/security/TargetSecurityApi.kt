@@ -25,22 +25,29 @@ fun targetSecurityRoutes(targetSecurityScanner: TargetSecurityScanner) =
                     includeBoms = request.query("includeBoms") == "true",
                 )
             when (snapshot.status) {
-                SecurityScanStatus.READY ->
+                SecurityScanStatus.READY -> {
                     Response(Status.OK)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
-                SecurityScanStatus.RUNNING ->
+                }
+
+                SecurityScanStatus.RUNNING -> {
                     Response(Status.ACCEPTED)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
-                SecurityScanStatus.FAILED ->
+                }
+
+                SecurityScanStatus.FAILED -> {
                     Response(Status.INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
-                SecurityScanStatus.IDLE ->
+                }
+
+                SecurityScanStatus.IDLE -> {
                     Response(Status.ACCEPTED)
                         .header("Content-Type", "application/json")
                         .body(Gson().toJson(snapshot))
+                }
             }
         },
         "/internal/api/target-resolution/security" bind Method.GET to { request ->

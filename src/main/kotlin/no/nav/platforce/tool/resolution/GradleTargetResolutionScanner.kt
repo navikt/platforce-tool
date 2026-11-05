@@ -85,9 +85,18 @@ class GradleTargetResolutionScanner(
         while (true) {
             val current = selectedJobs.get(username, state)
             when (current.status) {
-                ScanJobStatus.READY -> return checkNotNull(current.result)
-                ScanJobStatus.FAILED -> error("Gradle target resolution failed: ${current.error}")
-                ScanJobStatus.IDLE -> throw CancellationException("Target resolution was invalidated")
+                ScanJobStatus.READY -> {
+                    return checkNotNull(current.result)
+                }
+
+                ScanJobStatus.FAILED -> {
+                    error("Gradle target resolution failed: ${current.error}")
+                }
+
+                ScanJobStatus.IDLE -> {
+                    throw CancellationException("Target resolution was invalidated")
+                }
+
                 ScanJobStatus.RUNNING -> {
                     if (current !== started) throw CancellationException("Target resolution was replaced")
                     Thread.sleep(250)

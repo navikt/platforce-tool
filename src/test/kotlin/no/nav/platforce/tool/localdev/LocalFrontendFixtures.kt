@@ -101,11 +101,15 @@ object LocalFrontendFixtures {
                         listOf("2.0.0"),
                     )
                 when {
-                    unsupported != null ->
+                    unsupported != null -> {
                         PluginSecurityResult(id, version, PluginSecurityStatus.UNSUPPORTED, error = unsupported)
-                    id == "org.jetbrains.kotlin.jvm" ->
+                    }
+
+                    id == "org.jetbrains.kotlin.jvm" -> {
                         PluginSecurityResult(id, version, PluginSecurityStatus.OK)
-                    id == "org.springframework.boot" ->
+                    }
+
+                    id == "org.springframework.boot" -> {
                         PluginSecurityResult(
                             id,
                             version,
@@ -113,13 +117,16 @@ object LocalFrontendFixtures {
                             listOf(advisory),
                             listOf(VulnerableDependency(resolved("example:plugin-runtime", "1.0.0"), listOf(advisory))),
                         )
-                    else ->
+                    }
+
+                    else -> {
                         PluginSecurityResult(
                             id,
                             version,
                             PluginSecurityStatus.UNRESOLVED,
                             error = "No synthetic published plugin marker fixture for $id:$version",
                         )
+                    }
                 }
             },
         )
