@@ -151,7 +151,8 @@ class OverrideAdditionFlowTest {
         val view = DependencyScanViewService(cache, security, scanner)
         val findings = view.get("alice", targets).single().findings
         val selected = if (databindIncludesCore) setOf(databind) else setOf(databind, core)
-        val expected = selected - present
+        val productionPresent = if (databindConfiguration == "testImplementation") present - databind else present
+        val expected = selected - productionPresent
         val removed =
             if (databindIncludesCore && core in present && databind in present &&
                 databindConfiguration == "implementation"
@@ -181,7 +182,7 @@ class OverrideAdditionFlowTest {
         )
         assertEquals(removed, findings.filter { it.status == DependencyStatus.REMOVE }.map { it.key }.toSet())
         assertEquals(
-            present + encoder,
+            productionPresent + encoder,
             view
                 .get("alice", targets)
                 .single()
@@ -192,7 +193,7 @@ class OverrideAdditionFlowTest {
         assertEquals(expected, findings.filter { it.status == DependencyStatus.ADD }.map { it.key }.toSet())
         val parent = findings.single { it.key == encoder }
         assertEquals(if (expected.isEmpty()) DependencyStatus.OK_OVERRIDDEN else DependencyStatus.OK_WITH_ADD, parent.status)
-        assertEquals(selected + (present - removed), parent.relatedTo.map { it.key }.toSet())
+        assertEquals(selected + (productionPresent - removed), parent.relatedTo.map { it.key }.toSet())
 
         DependencyPullRequestService(github, view).createPullRequest("example", "repository", "alice", targets)
         val updated = GradleDependencyParser().parse(github.updatedFiles["build.gradle"] ?: source)

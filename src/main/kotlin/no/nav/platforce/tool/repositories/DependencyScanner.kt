@@ -112,15 +112,20 @@ class DependencyScanner(
         val buildFile = tryGetBuildFile(owner, repo) ?: return null
 
         val parsedBuildFile = gradleDependencyParser.parse(buildFile)
+        // Exclude test-only dependencies and BOMs from repository scans; retain parser support for future test scanning.
+        val declarations =
+            gradleDependencyParser
+                .declarations(buildFile)
+                .filter { it.configuration !in setOf("testImplementation", "testRuntimeOnly") }
 
         return RepositoryDependencyInventory(
             repository = repository,
             scannedAt = Instant.now().toString(),
             plugins = parsedBuildFile.plugins,
-            dependencies = parsedBuildFile.dependencies,
+            dependencies = declarations.filterNot { it.platformBom }.associate { it.key to it.version },
             gradleVersion = parsedWrapper,
-            platformBoms = parsedBuildFile.platformBoms,
-            declarations = gradleDependencyParser.declarations(buildFile),
+            platformBoms = declarations.filter { it.platformBom }.associate { it.key to it.version },
+            declarations = declarations,
         )
     }
 

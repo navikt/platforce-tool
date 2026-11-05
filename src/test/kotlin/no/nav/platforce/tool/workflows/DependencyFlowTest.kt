@@ -27,6 +27,38 @@ class DependencyFlowTest {
     private val scanner = DependencyScanner(github)
 
     @Test
+    fun `GitHub repository scan excludes test implementation and runtime dependencies and BOMs`() {
+        val source =
+            """
+            plugins { id 'example.plugin' version '1.0' }
+            dependencies {
+                implementation 'example:shared:1.0'
+                api("example:api:2.0")
+                runtimeOnly 'example:runtime:3.0'
+                implementation platform('example:production-bom:1.0')
+                testImplementation 'example:shared:9.0'
+                testImplementation("example:test-only:1.0")
+                testRuntimeOnly 'example:test-runtime:1.0'
+                testImplementation platform('example:test-bom:1.0')
+                testRuntimeOnly(platform("example:test-runtime-bom:1.0"))
+            }
+            """.trimIndent()
+        val scanner = DependencyScanner(RecordingGithubClient(mapOf("build.gradle" to source)))
+        val inventory = scanner.scanRepository("example/repository")!!
+        assertEquals(
+            mapOf("example:shared" to "1.0", "example:api" to "2.0", "example:runtime" to "3.0"),
+            inventory.dependencies,
+        )
+        assertEquals(mapOf("example:production-bom" to "1.0"), inventory.platformBoms)
+        assertEquals(mapOf("example.plugin" to "1.0"), inventory.plugins)
+        assertTrue(inventory.declarations.none { it.configuration in setOf("testImplementation", "testRuntimeOnly") })
+        val scan = scanner.compare(inventory, TargetVersionsState(mutableMapOf(), mutableMapOf(), "8.0"))
+        assertEquals(inventory.dependencies.keys.sorted(), scan.declaredDependencyKeys)
+        assertEquals(listOf("example:production-bom"), scan.declaredPlatformBomKeys)
+        assertEquals(inventory.dependencies.keys, scan.untrackedDependencies.map { it.key }.toSet())
+    }
+
+    @Test
     fun `parse build file and distinguish matching older newer and missing dependencies`() {
         // Parse a Groovy build with a versioned plugin and both dependency declaration styles.
         val parsed =
