@@ -10,6 +10,7 @@ let isStartingScan = false;
 let lastLoadedData = [];
 
 let ignoredRepositories = [];
+let ignoredDependencies = [];
 
 let targetSecurityScan = null;
 let pluginSecurityScan = null;

@@ -1,5 +1,6 @@
 async function renderTargets(data) {
     const drafted = targetState?.drafted ?? new Set();
+    ignoredDependencies = data.ignoredDependencies || [];
 
     targetState = {
         plugins: data.plugins || {},
@@ -20,7 +21,8 @@ function renderTargetTables() {
         targetSecurityScan?.targets?.length
     );
     renderTable("pluginsTable", Object.entries(targetState.plugins), "plugin");
-    renderTable("depsTable", Object.entries(targetState.dependencies), "dependency");
+    renderTable("depsTable", Object.entries(targetState.dependencies)
+        .filter(([key]) => !ignoredDependencies.includes(key)), "dependency");
     renderTable("platformBomsTable", Object.entries(targetState.platformBoms), "platform_bom");
     renderGradleVersion(targetState.gradleVersion);
 }
@@ -32,6 +34,7 @@ function addDraftTarget(kind, key, version) {
     }
 
     if (kind === "DEPENDENCY") {
+        if (ignoredDependencies.includes(key)) return;
         targetState.dependencies[key] = version;
     }
 
@@ -188,6 +191,10 @@ function renderTable(containerId, entries, type) {
         const k = kInput.value.trim();
         const v = vInput.value.trim();
         if (!k || !v) return;
+        if (type === "dependency" && ignoredDependencies.includes(k)) {
+            showTargetSaveMessage("Remove this dependency from Ignored Dependencies before adding it as a target.", false);
+            return;
+        }
         const securityTarget = findTargetSecurity(type, k, v);
         const newRow = document.createElement("div");
         newRow.className = "target-row";
@@ -344,7 +351,11 @@ function readTargetInputs() {
 
     return {
         plugins: read("pluginsTable"),
-        dependencies: read("depsTable"),
+        dependencies: {
+            ...Object.fromEntries(Object.entries(targetState.dependencies)
+                .filter(([key]) => ignoredDependencies.includes(key))),
+            ...read("depsTable")
+        },
         platformBoms: read("platformBomsTable"),
         gradleVersion: readSingleVersion("gradleTable"),
         transientDependencies:

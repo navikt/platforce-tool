@@ -10,44 +10,47 @@ class TargetVersionsStore(
     private val userId: String = "default",
     private val team: String? = null,
 ) {
-    fun get(): TargetVersionsState {
+    fun get(includeIgnored: Boolean = false): TargetVersionsState {
         val versions = PostgresDatabase.getForUser(userId)
 
-        return TargetVersionsState(
-            plugins =
-                versions
-                    .filter { it.type == TargetVersionType.PLUGIN }
-                    .sortedBy { it.key }
-                    .associate { it.key to it.version }
-                    .toMutableMap(),
-            dependencies =
-                versions
-                    .filter { it.type == TargetVersionType.DEPENDENCY }
-                    .sortedBy { it.key }
-                    .associate { it.key to it.version }
-                    .toMutableMap(),
-            gradleVersion =
-                versions
-                    .firstOrNull { it.type == TargetVersionType.GRADLE }
-                    ?.version ?: "1.0.0-missing",
-            transientDependencies =
-                versions
-                    .filter {
-                        it.type == TargetVersionType.DEPENDENCY &&
-                            it.transient
-                    }.map { it.key }
-                    .toSet(),
-            platformBoms =
-                versions
-                    .filter { it.type == TargetVersionType.PLATFORM_BOM }
-                    .sortedBy { it.key }
-                    .associate { it.key to it.version }
-                    .toMutableMap(),
-        )
+        val state =
+            TargetVersionsState(
+                ignoredDependencies = PostgresDatabase.getIgnoredDependencies(userId),
+                plugins =
+                    versions
+                        .filter { it.type == TargetVersionType.PLUGIN }
+                        .sortedBy { it.key }
+                        .associate { it.key to it.version }
+                        .toMutableMap(),
+                dependencies =
+                    versions
+                        .filter { it.type == TargetVersionType.DEPENDENCY }
+                        .sortedBy { it.key }
+                        .associate { it.key to it.version }
+                        .toMutableMap(),
+                gradleVersion =
+                    versions
+                        .firstOrNull { it.type == TargetVersionType.GRADLE }
+                        ?.version ?: "1.0.0-missing",
+                transientDependencies =
+                    versions
+                        .filter {
+                            it.type == TargetVersionType.DEPENDENCY &&
+                                it.transient
+                        }.map { it.key }
+                        .toSet(),
+                platformBoms =
+                    versions
+                        .filter { it.type == TargetVersionType.PLATFORM_BOM }
+                        .sortedBy { it.key }
+                        .associate { it.key to it.version }
+                        .toMutableMap(),
+            )
+        return if (includeIgnored) state else state.withoutIgnoredDependencies()
     }
 
     fun update(state: TargetVersionsState) {
-        val normalized = state.snapshot()
+        val normalized = state.snapshot().preservingIgnoredDependencies(get(includeIgnored = true))
         val now = Instant.now()
 
         val versions =

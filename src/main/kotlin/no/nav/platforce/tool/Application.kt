@@ -5,6 +5,7 @@ import no.nav.platforce.tool.config.env
 import no.nav.platforce.tool.config.env_NAIS_CLUSTER_NAME
 import no.nav.platforce.tool.config.secret_PLATFORCE_TOOLING_APP_ID
 import no.nav.platforce.tool.config.secret_PLATFORCE_TOOLING_PRIVATE_KEY
+import no.nav.platforce.tool.db.PostgresDatabase
 import no.nav.platforce.tool.github.DefaultGithubAccessTokenHandler
 import no.nav.platforce.tool.github.DefaultGithubClient
 import no.nav.platforce.tool.github.GithubAppAuthenticator
@@ -53,6 +54,10 @@ import java.io.File
 import java.nio.file.Path
 
 class Application {
+    init {
+        PostgresDatabase.createIgnoredDependenciesTable()
+    }
+
     private val log = KotlinLogging.logger { }
 
     private val local: Boolean = System.getenv(env_NAIS_CLUSTER_NAME) == null

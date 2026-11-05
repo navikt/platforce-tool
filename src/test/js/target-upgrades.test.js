@@ -29,6 +29,7 @@ function app() {
     const context = vm.createContext({
         document: { createElement: element, querySelectorAll: () => [] },
         targetScanGeneration: 0,
+        ignoredDependencies: [],
         console: { error() {} },
         fetch: () => { throw new Error("Unexpected request"); },
         addDraftTarget: (...args) => drafts.push(args)
@@ -216,6 +217,20 @@ test("Upgrade all reports no eligible updates and does not draft major or prerel
     assert.equal(ui.context.targetState.drafted.size, 0);
     assert.equal(ui.renders(), 0);
     assert.equal(ui.messages[0][0], "No non-major updates available.");
+});
+
+test("Upgrade all skips ignored dependency coordinates even when typed into a visible row", async () => {
+    const ui = bulkApp({ "example:ignored": "1.0", "example:active": "1.0" });
+    ui.context.ignoredDependencies = ["example:ignored"];
+    const lookedUp = [];
+    ui.context.fetchAvailableUpgrades = async key => {
+        lookedUp.push(key);
+        return { versions: [{ version: "1.1", majorUpgrade: false }] };
+    };
+    await ui.context.upgradeAllDependencies();
+    assert.deepEqual(lookedUp, ["example:active"]);
+    assert.equal(ui.context.targetState.dependencies["example:ignored"], "1.0");
+    assert.deepEqual([...ui.context.targetState.drafted], ["DEPENDENCY:example:active"]);
 });
 
 test("Upgrade all keeps successful drafts while explicitly reporting lookup failures", async () => {

@@ -3,6 +3,7 @@ package no.nav.platforce.tool.repositories
 import no.nav.platforce.tool.security.SecurityScanStatus
 import no.nav.platforce.tool.security.TargetSecurityScanner
 import no.nav.platforce.tool.targets.TargetVersionsState
+import no.nav.platforce.tool.targets.withoutIgnoredDependencies
 
 class PullRequestReadinessException(
     message: String,
@@ -43,8 +44,9 @@ class DependencyScanViewService(
                 .takeIf { it.status == SecurityScanStatus.READY }
                 ?.result
 
-        return dependencyScanCache.get(username).map { inventory ->
-            val scan = dependencyScanner.compare(inventory, targetState)
+        return dependencyScanCache.get(username).map { cached ->
+            val inventory = cached.withoutIgnoredDependencies(targetState.ignoredDependencies)
+            val scan = dependencyScanner.compare(inventory, targetState.withoutIgnoredDependencies())
             if (securityResult != null) {
                 dependencyScanner.enrichSecurityScan(
                     scan = scan,

@@ -15,6 +15,10 @@ fun availableVersionsRoutes(service: AvailableVersionsService) =
             val context = request.userContext()
             val log = KotlinLogging.logger { }
             try {
+                require(
+                    request.query("kind") == "plugin" ||
+                        request.query("key") !in context.targetVersionsStore.get().ignoredDependencies,
+                ) { "Dependency is ignored" }
                 val result =
                     service.available(
                         context.username,

@@ -4,8 +4,10 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
+import no.nav.platforce.tool.ignore.parseIgnoredDependencies
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.RepositoryViewService
+import no.nav.platforce.tool.repositories.withoutIgnoredDependencies
 import no.nav.platforce.tool.resolution.ResolutionStatus
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.resolution.TargetResolutionSnapshot
@@ -18,7 +20,9 @@ import no.nav.platforce.tool.targets.AvailableVersion
 import no.nav.platforce.tool.targets.AvailableVersions
 import no.nav.platforce.tool.targets.TargetVersionsState
 import no.nav.platforce.tool.targets.fingerprint
+import no.nav.platforce.tool.targets.preservingIgnoredDependencies
 import no.nav.platforce.tool.targets.snapshot
+import no.nav.platforce.tool.targets.withoutIgnoredDependencies
 import no.nav.platforce.tool.workflows.RecordingGithubClient
 import org.apache.maven.artifact.versioning.ComparableVersion
 import org.http4k.core.HttpHandler
@@ -75,7 +79,7 @@ class LocalFrontendApi(
     }
 
     private fun securityResult(): TargetSecurityScan {
-        val result = LocalFrontendFixtures.security(targets)
+        val result = LocalFrontendFixtures.security(targets.withoutIgnoredDependencies())
         return if (bomSecurityReadyAt?.let { now() >= it } == true) result else result.copy(platformBoms = emptyList())
     }
 
@@ -97,8 +101,9 @@ class LocalFrontendApi(
     }
 
     private fun scans() =
-        inventories.values.map { inventory ->
-            val scan = scanner.compare(inventory, targets)
+        inventories.values.map { cached ->
+            val inventory = cached.withoutIgnoredDependencies(targets.ignoredDependencies)
+            val scan = scanner.compare(inventory, targets.withoutIgnoredDependencies())
             if (securityReadyAt?.let { now() >= it } == true) {
                 scanner.enrichSecurityScan(scan, securityResult(), inventory)
             } else {
@@ -114,7 +119,7 @@ class LocalFrontendApi(
                 now() < readyAt -> ResolutionStatus.RUNNING
                 else -> ResolutionStatus.READY
             }
-        val roots = targets.dependencies.map { (key, version) -> LocalFrontendFixtures.resolved(key, version) }
+        val roots = targets.withoutIgnoredDependencies().dependencies.map { (key, version) -> LocalFrontendFixtures.resolved(key, version) }
         return TargetResolutionSnapshot(
             status,
             fingerprint(targets),
@@ -270,7 +275,7 @@ class LocalFrontendApi(
                         it.isJsonPrimitive && it.asJsonPrimitive.isString
                     },
                 ) { "Expected transient dependency names" }
-                targets = gson.fromJson(parsed, TargetVersionsState::class.java).snapshot()
+                targets = gson.fromJson(parsed, TargetVersionsState::class.java).snapshot().preservingIgnoredDependencies(targets)
                 resolutionReadyAt = null
                 securityReadyAt = null
                 bomSecurityReadyAt = null
@@ -306,7 +311,18 @@ class LocalFrontendApi(
             "/internal/api/target-resolution/security" bind Method.GET to { request ->
                 snapshotResponse(security(request.query("includeBoms") == "true"))
             },
-            "/internal/api/ignored-repositories" bind Method.GET to { json(mapOf("repositories" to ignored)) },
+            "/internal/api/ignored-repositories" bind Method.GET to {
+                json(mapOf("repositories" to ignored, "dependencies" to targets.ignoredDependencies))
+            },
+            "/internal/api/ignored-dependencies/update" bind Method.POST to { request ->
+                targets = targets.copy(ignoredDependencies = parseIgnoredDependencies(request.bodyString()))
+                resolutionReadyAt = null
+                securityReadyAt = null
+                bomSecurityReadyAt = null
+                pluginSecurityReadyAt = null
+                upgradeScans.clear()
+                Response(Status.OK).body("updated")
+            },
             "/internal/api/ignored-repositories/update" bind Method.POST to { request ->
                 val repositories = body(request)["repositories"]
                 require(repositories != null && repositories.isJsonArray) { "Expected repositories array" }

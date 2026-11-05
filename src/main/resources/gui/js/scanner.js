@@ -499,6 +499,18 @@ async function loadData() {
     notes = noteData || {};
 
     ignoredRepositories = ignoredData?.repositories || [];
+    const nextIgnoredDependencies = ignoredData?.dependencies || [];
+    if (JSON.stringify([...ignoredDependencies].sort()) !== JSON.stringify([...nextIgnoredDependencies].sort())) {
+        captureTargetDrafts();
+        ignoredDependencies = nextIgnoredDependencies;
+        targetScanGeneration++;
+        targetSecurityScan = null;
+        pluginSecurityScan = null;
+        normalSecurityReady = false;
+        bomSecurityReady = false;
+        updateBomScanButton();
+        renderTargetTables();
+    }
 
     lastLoadedData = {
         repos: repoViewData || [],

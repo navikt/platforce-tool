@@ -20,7 +20,7 @@ fun targetVersionsRoutes(
         val context = request.userContext()
         Response(Status.OK)
             .header("Content-Type", "application/json")
-            .body(Gson().toJson(context.targetVersionsStore.get()))
+            .body(Gson().toJson(context.targetVersionsStore.get(includeIgnored = true)))
     },
     "/internal/api/target-versions/update" bind Method.POST to { request ->
         val context = request.userContext()

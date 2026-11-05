@@ -31,6 +31,7 @@ fun databaseAdminRoutes() =
     )
 
 private val clearDbHandler: HttpHandler = {
+    PostgresDatabase.createIgnoredDependenciesTable(true)
     PostgresDatabase.createTargetVersionsTable(true)
     PostgresDatabase.createRepositoryNotesTable(true)
     PostgresDatabase.createIgnoredRepositoriesTable(true)
@@ -38,6 +39,7 @@ private val clearDbHandler: HttpHandler = {
 }
 
 private val initDbHandler: HttpHandler = {
+    PostgresDatabase.createIgnoredDependenciesTable()
     // PostgresDatabase.createTargetVersionsTable(false)
     // PostgresDatabase.createRepositoryNotesTable(false)
     PostgresDatabase.createIgnoredRepositoriesTable(false)

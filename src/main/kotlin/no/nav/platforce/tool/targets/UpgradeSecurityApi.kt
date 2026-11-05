@@ -13,10 +13,14 @@ fun upgradeSecurityRoutes(scanner: UpgradeSecurityScanner) =
         ("/internal/api/target-versions/upgrade-security" + if (start) "/start" else "") bind Method.GET to { request ->
             val context = request.userContext()
             try {
+                val state = context.targetVersionsStore.get()
+                require(request.query("kind") == "plugin" || request.query("key") !in state.ignoredDependencies) {
+                    "Dependency is ignored"
+                }
                 val snapshot =
                     scanner.snapshot(
                         context.username,
-                        context.targetVersionsStore.get(),
+                        state,
                         request.query("kind") ?: "dependency",
                         request.query("key").orEmpty(),
                         request.query("currentVersion").orEmpty(),

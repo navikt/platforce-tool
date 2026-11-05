@@ -31,7 +31,7 @@ async function upgradeAllDependencies() {
             key: row.querySelector(".key")?.value.trim(),
             version: row.querySelector(".version")?.value.trim()
         }))
-        .filter(target => target.key && target.version);
+        .filter(target => target.key && target.version && !ignoredDependencies.includes(target.key));
     const upgrades = [];
     const errors = [];
     closeTargetSaveMessage(true);

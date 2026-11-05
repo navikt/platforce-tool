@@ -24,6 +24,7 @@ async function ignoreRepository(repo) {
 }
 
 function renderIgnoredRepositories() {
+    renderIgnoredDependencies();
 
     const container =
         document.getElementById("ignoredReposTable");
@@ -111,4 +112,58 @@ function renderIgnoredRepositories() {
     });
 
     container.appendChild(addRow);
+}
+
+async function updateIgnoredDependencies(dependencies, button) {
+    button.disabled = true;
+    try {
+        const response = await fetch("/internal/api/ignored-dependencies/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dependencies })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        await loadData();
+    } catch (error) {
+        console.error("Could not update ignored dependencies", error);
+        showTargetSaveMessage(`Could not update ignored dependencies: ${error.message}`, false);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function renderIgnoredDependencies() {
+    const container = document.getElementById("ignoredDepsTable");
+    container.replaceChildren();
+    [...ignoredDependencies].sort().forEach(dependency => {
+        const row = document.createElement("div");
+        row.className = "target-row";
+        row.innerHTML = `<input class="key" readonly />
+            <button type="button" class="icon-btn remove">${TRASH_SVG}</button>`;
+        row.querySelector(".key").value = dependency;
+        const button = row.querySelector(".remove");
+        button.setAttribute("aria-label", `Stop ignoring ${dependency}`);
+        button.onclick = () => updateIgnoredDependencies(
+            ignoredDependencies.filter(key => key !== dependency), button);
+        container.appendChild(row);
+    });
+    const row = document.createElement("div");
+    row.className = "add-row";
+    row.innerHTML = `<input class="key" placeholder="group:artifact"
+            aria-label="Dependency to ignore" />
+        <button type="button" class="icon-btn add-btn" aria-label="Ignore dependency">${ADD_SVG}</button>`;
+    const input = row.querySelector(".key");
+    const button = row.querySelector(".add-btn");
+    const add = () => {
+        const dependency = input.value.trim();
+        if (!/^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+$/.test(dependency) || dependency.length > 500) {
+            showTargetSaveMessage("Enter a dependency using group:artifact", false);
+            return;
+        }
+        if (ignoredDependencies.includes(dependency)) return;
+        updateIgnoredDependencies([...ignoredDependencies, dependency], button);
+    };
+    button.onclick = add;
+    input.onkeydown = event => { if (event.key === "Enter" && !button.disabled) add(); };
+    container.appendChild(row);
 }

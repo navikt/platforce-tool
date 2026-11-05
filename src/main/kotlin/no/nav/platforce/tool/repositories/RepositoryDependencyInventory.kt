@@ -11,3 +11,9 @@ data class RepositoryDependencyInventory(
     val platformBoms: Map<String, String> = emptyMap(),
     val declarations: List<GradleDependencyDeclaration> = emptyList(),
 )
+
+fun RepositoryDependencyInventory.withoutIgnoredDependencies(ignored: Set<String>): RepositoryDependencyInventory =
+    copy(
+        dependencies = dependencies.filterKeys { it !in ignored },
+        declarations = declarations.filter { it.platformBom || it.key !in ignored },
+    )

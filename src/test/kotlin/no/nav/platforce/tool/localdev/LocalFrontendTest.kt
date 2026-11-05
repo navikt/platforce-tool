@@ -21,6 +21,41 @@ class LocalFrontendTest {
     lateinit var directory: Path
 
     @Test
+    fun `ignored dependencies disappear from repository scans and resolution but saved versions survive`() {
+        var time = 10_000L
+        val handler = LocalFrontendApi(directory) { time }.handler
+        val key = LocalFrontendFixtures.WEB
+
+        fun get(path: String) = JsonParser.parseString(handler(Request(Method.GET, path)).bodyString())
+
+        fun ignore(dependencies: String) =
+            handler(Request(Method.POST, "/internal/api/ignored-dependencies/update").body("""{"dependencies":$dependencies}"""))
+        assertEquals(Status.OK, ignore("""["$key","example:untracked-library"]""").status)
+        val scans = get("/internal/api/dependency-scan").asJsonArray
+        scans.forEach { entry ->
+            val scan = entry.asJsonObject
+            assertTrue(scan["findings"].asJsonArray.none { it.asJsonObject["key"].asString == key })
+            assertTrue(scan["untrackedDependencies"].asJsonArray.isEmpty)
+            assertTrue(scan["declaredDependencyKeys"].asJsonArray.none { it.asString == key })
+        }
+        handler(Request(Method.GET, "/internal/api/target-resolution/start"))
+        time += 2000
+        val resolution = get("/internal/api/target-resolution").asJsonObject["result"].asJsonObject
+        assertFalse(resolution["individual"].asJsonObject.has(key))
+        val targets = get("/internal/api/target-versions").asJsonObject
+        assertEquals("3.0.0", targets["dependencies"].asJsonObject[key].asString)
+        targets["dependencies"].asJsonObject.remove(key)
+        assertEquals(Status.OK, handler(Request(Method.POST, "/internal/api/target-versions/update").body(targets.toString())).status)
+        assertEquals(Status.OK, ignore("[]").status)
+        assertEquals("3.0.0", get("/internal/api/target-versions").asJsonObject["dependencies"].asJsonObject[key].asString)
+        assertTrue(
+            get("/internal/api/dependency-scan").asJsonArray.any { scan ->
+                scan.asJsonObject["findings"].asJsonArray.any { it.asJsonObject["key"].asString == key }
+            },
+        )
+    }
+
+    @Test
     fun `separate plugin scan is idle until approved progresses independently and target saves invalidate it`() {
         var time = 10_000L
         val handler = LocalFrontendApi(directory) { time }.handler
@@ -226,7 +261,7 @@ class LocalFrontendTest {
             ).status,
         )
         assertEquals(
-            """{"repositories":["demo/no-app-access"]}""",
+            """{"repositories":["demo/no-app-access"],"dependencies":[]}""",
             handler(Request(Method.GET, "/internal/api/ignored-repositories")).bodyString(),
         )
         handler(Request(Method.POST, "/internal/selectedTeam").body("""{"selectedTeam":"demo-platform"}"""))

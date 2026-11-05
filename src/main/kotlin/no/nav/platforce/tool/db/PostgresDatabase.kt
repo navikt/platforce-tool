@@ -86,6 +86,37 @@ object PostgresDatabase {
         }
     }
 
+    fun createIgnoredDependenciesTable(dropFirst: Boolean = false) {
+        transaction(database) {
+            if (dropFirst) SchemaUtils.drop(IgnoredDependenciesTable)
+            SchemaUtils.create(IgnoredDependenciesTable)
+        }
+    }
+
+    fun getIgnoredDependencies(userId: String): Set<String> =
+        transaction(database) {
+            IgnoredDependenciesTable
+                .selectAll()
+                .where { IgnoredDependenciesTable.userId eq userId }
+                .map { it[IgnoredDependenciesTable.dependency] }
+                .toSet()
+        }
+
+    fun replaceIgnoredDependencies(
+        userId: String,
+        dependencies: Set<String>,
+    ) {
+        transaction(database) {
+            IgnoredDependenciesTable.deleteWhere { IgnoredDependenciesTable.userId eq userId }
+            dependencies.forEach { dependency ->
+                IgnoredDependenciesTable.insert {
+                    it[IgnoredDependenciesTable.userId] = userId
+                    it[IgnoredDependenciesTable.dependency] = dependency
+                }
+            }
+        }
+    }
+
     fun getForUser(userId: String): List<TargetVersion> =
         transaction(database) {
             TargetVersionsTable

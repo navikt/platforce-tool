@@ -4,6 +4,7 @@ import no.nav.platforce.tool.db.PostgresDatabase
 
 data class IgnoredRepositoriesState(
     val repositories: MutableList<String>,
+    val dependencies: Set<String> = emptySet(),
 )
 
 class IgnoredRepositoriesStore(
@@ -11,6 +12,7 @@ class IgnoredRepositoriesStore(
 ) {
     fun get(): IgnoredRepositoriesState =
         IgnoredRepositoriesState(
+            dependencies = PostgresDatabase.getIgnoredDependencies(userId),
             repositories =
                 PostgresDatabase
                     .getIgnoredRepositories(userId)
