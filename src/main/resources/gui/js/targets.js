@@ -92,8 +92,8 @@ function renderTable(containerId, entries, type) {
         row.className = `target-row${drafted ? " drafted" : ""}`;
         row.innerHTML = `
         
-            <input class="key" value="${key}" />
-            <input class="version" value="${version}" />
+            <input class="key" />
+            <input class="version" />
             ${securityStatusHtml(securityTarget)}
             ${
             type === "dependency"
@@ -123,6 +123,8 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
+        row.querySelector(".key").value = key;
+        row.querySelector(".version").value = version;
         bindDependencyUsage(row, type);
         bindTargetUpgrades(row, type);
         if (type === "dependency") {
@@ -191,8 +193,8 @@ function renderTable(containerId, entries, type) {
         newRow.className = "target-row";
         newRow.innerHTML = `
        
-            <input class="key" value="${k}" />
-            <input class="version" value="${v}" />
+            <input class="key" />
+            <input class="version" />
             ${securityStatusHtml(securityTarget)}
             ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
@@ -211,6 +213,8 @@ function renderTable(containerId, entries, type) {
                 : ""
         }
         `;
+        newRow.querySelector(".key").value = k;
+        newRow.querySelector(".version").value = v;
         bindDependencyUsage(newRow, type);
         bindTargetUpgrades(newRow, type);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();

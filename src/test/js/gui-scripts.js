@@ -4,7 +4,7 @@ const vm = require("node:vm");
 
 const guiRoot = resolve(__dirname, "../../main/resources/gui");
 const html = readFileSync(resolve(guiRoot, "index.html"), "utf8");
-const scriptTags = [...html.matchAll(/<script\b([^>]*)>\s*<\/script>/g)];
+const scriptTags = [...html.matchAll(/<script\b([^>]*)>\s*<\/script\s*>/gi)];
 const scripts = scriptTags.map(([, attributes]) => {
     if (/\b(?:async|defer|type)\b/.test(attributes)) {
         throw new Error("GUI scripts must load synchronously as ordered classic scripts");
