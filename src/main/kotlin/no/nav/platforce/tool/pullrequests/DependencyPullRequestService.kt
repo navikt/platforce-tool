@@ -132,13 +132,13 @@ class DependencyPullRequestService(
                     actionable.forEach { finding ->
                         when (finding.status) {
                             DependencyStatus.ADD -> {
-                                val related = finding.relatedTo.firstOrNull()
+                                val related = finding.relatedTo.takeIf { it.isNotEmpty() }
 
                                 if (related != null) {
                                     appendLine(
                                         "- ADD ${finding.key}:${finding.targetVersion} " +
                                             "(transitive dependency override for " +
-                                            "${related.key}:${related.version})",
+                                            "${related.joinToString { "${it.key}:${it.version}" }})",
                                     )
                                 } else {
                                     appendLine(

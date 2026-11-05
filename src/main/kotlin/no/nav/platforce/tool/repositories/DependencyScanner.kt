@@ -491,7 +491,17 @@ class DependencyScanner(
             }
         }
 
-        return enriched
+        val additions =
+            enriched
+                .filter { it.status == DependencyStatus.ADD }
+                .groupBy { Triple(it.kind, it.key, it.targetVersion) }
+        val emitted = mutableSetOf<Triple<DependencyKind, String, String>>()
+        return enriched.mapNotNull { finding ->
+            if (finding.status != DependencyStatus.ADD) return@mapNotNull finding
+            val key = Triple(finding.kind, finding.key, finding.targetVersion)
+            if (!emitted.add(key)) return@mapNotNull null
+            finding.copy(relatedTo = additions.getValue(key).flatMap { it.relatedTo }.distinct())
+        }
     }
 
     private fun selectOverrideAdditions(
