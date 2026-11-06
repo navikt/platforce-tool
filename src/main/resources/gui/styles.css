@@ -1033,6 +1033,12 @@ button:hover {
     border: 1px solid #2d6b39;
 }
 
+.ignored-repositories-pill {
+    background: #eef5ff;
+    color: #2458a6;
+    border: 1px solid #2458a6;
+}
+
 .gradle-pill {
     background: #eef5ff;
     color: #a66324;

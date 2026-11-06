@@ -97,7 +97,38 @@ class GradleBuildFileUpdater {
                     }
             }
 
-        return applyGradleCompatibility(updated)
+        return applyShadowCompatibility(applyGradleCompatibility(updated))
+    }
+
+    private fun applyShadowCompatibility(content: String): String {
+        val source = GradleDependencyParser().withoutComments(content)
+        val shadowPlugin =
+            Regex(
+                """\bid\s*(?:\(\s*)?["'](com\.gradleup\.shadow|com\.github\.johnrengelman\.shadow)["'][^\r\n]*""",
+            ).findAll(source).firstOrNull { !Regex("""\bapply\s+false\b""").containsMatchIn(it.value) }
+                ?: return content
+        if (Regex("""\bfilesMatching\s*\(\s*["']META-INF/\*\.kotlin_module["']""").containsMatchIn(source)) {
+            return content
+        }
+        val kotlinDsl = Regex("""\bid\s*\(""").containsMatchIn(shadowPlugin.value)
+        val task =
+            if (kotlinDsl) {
+                """tasks.named<org.gradle.jvm.tasks.Jar>("shadowJar")"""
+            } else {
+                "tasks.named('shadowJar')"
+            }
+        val pattern = if (kotlinDsl) """"META-INF/*.kotlin_module"""" else "'META-INF/*.kotlin_module'"
+        val newline = if ("\r\n" in content) "\r\n" else "\n"
+        // Newer Shadow versions can fail on duplicate Kotlin module metadata; keep other duplicate checks unchanged.
+        val configuration =
+            listOf(
+                "$task {",
+                "    filesMatching($pattern) {",
+                "        duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.INCLUDE",
+                "    }",
+                "}",
+            ).joinToString(newline)
+        return content.trimEnd('\r', '\n') + newline + newline + configuration + newline
     }
 
     // Keep generated PRs compatible with newer Gradle application and JUnit test execution APIs.
