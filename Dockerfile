@@ -1,4 +1,4 @@
-FROM gradle:8.14.4-jdk21 AS gradle
+FROM gradle:9.8.2-jdk21 AS gradle
 
 FROM eclipse-temurin:21-jre-ubi10-minimal
 
