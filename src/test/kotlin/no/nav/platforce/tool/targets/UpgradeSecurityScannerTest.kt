@@ -32,7 +32,7 @@ class UpgradeSecurityScannerTest {
                         ).build()
                 }.build(),
         )
-    private val state = TargetVersionsState(mutableMapOf(), mutableMapOf(), "8.14.4")
+    private val state = TargetVersionsState(mutableMapOf(), mutableMapOf(), "  8.14.4")
 
     private fun node(
         name: String,

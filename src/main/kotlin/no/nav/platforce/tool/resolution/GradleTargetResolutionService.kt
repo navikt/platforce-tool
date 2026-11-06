@@ -77,14 +77,6 @@ class GradleTargetResolutionService(
         val startedAt = Instant.now()
         val started = System.nanoTime()
         val timings = linkedMapOf<String, Double>()
-        require(
-            state.gradleVersion.matches(
-                Regex("""\d+\.\d+(\.\d+)?([.-].+)?"""),
-            ),
-        ) {
-            "Invalid Gradle version: ${state.gradleVersion}"
-        }
-
         val debugDir = debugFiles.start(username)
         debugFiles.startInspection(username, mode)
         val projectDir =
@@ -133,7 +125,7 @@ class GradleTargetResolutionService(
                 timed("gradleDistributionCheckMs") { ensureGradleDistribution() }
 
             log.info {
-                "Using Gradle ${state.gradleVersion} from $gradleHome"
+                "Using installed Gradle from $gradleHome"
             }
 
             log.info {
@@ -193,7 +185,7 @@ class GradleTargetResolutionService(
                 timed("resultParsingMs") {
                     parseResult(
                         json = json,
-                        gradleVersion = state.gradleVersion,
+                        gradleVersion = executedGradleVersion(projectDir),
                     )
                 }
             status = "READY"
@@ -217,7 +209,7 @@ class GradleTargetResolutionService(
                         "startedAt" to startedAt.toString(),
                         "finishedAt" to Instant.now().toString(),
                         "targetFingerprint" to fingerprint(state),
-                        "configuredGradleVersion" to state.gradleVersion,
+                        "targetWrapperVersion" to state.gradleVersion,
                         "gradleExecutable" to gradleBaseDir.resolve("bin/gradle").toString(),
                         "totalMs" to (System.nanoTime() - started) / 1_000_000.0,
                         "phasesMs" to timings,
@@ -230,6 +222,7 @@ class GradleTargetResolutionService(
                             .parseString(configurationReport.readText())
                             .asJsonObject
                     report["gradleTask"] = task
+                    task["executedGradleVersion"]?.let { report["executedGradleVersion"] = it.asString }
                     timings["gradleOutsideTaskMs"] =
                         (timings.getValue("gradleProcessMs") - task["taskElapsedMs"].asDouble).coerceAtLeast(0.0)
                 }
@@ -274,24 +267,14 @@ class GradleTargetResolutionService(
     }
 
     private fun ensureGradleDistribution(): Path {
-//        require(version == "8.11.1") {
-//            "Only Gradle 8.11.1 is currently installed in the container, requested $version"
-//        }
         val installationDir = gradleBaseDir
         val executable = installationDir.resolve("bin").resolve("gradle")
-//        log.info {
-//            "Looking for Gradle $version at $installationDir"
-//        }
         check(executable.exists()) {
             buildString {
-                // appendLine("Gradle $version is not installed in the container.")
                 appendLine("Expected executable: $executable")
                 appendLine("Configured Gradle base directory: $gradleBaseDir")
             }
         }
-//        log.info {
-//            "Found Gradle $version at $executable"
-//        }
         executable.toFile().setExecutable(true)
         return installationDir
     }
@@ -408,6 +391,19 @@ class GradleTargetResolutionService(
             individual = file.individual,
             platformBoms = file.platformBoms.orEmpty(),
         )
+    }
+
+    private fun executedGradleVersion(projectDir: Path): String {
+        val report = projectDir.resolve("gradle-configuration-timings.json")
+        check(report.exists()) { "Gradle resolution did not report its executed version: $report" }
+        val version =
+            com.google.gson.JsonParser
+                .parseString(report.readText())
+                .asJsonObject["executedGradleVersion"]
+                ?.asString
+        check(!version.isNullOrBlank()) { "Gradle resolution reported no executed version" }
+        log.info { "Resolution executed with Gradle $version" }
+        return version
     }
 
     private data class ResolutionFile(

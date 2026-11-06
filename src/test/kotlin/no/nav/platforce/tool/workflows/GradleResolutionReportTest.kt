@@ -27,7 +27,7 @@ class GradleResolutionReportTest {
             TargetVersionsState(
                 mutableMapOf(),
                 mutableMapOf("example.nonexistent:one" to "1.0.0", "example.nonexistent:two" to "2.0.0"),
-                "8.14.4",
+                "not-a-resolver-version",
             )
 
     @Test
@@ -69,8 +69,34 @@ class GradleResolutionReportTest {
         assertTrue(processMs >= task["taskElapsedMs"].asDouble)
         assertEquals(processMs - task["taskElapsedMs"].asDouble, report["phasesMs"].asJsonObject["gradleOutsideTaskMs"].asDouble)
         assertTrue(task["executedGradleVersion"].asString.isNotBlank())
+        assertEquals(task["executedGradleVersion"].asString, result.gradleVersion)
+        assertEquals(result.gradleVersion, report["executedGradleVersion"].asString)
+        assertEquals(targets.gradleVersion, report["targetWrapperVersion"].asString)
         assertTrue(task["taskElapsedMs"].asDouble >= configurations.sumOf { it["durationMs"].asDouble })
         assertTrue(report["measurementNotes"].asString.contains("OSV"))
+    }
+
+    @Test
+    fun `all resolution modes use the installed Gradle version regardless of the saved wrapper target`() {
+        val launcher =
+            launcher(
+                """
+                echo '{"roots":[],"individual":{}}' > resolution.json
+                echo '{"taskElapsedMs":0,"executedGradleVersion":"99.1","configurations":[]}' > gradle-configuration-timings.json
+                """.trimIndent(),
+            )
+        val service = GradleTargetResolutionService(launcher, debugFiles = ResolutionDebugFiles(directory.resolve("files")))
+        val state = targets.copy(gradleVersion = "")
+        assertEquals("99.1", service.resolve("alice", state).gradleVersion)
+        assertEquals("99.1", service.resolvePlugins("alice", state).gradleVersion)
+        assertEquals(
+            "99.1",
+            service.resolveUpgradeCandidates("alice", state, mapOf("1.0" to "example:library:1.0")).gradleVersion,
+        )
+        assertEquals(
+            "99.1",
+            service.resolveCoverage("alice", state, TargetResolution("old", emptyList(), emptyMap()), emptySet()).gradleVersion,
+        )
     }
 
     @Test
