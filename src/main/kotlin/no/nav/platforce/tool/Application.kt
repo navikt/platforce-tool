@@ -14,6 +14,7 @@ import no.nav.platforce.tool.ignore.ignoredRepositoriesRoutes
 import no.nav.platforce.tool.internal.databaseAdminRoutes
 import no.nav.platforce.tool.internal.internalRoutes
 import no.nav.platforce.tool.nais.NaisConsoleClient
+import no.nav.platforce.tool.nais.deploymentRefreshRoutes
 import no.nav.platforce.tool.nais.deploymentsRoutes
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
@@ -57,6 +58,7 @@ import java.nio.file.Path
 class Application {
     init {
         PostgresDatabase.createIgnoredDependenciesTable()
+        PostgresDatabase.createDeploymentRefreshMarkerTable()
     }
 
     private val log = KotlinLogging.logger { }
@@ -145,6 +147,7 @@ class Application {
             *repositoryNotesRoutes().toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
             *deploymentsRoutes(naisClient).toTypedArray(),
+            *deploymentRefreshRoutes().toTypedArray(),
             *repositoryViewRoutes(naisClient, githubClient, dependencyScanViewService, repositoryViewService).toTypedArray(),
         ).withUserCacheControl()
 

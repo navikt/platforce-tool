@@ -126,6 +126,44 @@ body {
     display: inline-block;
 }
 
+.deployment-refresh-marker {
+    margin-bottom: 16px;
+    font-size: 13px;
+}
+
+.deployment-refresh-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.deployment-refresh-marker p {
+    margin: 6px 0;
+}
+
+#deploymentRefreshError {
+    color: #a32626;
+}
+
+.target-version-pill.deployment-freshness-older {
+    background: #fff1cc;
+    border-color: #b3801b;
+    color: #674900;
+}
+
+.target-version-pill.deployment-freshness-newer {
+    background: #e0f3e7;
+    border-color: #4a8960;
+    color: #245335;
+}
+
+.target-version-pill.deployment-freshness-unknown {
+    background: #edf0f3;
+    border-color: #87919d;
+    color: #46505c;
+}
+
 .tab.active {
     color: #0e2a3d;
     border-bottom: 4px solid #3498DB;
@@ -198,9 +236,7 @@ body {
     white-space: pre-line;
 }
 
-.target-section.dependencies > .target-section-header,
-.target-section.plugins > .target-section-header,
-.target-section.platform-boms > .target-section-header {
+.target-section > .target-section-header {
     display: grid;
     grid-template-columns: var(--target-columns);
     align-items: end;

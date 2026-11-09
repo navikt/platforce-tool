@@ -64,6 +64,7 @@ class NaisDeploymentDiscoveryTest {
         assertEquals("navikt/sf-arkiv-jobbsporet", result.repository)
         assertEquals(RepositorySource.ACTIVITY_LOG, result.repositorySource)
         assertEquals("2026-11-09T13:00:00Z", result.repositoryAssociationTime)
+        assertEquals("2026-11-09T13:00:00Z", result.lastDeploymentActivityTime)
         assertEquals(null, result.deploymentTime)
         assertEquals(null, result.repositoryDiagnostic)
     }
@@ -115,6 +116,26 @@ class NaisDeploymentDiscoveryTest {
         assertEquals(
             "https://elsewhere.test/example/repo",
             discover("", activity("https://elsewhere.test/example/repo")).repositoryDiagnostic!!.latestActivity!!.repository,
+        )
+    }
+
+    @Test
+    fun `deployment freshness is independent of repository provenance and never uses failed deployments`() {
+        val success = deployment("SUCCESS", "example/deployed")
+        val activityWithoutRepository = """{"createdAt":"2026-11-09T14:00:00Z","gitHubActorClaims":null}"""
+        val result = discover(success, activityWithoutRepository)
+        assertEquals(RepositorySource.SUCCESSFUL_DEPLOYMENT, result.repositorySource)
+        assertEquals("2026-11-09T12:00:00Z", result.repositoryAssociationTime)
+        assertEquals("2026-11-09T14:00:00Z", result.lastDeploymentActivityTime)
+        val unknownRepository = discover("", activityWithoutRepository)
+        assertEquals(null, unknownRepository.repository)
+        assertEquals("2026-11-09T14:00:00Z", unknownRepository.lastDeploymentActivityTime)
+        assertEquals("2026-11-09T12:00:00Z", discover(success).lastDeploymentActivityTime)
+        assertEquals(null, discover(deployment("FAILURE", "example/failed")).lastDeploymentActivityTime)
+        assertEquals(null, discover("").lastDeploymentActivityTime)
+        assertEquals(
+            "2026-11-09T12:00:00Z",
+            discover(success, activity("example/activity", "2026-11-09T13:30:00+02:00")).lastDeploymentActivityTime,
         )
     }
 
@@ -236,9 +257,10 @@ class NaisDeploymentDiscoveryTest {
 
     @Test
     fun `unknown repository diagnostics distinguish absent history missing repository and unsupported format`() {
+        val missingRepository = """{"repository":null,"createdAt":"2026-11-09T12:00:00Z","statuses":{"nodes":[{"state":"SUCCESS"}]}}"""
         listOf(
             "" to "no deployment history",
-            """{"repository":null,"createdAt":"2026-11-09","statuses":{"nodes":[{"state":"SUCCESS"}]}}""" to "no repository value",
+            missingRepository to "no repository value",
             deployment("SUCCESS", "sf-arkiv-jobbsporet") to "not a supported GitHub",
             """{"repository":"example/repo","statuses":{"nodes":[]}}""" to "No deployment had SUCCESS",
         ).forEach { (deployments, reason) ->

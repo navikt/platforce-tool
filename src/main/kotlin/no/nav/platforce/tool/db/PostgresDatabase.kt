@@ -14,6 +14,7 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.upsert
 import java.time.Instant
 
 const val NAIS_DB_JDBC_URL = "NAIS_DATABASE_PLATFORCE_TOOL_PLATFORCE_TOOL_JDBC_URL"
@@ -90,6 +91,37 @@ object PostgresDatabase {
         transaction(database) {
             if (dropFirst) SchemaUtils.drop(IgnoredDependenciesTable)
             SchemaUtils.create(IgnoredDependenciesTable)
+        }
+    }
+
+    fun createDeploymentRefreshMarkerTable() {
+        transaction(database) {
+            SchemaUtils.create(DeploymentRefreshMarkerTable)
+        }
+    }
+
+    fun getDeploymentRefreshMarker(userId: String): Instant? =
+        transaction(database) {
+            DeploymentRefreshMarkerTable
+                .selectAll()
+                .where { DeploymentRefreshMarkerTable.userId eq userId }
+                .singleOrNull()
+                ?.get(DeploymentRefreshMarkerTable.after)
+        }
+
+    fun saveDeploymentRefreshMarker(
+        userId: String,
+        after: Instant?,
+    ) {
+        transaction(database) {
+            if (after == null) {
+                DeploymentRefreshMarkerTable.deleteWhere { DeploymentRefreshMarkerTable.userId eq userId }
+            } else {
+                DeploymentRefreshMarkerTable.upsert {
+                    it[DeploymentRefreshMarkerTable.userId] = userId
+                    it[DeploymentRefreshMarkerTable.after] = after
+                }
+            }
         }
     }
 

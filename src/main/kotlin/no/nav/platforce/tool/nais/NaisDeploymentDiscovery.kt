@@ -20,6 +20,7 @@ data class RunningApplication(
     val repositoryDiagnostic: RepositoryDiagnostic? = null,
     val repositorySource: RepositorySource? = null,
     val repositoryAssociationTime: String? = null,
+    val lastDeploymentActivityTime: String? = null,
 )
 
 enum class RepositorySource {
@@ -97,6 +98,7 @@ internal class NaisDeploymentDiscovery(
                         repositoryDiagnostic = association.diagnostic,
                         repositorySource = association.source,
                         repositoryAssociationTime = association.createdAt,
+                        lastDeploymentActivityTime = association.lastDeploymentActivityTime,
                     )
                 }
             }
@@ -111,6 +113,7 @@ internal class NaisDeploymentDiscovery(
         val source: RepositorySource?,
         val createdAt: String?,
         val diagnostic: RepositoryDiagnostic?,
+        val lastDeploymentActivityTime: String?,
     )
 
     private fun repositoryAssociation(id: String): RepositoryAssociation {
@@ -197,16 +200,23 @@ internal class NaisDeploymentDiscovery(
         val deploymentTime = deployment?.optionalString("createdAt")
         val activityRepository = normalizeDeploymentRepository(activity?.repository)
         val activityTime = activity?.createdAt
+        val lastDeploymentActivityTime = listOfNotNull(deploymentTime, activityTime).maxByOrNull { Instant.parse(it) }
         if (activityRepository != null &&
             (
                 deploymentRepository == null || deploymentTime == null ||
                     Instant.parse(checkNotNull(activityTime)).isAfter(Instant.parse(deploymentTime))
             )
         ) {
-            return RepositoryAssociation(activityRepository, RepositorySource.ACTIVITY_LOG, activityTime, null)
+            return RepositoryAssociation(activityRepository, RepositorySource.ACTIVITY_LOG, activityTime, null, lastDeploymentActivityTime)
         }
         if (deploymentRepository != null) {
-            return RepositoryAssociation(deploymentRepository, RepositorySource.SUCCESSFUL_DEPLOYMENT, deploymentTime, null)
+            return RepositoryAssociation(
+                deploymentRepository,
+                RepositorySource.SUCCESSFUL_DEPLOYMENT,
+                deploymentTime,
+                null,
+                lastDeploymentActivityTime,
+            )
         }
         val activityReason =
             when {
@@ -219,6 +229,7 @@ internal class NaisDeploymentDiscovery(
             null,
             null,
             checkNotNull(diagnostic).copy(reason = "${diagnostic.reason} $activityReason", latestActivity = activity),
+            lastDeploymentActivityTime,
         )
     }
 

@@ -34,6 +34,16 @@
         <button id="refreshDeployments" type="button">Refresh deployments</button>
         <span id="deploymentsStatus" role="status" aria-live="polite"></span>
     </div>
+    <div class="deployment-refresh-marker">
+        <div class="deployment-refresh-actions">
+            <button id="markDeploymentsForRefresh" type="button">Mark all as needing rebuild</button>
+            <button id="clearDeploymentRefreshMarker" type="button" disabled>Clear marker</button>
+            <span id="deploymentRefreshMarker" role="status" aria-live="polite">Rebuild marker not loaded.</span>
+        </div>
+        <p>This marker is saved for you across all teams. Colors track deployment/activity time, not image build age or rollout completion.</p>
+        <p id="deploymentRefreshLegend" hidden>Amber: at or before marker. Green: activity after marker. Grey: timestamp unknown. A redeployment can reuse an old image.</p>
+        <p id="deploymentRefreshError" role="alert"></p>
+    </div>
     <div id="deploymentTeamTabs" class="team-tabs" aria-label="Deployment teams"></div>
     <div id="deploymentsContainer"></div>
 </div>

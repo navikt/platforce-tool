@@ -24,10 +24,21 @@ function app() {
         document: { createElement: element, getElementById: get },
         selectedTeam: "team-a",
         console: { error() {} },
+        confirm: () => true,
         fetch: () => { throw new Error("Unexpected request"); }
     });
     vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/deployments.js"), "utf8"), context);
     return { context, get };
+}
+
+function withMarker(fetchDeployments, after = null) {
+    return (url, options) => url === "/internal/api/deployments/refresh-marker"
+        ? Promise.resolve({ ok: true, json: async () => ({ after }) })
+        : fetchDeployments(url, options);
+}
+
+function firstEnvironmentPill(get) {
+    return get("deploymentsContainer").children[0].children[1].children[1].children[0].children[0].children[1].children[0].children[0];
 }
 
 const application = (team, name, environment, repository = "example/mono") => ({
@@ -58,12 +69,12 @@ test("groups monorepo applications by repository then owning team and merges env
 test("loads lazily once, renders team filters and concise merged rows, refreshes explicitly", async () => {
     const { context, get } = app();
     let calls = 0;
-    context.fetch = async (url, options) => {
+    context.fetch = withMarker(async (url, options) => {
         calls++;
         assert.equal(url, "/internal/api/deployments");
         assert.equal(options.cache, "no-store");
         return { ok: true, json: async () => data };
-    };
+    });
     await context.loadDeployments();
     await context.loadDeployments();
     assert.equal(calls, 1);
@@ -81,10 +92,10 @@ test("loads lazily once, renders team filters and concise merged rows, refreshes
 
 test("failed refresh retains previous results and reports stale data explicitly", async () => {
     const { context, get } = app();
-    context.fetch = async () => ({ ok: true, json: async () => data });
+    context.fetch = withMarker(async () => ({ ok: true, json: async () => data }));
     await context.loadDeployments();
     const card = get("deploymentsContainer").children[0];
-    context.fetch = async () => ({ ok: false, json: async () => ({ error: "Nais unavailable" }) });
+    context.fetch = withMarker(async () => ({ ok: false, json: async () => ({ error: "Nais unavailable" }) }));
     await context.loadDeployments(true);
     assert.equal(get("deploymentsContainer").children[0], card);
     assert.match(get("deploymentsStatus").textContent, /Nais unavailable.*Showing previous results/);
@@ -93,7 +104,7 @@ test("failed refresh retains previous results and reports stale data explicitly"
 
 test("team selection filters repositories but keeps their applications from every discovered namespace", async () => {
     const { context, get } = app();
-    context.fetch = async () => ({
+    context.fetch = withMarker(async () => ({
         ok: true,
         json: async () => ({
             ...data,
@@ -102,7 +113,7 @@ test("team selection filters repositories but keeps their applications from ever
                 application("team-b", "unrelated", "prod-gcp", "example/other")
             ]
         })
-    });
+    }));
     await context.loadDeployments();
     const cards = get("deploymentsContainer").children;
     assert.equal(cards.length, 1);
@@ -118,7 +129,7 @@ test("team selection filters repositories but keeps their applications from ever
 
 test("empty team selection renders an explicit empty state", async () => {
     const { context, get } = app();
-    context.fetch = async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [] }) });
+    context.fetch = withMarker(async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [] }) }));
     await context.loadDeployments();
     assert.match(get("deploymentsContainer").children[0].textContent, /No running applications/);
 });
@@ -132,7 +143,7 @@ test("unknown rows explain the per-environment reason and show raw deployment me
         recentDeployments: [{ repository: "<raw-repo>", status: "INACTIVE", createdAt: "2026-11-09" }],
         latestActivity: { repository: "<raw-claim>", createdAt: "2026-11-09" }
     };
-    context.fetch = async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [unknown] }) });
+    context.fetch = withMarker(async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [unknown] }) }));
     await context.loadDeployments();
     const cell = get("deploymentsContainer").children[0].children[1].children[1].children[0].children[0].children[1];
     const details = cell.children[1];
@@ -155,12 +166,136 @@ test("environment tooltips distinguish activity provenance from successful deplo
         repositorySource: "SUCCESSFUL_DEPLOYMENT",
         repositoryAssociationTime: "2026-11-09T12:00:00Z"
     };
-    context.fetch = async () => ({
+    context.fetch = withMarker(async () => ({
         ok: true, json: async () => ({ teams: ["team-a"], applications: [activityApp, deployedApp] })
-    });
+    }));
     await context.loadDeployments();
     const pills = get("deploymentsContainer").children[0].children[1].children[1].children[0].children[0].children[1].children[0].children;
     assert.match(pills[0].title, /application activity \(not rollout confirmation\) at 2026-11-09T13:00:00Z/);
     assert.doesNotMatch(pills[0].title, /successful deployment/i);
     assert.match(pills[1].title, /successful deployment at 2026-11-09T12:00:00Z/);
+});
+
+test("saved marker classifies timestamps strictly and survives refresh and a new GUI session", async () => {
+    const marker = "2026-11-09T13:00:00Z";
+    const cases = [
+        ["2026-11-09T12:59:59Z", "older"],
+        [marker, "older"],
+        ["2026-11-09T13:00:00.001Z", "newer"],
+        ["2026-11-09T15:00:01+02:00", "newer"],
+        [null, "unknown"],
+        ["not-a-timestamp", "unknown"]
+    ];
+    for (const [timestamp, state] of cases) {
+        const instance = app();
+        const payload = {
+            teams: ["team-a"],
+            applications: [{ ...application("team-a", "orders", "dev-gcp"), lastDeploymentActivityTime: timestamp }]
+        };
+        instance.context.fetch = withMarker(async () => ({ ok: true, json: async () => payload }), marker);
+        await instance.context.loadDeployments();
+        const pill = firstEnvironmentPill(instance.get);
+        assert.match(pill.className, new RegExp(`deployment-freshness-${state}`));
+        assert.equal(pill.textContent, `dev-gcp (${state})`);
+        assert.match(instance.get("deploymentRefreshMarker").textContent, /Deployments\/activity must be newer than:/);
+        assert.equal(instance.get("deploymentRefreshLegend").hidden, false);
+        await instance.context.loadDeployments(true);
+        assert.equal(firstEnvironmentPill(instance.get).className, pill.className);
+    }
+});
+
+test("mark, advance and clear update the server-backed marker across teams without refreshing deployments", async () => {
+    const { context, get } = app();
+    let saved = null;
+    let now = "2026-11-09T13:00:00Z";
+    let deploymentRequests = 0;
+    const calls = [];
+    context.fetch = async (url, options) => {
+        if (url === "/internal/api/deployments") {
+            deploymentRequests++;
+            return { ok: true, json: async () => data };
+        }
+        assert.equal(url, "/internal/api/deployments/refresh-marker");
+        assert.equal(options.cache, "no-store");
+        if (options.method === "POST") saved = now;
+        if (options.method === "DELETE") saved = null;
+        calls.push(options.method || "GET");
+        return { ok: true, json: async () => ({ after: saved }) };
+    };
+    await context.loadDeployments();
+    assert.match(get("deploymentRefreshMarker").textContent, /No rebuild marker/);
+    assert.doesNotMatch(firstEnvironmentPill(get).className, /freshness/);
+    await context.saveDeploymentRefreshMarker(false);
+    assert.equal(saved, now);
+    assert.equal(get("clearDeploymentRefreshMarker").disabled, false);
+    assert.match(firstEnvironmentPill(get).className, /freshness-unknown/);
+    get("deploymentTeamTabs").children[2].onclick();
+    assert.match(firstEnvironmentPill(get).className, /freshness-unknown/);
+    now = "2026-11-10T13:00:00Z";
+    await context.saveDeploymentRefreshMarker(false);
+    assert.equal(saved, now);
+    context.confirm = () => false;
+    await context.saveDeploymentRefreshMarker(true);
+    assert.equal(saved, now);
+    context.confirm = () => true;
+    await context.saveDeploymentRefreshMarker(true);
+    assert.equal(saved, null);
+    assert.equal(get("clearDeploymentRefreshMarker").disabled, true);
+    assert.equal(get("deploymentRefreshLegend").hidden, true);
+    assert.doesNotMatch(firstEnvironmentPill(get).className, /freshness/);
+    assert.equal(deploymentRequests, 1);
+    assert.deepEqual(calls, ["GET", "POST", "POST", "DELETE"]);
+});
+
+test("failed marker writes preserve the previous marker and report uncertainty explicitly", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({ ok: true, json: async () => data }), "2026-11-09T13:00:00Z");
+    await context.loadDeployments();
+    const label = get("deploymentRefreshMarker").textContent;
+    context.fetch = async () => ({ ok: false, json: async () => ({ error: "Database unavailable" }) });
+    await context.saveDeploymentRefreshMarker(false);
+    assert.equal(get("deploymentRefreshMarker").textContent, label);
+    assert.match(get("deploymentRefreshError").textContent, /Database unavailable.*Reload deployments/);
+    assert.equal(get("markDeploymentsForRefresh").disabled, false);
+    assert.equal(get("refreshDeployments").disabled, false);
+    await context.saveDeploymentRefreshMarker(true);
+    assert.equal(get("deploymentRefreshMarker").textContent, label);
+    assert.match(get("deploymentRefreshError").textContent, /Could not clear/);
+});
+
+test("invalid or unavailable persisted markers fail visibly instead of silently removing the marker", async () => {
+    for (const payload of [{}, { after: "invalid" }, { after: 123 }]) {
+        const { context, get } = app();
+        context.fetch = async url => ({
+            ok: true, json: async () => url.endsWith("refresh-marker") ? payload : data
+        });
+        await context.loadDeployments();
+        assert.match(get("deploymentsStatus").textContent, /Invalid deployment refresh marker/);
+        assert.match(get("deploymentRefreshMarker").textContent, /not loaded/);
+        assert.equal(get("deploymentsContainer").children.length, 0);
+    }
+});
+
+test("marker changes cannot race with a deployment refresh or with another marker write", async () => {
+    const { context, get } = app();
+    let finish;
+    context.fetch = withMarker(() => new Promise(resolve => { finish = resolve; }));
+    const loading = context.loadDeployments();
+    await context.saveDeploymentRefreshMarker(false);
+    assert.equal(get("markDeploymentsForRefresh").disabled, true);
+    finish({ ok: true, json: async () => data });
+    await loading;
+    let writes = 0;
+    context.fetch = () => {
+        writes++;
+        return new Promise(resolve => { finish = resolve; });
+    };
+    const saving = context.saveDeploymentRefreshMarker(false);
+    await context.saveDeploymentRefreshMarker(false);
+    await context.loadDeployments(true);
+    assert.equal(writes, 1);
+    assert.equal(get("refreshDeployments").disabled, true);
+    finish({ ok: true, json: async () => ({ after: "2026-11-09T13:00:00Z" }) });
+    await saving;
+    assert.equal(get("refreshDeployments").disabled, false);
 });

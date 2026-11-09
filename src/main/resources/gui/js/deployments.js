@@ -1,6 +1,70 @@
 let deploymentData = null;
 let deploymentTeam = null;
 let deploymentsLoading = false;
+let deploymentRefreshMarker = null;
+let deploymentMarkerLoaded = false;
+let deploymentMarkerSaving = false;
+
+async function readDeploymentRefreshMarker(response) {
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!Object.hasOwn(data, "after") ||
+        (data.after !== null && (typeof data.after !== "string" || !Number.isFinite(Date.parse(data.after))))) {
+        throw new Error("Invalid deployment refresh marker response");
+    }
+    return data.after;
+}
+
+function renderDeploymentRefreshMarker() {
+    document.getElementById("deploymentRefreshMarker").textContent = !deploymentMarkerLoaded
+        ? "Rebuild marker not loaded."
+        : deploymentRefreshMarker
+            ? `Deployments/activity must be newer than: ${new Date(deploymentRefreshMarker).toLocaleString()}`
+            : "No rebuild marker set.";
+    document.getElementById("deploymentRefreshLegend").hidden = !deploymentRefreshMarker;
+    document.getElementById("markDeploymentsForRefresh").disabled = deploymentsLoading || deploymentMarkerSaving;
+    document.getElementById("clearDeploymentRefreshMarker").disabled =
+        deploymentsLoading || deploymentMarkerSaving || !deploymentRefreshMarker;
+    document.getElementById("refreshDeployments").disabled = deploymentsLoading || deploymentMarkerSaving;
+}
+
+async function saveDeploymentRefreshMarker(clear) {
+    if (deploymentsLoading || deploymentMarkerSaving) return;
+    if (deploymentRefreshMarker && !confirm(clear
+        ? "Clear your rebuild marker for all teams?"
+        : "Replace your rebuild marker with the current time for all teams?")) return;
+    deploymentMarkerSaving = true;
+    const error = document.getElementById("deploymentRefreshError");
+    error.textContent = "";
+    renderDeploymentRefreshMarker();
+    try {
+        const response = await fetch("/internal/api/deployments/refresh-marker", {
+            method: clear ? "DELETE" : "POST", cache: "no-store"
+        });
+        const marker = await readDeploymentRefreshMarker(response);
+        if (clear ? marker !== null : marker === null) throw new Error("Unexpected deployment refresh marker response");
+        deploymentRefreshMarker = marker;
+        deploymentMarkerLoaded = true;
+        if (deploymentData) renderDeployments();
+    } catch (failure) {
+        console.error("Could not save rebuild marker", failure);
+        error.textContent = `Could not ${clear ? "clear" : "save"} rebuild marker: ${failure.message}. Reload deployments to verify the saved marker.`;
+    } finally {
+        deploymentMarkerSaving = false;
+        renderDeploymentRefreshMarker();
+    }
+}
+
+function deploymentFreshness(application) {
+    if (!deploymentRefreshMarker) return null;
+    const timestamp = Date.parse(application.lastDeploymentActivityTime);
+    if (!Number.isFinite(timestamp)) return {
+        state: "unknown", explanation: "Deployment/activity timestamp unknown."
+    };
+    return timestamp > Date.parse(deploymentRefreshMarker)
+        ? { state: "newer", explanation: "Deployment/activity after marker; image build age and rollout completion are not verified." }
+        : { state: "older", explanation: "No deployment/activity after marker; needs redeployment." };
+}
 
 function groupDeploymentApplications(applications) {
     const repositories = new Map();
@@ -27,20 +91,27 @@ function groupDeploymentApplications(applications) {
 }
 
 async function loadDeployments(refresh = false) {
-    if (deploymentsLoading || (deploymentData && !refresh)) return;
+    if (deploymentsLoading || deploymentMarkerSaving || (deploymentData && !refresh)) return;
     deploymentsLoading = true;
     const button = document.getElementById("refreshDeployments");
     const status = document.getElementById("deploymentsStatus");
     button.disabled = true;
+    renderDeploymentRefreshMarker();
     status.textContent = "Loading running applications...";
     try {
-        const response = await fetch("/internal/api/deployments", { cache: "no-store" });
+        const [response, marker] = await Promise.all([
+            fetch("/internal/api/deployments", { cache: "no-store" }),
+            fetch("/internal/api/deployments/refresh-marker", { cache: "no-store" }).then(readDeploymentRefreshMarker)
+        ]);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
         if (!Array.isArray(data.teams) || !Array.isArray(data.applications)) {
             throw new Error("Invalid deployments response");
         }
         deploymentData = data;
+        deploymentRefreshMarker = marker;
+        deploymentMarkerLoaded = true;
+        document.getElementById("deploymentRefreshError").textContent = "";
         if (deploymentTeam === null) deploymentTeam = data.teams.includes(selectedTeam) ? selectedTeam : "";
         renderDeployments();
         status.textContent = data.applications.length ? "" : "No running applications found.";
@@ -49,7 +120,7 @@ async function loadDeployments(refresh = false) {
         status.textContent = `Could not load deployments: ${error.message}${deploymentData ? ". Showing previous results." : ""}`;
     } finally {
         deploymentsLoading = false;
-        button.disabled = false;
+        renderDeploymentRefreshMarker();
     }
 }
 
@@ -122,7 +193,14 @@ function renderDeployments() {
                     const pill = document.createElement("span");
                     pill.className = "target-version-pill deployment-environment";
                     pill.textContent = environment.environment;
+                    const freshness = deploymentFreshness(environment);
+                    if (freshness) {
+                        pill.className += ` deployment-freshness-${freshness.state}`;
+                        pill.textContent += ` (${freshness.state})`;
+                    }
                     pill.title = `${environment.readyInstances}/${environment.instances} running instances ready` +
+                        (freshness ? `\n${freshness.explanation}` : "") +
+                        (environment.lastDeploymentActivityTime ? `\nLast deployment/activity: ${environment.lastDeploymentActivityTime}` : "") +
                         (environment.repositorySource ? `\nRepository association: ${environment.repositorySource === "ACTIVITY_LOG" ? "application activity (not rollout confirmation)" : "successful deployment"}${environment.repositoryAssociationTime ? ` at ${environment.repositoryAssociationTime}` : ""}` : "") +
                         environment.images.map(image => `\n${image.name}${image.tag ? `:${image.tag}` : ""}${image.digest ? `@${image.digest}` : ""}`).join("");
                     pills.appendChild(pill);

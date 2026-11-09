@@ -169,6 +169,7 @@ class LocalFrontendTest {
                 "/internal/api/target-resolution/security",
                 "/internal/api/dependency-scan/progress",
                 "/internal/api/deployments",
+                "/internal/api/deployments/refresh-marker",
             ).forEach { path ->
                 val response = get(path)
                 assertEquals(200, response.statusCode(), path)

@@ -8,6 +8,7 @@ import no.nav.platforce.tool.ignore.parseIgnoredDependencies
 import no.nav.platforce.tool.nais.RunningApplication
 import no.nav.platforce.tool.nais.RunningDeployments
 import no.nav.platforce.tool.nais.RunningImage
+import no.nav.platforce.tool.nais.deploymentRefreshMarkerResponse
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.RepositoryViewService
 import no.nav.platforce.tool.repositories.withoutIgnoredDependencies
@@ -39,6 +40,7 @@ import org.http4k.routing.path
 import org.http4k.routing.routes
 import org.http4k.routing.static
 import java.nio.file.Path
+import java.time.Instant
 
 class LocalFrontendApi(
     guiDirectory: Path,
@@ -60,6 +62,7 @@ class LocalFrontendApi(
     private var bomSecurityReadyAt: Long? = null
     private var pluginSecurityReadyAt: Long? = null
     private val upgradeScans = mutableMapOf<String, Long>()
+    private var deploymentRefreshAfter: Instant? = null
 
     private fun pluginSecurity(): PluginSecuritySnapshot {
         val status =
@@ -164,13 +167,42 @@ class LocalFrontendApi(
     private val api =
         routes(
             "/" bind Method.GET to { Response(Status.FOUND).header("Location", "/internal/gui") },
+            "/internal/api/deployments/refresh-marker" bind Method.GET to { deploymentRefreshMarkerResponse(deploymentRefreshAfter) },
+            "/internal/api/deployments/refresh-marker" bind Method.POST to {
+                deploymentRefreshAfter = Instant.ofEpochMilli(now())
+                deploymentRefreshMarkerResponse(deploymentRefreshAfter)
+            },
+            "/internal/api/deployments/refresh-marker" bind Method.DELETE to {
+                deploymentRefreshAfter = null
+                deploymentRefreshMarkerResponse(null)
+            },
             "/internal/api/deployments" bind Method.GET to {
                 json(
                     RunningDeployments(
                         listOf("demo-commerce", "demo-platform"),
                         listOf(
-                            RunningApplication("demo-commerce", "orders-api", "dev-gcp", "demo/orders", 1, 1, emptyList(), null),
-                            RunningApplication("demo-commerce", "orders-api", "prod-gcp", "demo/orders", 2, 2, emptyList(), null),
+                            RunningApplication(
+                                "demo-commerce",
+                                "orders-api",
+                                "dev-gcp",
+                                "demo/orders",
+                                1,
+                                1,
+                                emptyList(),
+                                null,
+                                lastDeploymentActivityTime = Instant.ofEpochMilli(now() - 3_600_000).toString(),
+                            ),
+                            RunningApplication(
+                                "demo-commerce",
+                                "orders-api",
+                                "prod-gcp",
+                                "demo/orders",
+                                2,
+                                2,
+                                emptyList(),
+                                null,
+                                lastDeploymentActivityTime = Instant.ofEpochMilli(now()).toString(),
+                            ),
                             RunningApplication("demo-commerce", "orders-worker", "prod-gcp", "demo/orders", 1, 1, emptyList(), null),
                             RunningApplication("demo-platform", "customer-api", "prod-gcp", "demo/orders", 1, 1, emptyList(), null),
                             RunningApplication(

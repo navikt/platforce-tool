@@ -70,6 +70,12 @@ document
 document.getElementById("refreshDeployments")
     .addEventListener("click", () => loadDeployments(true));
 
+document.getElementById("markDeploymentsForRefresh")
+    .addEventListener("click", () => saveDeploymentRefreshMarker(false));
+
+document.getElementById("clearDeploymentRefreshMarker")
+    .addEventListener("click", () => saveDeploymentRefreshMarker(true));
+
 document
     .getElementById("scanTargets")
     .addEventListener("click", scanTargetSecurity);
