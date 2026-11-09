@@ -107,27 +107,43 @@ class GradleBuildFileUpdater {
                 """\bid\s*(?:\(\s*)?["'](com\.gradleup\.shadow|com\.github\.johnrengelman\.shadow)["'][^\r\n]*""",
             ).findAll(source).firstOrNull { !Regex("""\bapply\s+false\b""").containsMatchIn(it.value) }
                 ?: return content
-        if (Regex("""\bfilesMatching\s*\(\s*["']META-INF/\*\.kotlin_module["']""").containsMatchIn(source)) {
-            return content
-        }
+        val configuredPatterns =
+            Regex("""\bfilesMatching\s*\(((?:(?:listOf|setOf)\s*\([^)]*\)|[^()])*)\)\s*\{""")
+                .findAll(source)
+                .flatMap { match ->
+                    Regex("""["']([^"']+)["']""").findAll(match.groupValues[1]).map { it.groupValues[1] }
+                }.toSet()
+        val missingPatterns = listOf("META-INF/services/**", "META-INF/*.kotlin_module") - configuredPatterns
+        val mergeServices =
+            !Regex("""\bmergeServiceFiles\s*\(|\btransform\s*\([^)]*\bServiceFileTransformer\b""").containsMatchIn(source)
+        if (missingPatterns.isEmpty() && !mergeServices) return content
         val kotlinDsl = Regex("""\bid\s*\(""").containsMatchIn(shadowPlugin.value)
         val task =
             if (kotlinDsl) {
-                """tasks.named<org.gradle.jvm.tasks.Jar>("shadowJar")"""
+                """tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar")"""
             } else {
                 "tasks.named('shadowJar')"
             }
-        val pattern = if (kotlinDsl) """"META-INF/*.kotlin_module"""" else "'META-INF/*.kotlin_module'"
+        val patterns = missingPatterns.joinToString(", ") { if (kotlinDsl) "\"$it\"" else "'$it'" }
+        val arguments =
+            when {
+                missingPatterns.size <= 1 -> patterns
+                kotlinDsl -> "listOf($patterns)"
+                else -> "[$patterns]"
+            }
         val newline = if ("\r\n" in content) "\r\n" else "\n"
-        // Newer Shadow versions can fail on duplicate Kotlin module metadata; keep other duplicate checks unchanged.
+        // Let Shadow merge service providers and include Kotlin metadata without relaxing other duplicate checks.
         val configuration =
-            listOf(
-                "$task {",
-                "    filesMatching($pattern) {",
-                "        duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.INCLUDE",
-                "    }",
-                "}",
-            ).joinToString(newline)
+            buildList {
+                add("$task {")
+                if (mergeServices) add("    mergeServiceFiles()")
+                if (missingPatterns.isNotEmpty()) {
+                    add("    filesMatching($arguments) {")
+                    add("        duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.INCLUDE")
+                    add("    }")
+                }
+                add("}")
+            }.joinToString(newline)
         return content.trimEnd('\r', '\n') + newline + newline + configuration + newline
     }
 

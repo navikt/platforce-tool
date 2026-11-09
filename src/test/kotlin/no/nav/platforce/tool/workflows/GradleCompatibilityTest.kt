@@ -14,7 +14,7 @@ class GradleCompatibilityTest {
     private val updater = GradleBuildFileUpdater()
 
     @Test
-    fun `generated rules allow duplicate module metadata in actual Gradle Jar tasks`(
+    fun `generated rules merge service providers and include module metadata in actual Shadow tasks`(
         @TempDir directory: Path,
     ) {
         listOf(false, true).forEach { kotlinDsl ->
@@ -23,13 +23,16 @@ class GradleCompatibilityTest {
                 val metadata = project.resolve("$name/META-INF/example.kotlin_module")
                 Files.createDirectories(metadata.parent)
                 Files.writeString(metadata, name)
+                val service = project.resolve("$name/META-INF/services/example.Service")
+                Files.createDirectories(service.parent)
+                Files.writeString(service, "example.$name\n")
             }
             val plugin =
                 if (kotlinDsl) """id("com.gradleup.shadow") version "9.6.1"""" else "id 'com.gradleup.shadow' version '9.6.1'"
             val task =
                 if (kotlinDsl) {
                     """
-                    tasks.register<org.gradle.jvm.tasks.Jar>("shadowJar") {
+                    tasks.named<org.gradle.jvm.tasks.Jar>("shadowJar") {
                         archiveFileName.set("app.jar")
                         destinationDirectory.set(layout.buildDirectory.dir("libs"))
                         duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.FAIL
@@ -39,7 +42,7 @@ class GradleCompatibilityTest {
                     """.trimIndent()
                 } else {
                     """
-                    tasks.register('shadowJar', Jar) {
+                    tasks.named('shadowJar') {
                         archiveFileName = 'app.jar'
                         destinationDirectory = layout.buildDirectory.dir('libs')
                         duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -48,32 +51,43 @@ class GradleCompatibilityTest {
                     }
                     """.trimIndent()
                 }
-            val updated = updater.apply("plugins {\n    $plugin\n}\n", emptyList())
+            val javaPlugin = if (kotlinDsl) """id("java")""" else "id 'java'"
+            val updated = updater.apply("plugins {\n    $javaPlugin\n    $plugin\n}\n$task\n", emptyList())
             Files.writeString(
                 project.resolve(if (kotlinDsl) "build.gradle.kts" else "build.gradle"),
-                updated.replace("plugins {\n    $plugin\n}", task),
+                updated,
             )
             Files.writeString(project.resolve("settings.gradle"), "rootProject.name = 'shadow-compatibility'")
             val output = project.resolve("gradle-output.txt")
             val gradle = Path.of(checkNotNull(System.getProperty("platforce.tests.gradleHome"))).resolve("bin/gradle")
-            val process =
+            val builder =
                 ProcessBuilder(gradle.toString(), "--offline", "--no-daemon", "--console=plain", "shadowJar")
                     .directory(project.toFile())
                     .redirectErrorStream(true)
                     .redirectOutput(output.toFile())
-                    .start()
+            val process = builder.start()
             val completed = process.waitFor(90, TimeUnit.SECONDS)
             if (!completed) process.destroyForcibly()
             assertTrue(completed, "Gradle did not finish")
             assertEquals(0, process.exitValue(), Files.readString(output))
             ZipFile(project.resolve("build/libs/app.jar").toFile()).use { jar ->
-                assertEquals(2, jar.entries().asSequence().count { it.name == "META-INF/example.kotlin_module" })
+                assertTrue(jar.getEntry("META-INF/example.kotlin_module") != null)
+                assertEquals(1, jar.entries().asSequence().count { it.name == "META-INF/services/example.Service" })
+                val providers = jar.getInputStream(jar.getEntry("META-INF/services/example.Service")).bufferedReader().use { it.readText() }
+                assertEquals(setOf("example.first", "example.second"), providers.lineSequence().filter { it.isNotBlank() }.toSet())
             }
+            listOf("first", "second").forEach { Files.writeString(project.resolve("$it/unrelated.txt"), it) }
+            val duplicateRun = builder.start()
+            val duplicateCompleted = duplicateRun.waitFor(90, TimeUnit.SECONDS)
+            if (!duplicateCompleted) duplicateRun.destroyForcibly()
+            assertTrue(duplicateCompleted, "Gradle did not finish")
+            assertTrue(duplicateRun.exitValue() != 0, "Unrelated duplicate entries must still fail")
+            assertTrue(Files.readString(output).contains("unrelated.txt"), Files.readString(output))
         }
     }
 
     @Test
-    fun `Shadow PR preparation includes duplicate Kotlin metadata without relaxing other duplicate checks`() {
+    fun `Shadow PR preparation includes services and Kotlin metadata without relaxing other duplicate checks`() {
         listOf("com.gradleup.shadow", "com.github.johnrengelman.shadow").forEach { plugin ->
             val source =
                 """
@@ -88,7 +102,8 @@ class GradleCompatibilityTest {
             val updated = updater.apply(source, emptyList())
             assertTrue(updated.startsWith(source))
             assertTrue(updated.contains("tasks.named('shadowJar') {"))
-            assertTrue(updated.contains("filesMatching('META-INF/*.kotlin_module') {"))
+            assertTrue(updated.contains("filesMatching(['META-INF/services/**', 'META-INF/*.kotlin_module']) {"))
+            assertTrue(updated.contains("mergeServiceFiles()"))
             assertTrue(updated.contains("duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.INCLUDE"))
             assertEquals(updated, updater.apply(updated, emptyList()))
         }
@@ -98,8 +113,8 @@ class GradleCompatibilityTest {
     fun `Shadow Kotlin DSL configuration is typed and preserves CRLF line endings`() {
         val source = "plugins {\r\n    id(\"com.gradleup.shadow\") version \"9.6.1\"\r\n}\r\n"
         val updated = updater.apply(source, emptyList())
-        assertTrue(updated.contains("""tasks.named<org.gradle.jvm.tasks.Jar>("shadowJar") {"""))
-        assertTrue(updated.contains("""filesMatching("META-INF/*.kotlin_module") {"""))
+        assertTrue(updated.contains("""tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {"""))
+        assertTrue(updated.contains("""filesMatching(listOf("META-INF/services/**", "META-INF/*.kotlin_module")) {"""))
         assertTrue(updated.replace("\r\n", "").contains('\n').not())
         assertEquals(updated, updater.apply(updated, emptyList()))
     }
@@ -115,7 +130,11 @@ class GradleCompatibilityTest {
                 }
             }
             """.trimIndent()
-        assertEquals(existing, updater.apply(existing, emptyList()))
+        val updated = updater.apply(existing, emptyList())
+        assertTrue(updated.startsWith(existing))
+        assertTrue(updated.contains("filesMatching('META-INF/services/**') {"))
+        assertEquals(1, Regex("""META-INF/\*\.kotlin_module""").findAll(updated).count())
+        assertEquals(updated, updater.apply(updated, emptyList()))
         listOf(
             "plugins {\n    id 'application'\n}",
             "// id 'com.gradleup.shadow' version '9.6.1'\n",
@@ -129,6 +148,48 @@ class GradleCompatibilityTest {
             // filesMatching('META-INF/*.kotlin_module') { }
             """.trimIndent()
         assertTrue(updater.apply(commented, emptyList()).contains("tasks.named('shadowJar')"))
+    }
+
+    @Test
+    fun `existing combined list varargs and Kotlin collection rules are not duplicated`() {
+        listOf(
+            "['META-INF/services/**', 'META-INF/*.kotlin_module']",
+            "'META-INF/services/**', 'META-INF/*.kotlin_module'",
+            """listOf("META-INF/services/**", "META-INF/*.kotlin_module")""",
+            """setOf("META-INF/services/**", "META-INF/*.kotlin_module")""",
+        ).forEach { patterns ->
+            val source =
+                """
+                plugins { id 'com.gradleup.shadow' version '9.6.1' }
+                shadowJar {
+                    mergeServiceFiles()
+                    filesMatching($patterns) {
+                        duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.INCLUDE
+                    }
+                }
+                """.trimIndent()
+            assertEquals(source, updater.apply(source, emptyList()))
+        }
+    }
+
+    @Test
+    fun `previously generated Kotlin only rule gets missing services without duplicating metadata or merge calls`() {
+        val source =
+            """
+            plugins { id 'com.gradleup.shadow' version '9.6.1' }
+            tasks.named('shadowJar') {
+                mergeServiceFiles()
+                filesMatching('META-INF/*.kotlin_module') {
+                    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.INCLUDE
+                }
+            }
+            """.trimIndent()
+        val updated = updater.apply(source, emptyList())
+        assertTrue(updated.startsWith(source))
+        assertEquals(1, Regex("""mergeServiceFiles\(\)""").findAll(updated).count())
+        assertEquals(1, Regex("""META-INF/\*\.kotlin_module""").findAll(updated).count())
+        assertTrue(updated.contains("filesMatching('META-INF/services/**')"))
+        assertEquals(updated, updater.apply(updated, emptyList()))
     }
 
     @Test
