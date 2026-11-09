@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.nais
 
 import com.google.gson.JsonObject
+import java.time.Instant
 
 data class RunningDeployments(
     val teams: List<String>,
@@ -17,12 +18,25 @@ data class RunningApplication(
     val images: List<RunningImage>,
     val deploymentTime: String?,
     val repositoryDiagnostic: RepositoryDiagnostic? = null,
+    val repositorySource: RepositorySource? = null,
+    val repositoryAssociationTime: String? = null,
 )
+
+enum class RepositorySource {
+    SUCCESSFUL_DEPLOYMENT,
+    ACTIVITY_LOG,
+}
 
 data class RepositoryDiagnostic(
     val reason: String,
     val deploymentsChecked: Int,
     val recentDeployments: List<DeploymentDiagnostic>,
+    val latestActivity: ActivityRepositoryDiagnostic? = null,
+)
+
+data class ActivityRepositoryDiagnostic(
+    val repository: String?,
+    val createdAt: String?,
 )
 
 data class DeploymentDiagnostic(
@@ -61,7 +75,7 @@ internal class NaisDeploymentDiscovery(
                                 .getAsJsonObject("instances")
                         }.filter { it.getAsJsonObject("status")["state"].asString == "RUNNING" }
                     if (instances.isEmpty()) return@mapNotNull null
-                    val (deployment, diagnostic) = latestSuccessfulDeployment(id)
+                    val association = repositoryAssociation(id)
                     RunningApplication(
                         team = team,
                         name = application["name"].asString,
@@ -70,7 +84,7 @@ internal class NaisDeploymentDiscovery(
                                 .getAsJsonObject("teamEnvironment")
                                 .getAsJsonObject("environment")["name"]
                                 .asString,
-                        repository = normalizeDeploymentRepository(deployment?.optionalString("repository")),
+                        repository = association.repository,
                         instances = instances.size,
                         readyInstances = instances.count { it.getAsJsonObject("status")["ready"].asBoolean },
                         images =
@@ -79,8 +93,10 @@ internal class NaisDeploymentDiscovery(
                                     val image = instance.getAsJsonObject("image")
                                     RunningImage(image["name"].asString, image["tag"].asString, image.optionalString("digest"))
                                 }.distinct(),
-                        deploymentTime = deployment?.optionalString("createdAt"),
-                        repositoryDiagnostic = diagnostic,
+                        deploymentTime = association.createdAt.takeIf { association.source == RepositorySource.SUCCESSFUL_DEPLOYMENT },
+                        repositoryDiagnostic = association.diagnostic,
+                        repositorySource = association.source,
+                        repositoryAssociationTime = association.createdAt,
                     )
                 }
             }
@@ -90,16 +106,42 @@ internal class NaisDeploymentDiscovery(
         )
     }
 
-    private fun latestSuccessfulDeployment(id: String): Pair<JsonObject?, RepositoryDiagnostic?> {
+    private data class RepositoryAssociation(
+        val repository: String?,
+        val source: RepositorySource?,
+        val createdAt: String?,
+        val diagnostic: RepositoryDiagnostic?,
+    )
+
+    private fun repositoryAssociation(id: String): RepositoryAssociation {
         var cursor: String? = null
         val seen = mutableSetOf<String>()
         val recent = mutableListOf<DeploymentDiagnostic>()
         var checked = 0
+        var activity: ActivityRepositoryDiagnostic? = null
         do {
-            val connection =
+            val node =
                 query(load("application-deployments"), mapOf("id" to id, "after" to cursor))
                     .getAsJsonObject("node")
-                    .getAsJsonObject("deployments")
+            if (cursor == null) {
+                activity =
+                    node
+                        .getAsJsonObject("activityLog")
+                        .getAsJsonArray("nodes")
+                        .firstOrNull()
+                        ?.asJsonObject
+                        ?.let { entry ->
+                            ActivityRepositoryDiagnostic(
+                                entry
+                                    .get("gitHubActorClaims")
+                                    ?.takeUnless { it.isJsonNull }
+                                    ?.asJsonObject
+                                    ?.optionalString("repository"),
+                                entry.optionalString("createdAt"),
+                            )
+                        }
+            }
+            val connection = node.getAsJsonObject("deployments")
             for (entry in connection.getAsJsonArray("nodes")) {
                 val deployment = entry.asJsonObject
                 val status =
@@ -132,7 +174,7 @@ internal class NaisDeploymentDiscovery(
                                 null
                             }
                         }
-                    return deployment to reason?.let { RepositoryDiagnostic(it, checked, recent.toList()) }
+                    return selectAssociation(deployment, activity, reason?.let { RepositoryDiagnostic(it, checked, recent.toList()) })
                 }
             }
             cursor = nextCursor(connection, seen)
@@ -143,7 +185,41 @@ internal class NaisDeploymentDiscovery(
             } else {
                 "No deployment had SUCCESS as its latest status. Console may display a deployment with a different or missing status."
             }
-        return null to RepositoryDiagnostic(reason, checked, recent)
+        return selectAssociation(null, activity, RepositoryDiagnostic(reason, checked, recent))
+    }
+
+    private fun selectAssociation(
+        deployment: JsonObject?,
+        activity: ActivityRepositoryDiagnostic?,
+        diagnostic: RepositoryDiagnostic?,
+    ): RepositoryAssociation {
+        val deploymentRepository = normalizeDeploymentRepository(deployment?.optionalString("repository"))
+        val deploymentTime = deployment?.optionalString("createdAt")
+        val activityRepository = normalizeDeploymentRepository(activity?.repository)
+        val activityTime = activity?.createdAt
+        if (activityRepository != null &&
+            (
+                deploymentRepository == null || deploymentTime == null ||
+                    Instant.parse(checkNotNull(activityTime)).isAfter(Instant.parse(deploymentTime))
+            )
+        ) {
+            return RepositoryAssociation(activityRepository, RepositorySource.ACTIVITY_LOG, activityTime, null)
+        }
+        if (deploymentRepository != null) {
+            return RepositoryAssociation(deploymentRepository, RepositorySource.SUCCESSFUL_DEPLOYMENT, deploymentTime, null)
+        }
+        val activityReason =
+            when {
+                activity == null -> "Nais returned no matching application activity."
+                activity.repository == null -> "The latest application activity has no GitHub repository claim."
+                else -> "The latest application activity's repository is not a supported GitHub URL or owner/repository coordinate."
+            }
+        return RepositoryAssociation(
+            null,
+            null,
+            null,
+            checkNotNull(diagnostic).copy(reason = "${diagnostic.reason} $activityReason", latestActivity = activity),
+        )
     }
 
     private fun pages(fetch: (String?) -> JsonObject): List<JsonObject> {

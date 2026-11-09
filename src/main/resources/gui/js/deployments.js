@@ -98,7 +98,7 @@ function renderDeployments() {
         } else {
             heading.textContent = "Repository unknown";
         }
-        heading.title = "Repository from the latest successful deployment; not verified as the image build source.";
+        heading.title = "Repository from successful deployment history or application activity; not verified as the image build source.";
         card.appendChild(heading);
         repository.teams.forEach(team => {
             const section = document.createElement("section");
@@ -123,7 +123,7 @@ function renderDeployments() {
                     pill.className = "target-version-pill deployment-environment";
                     pill.textContent = environment.environment;
                     pill.title = `${environment.readyInstances}/${environment.instances} running instances ready` +
-                        (environment.deploymentTime ? `\nLatest successful deployment: ${environment.deploymentTime}` : "") +
+                        (environment.repositorySource ? `\nRepository association: ${environment.repositorySource === "ACTIVITY_LOG" ? "application activity (not rollout confirmation)" : "successful deployment"}${environment.repositoryAssociationTime ? ` at ${environment.repositoryAssociationTime}` : ""}` : "") +
                         environment.images.map(image => `\n${image.name}${image.tag ? `:${image.tag}` : ""}${image.digest ? `@${image.digest}` : ""}`).join("");
                     pills.appendChild(pill);
                 });
@@ -143,6 +143,11 @@ function renderDeployments() {
                         item.textContent = `${deployment.createdAt || "Date missing"} | Latest status: ${deployment.status || "Missing"} | Repository: ${deployment.repository || "Missing"}`;
                         list.appendChild(item);
                     });
+                    if (diagnostic.latestActivity) {
+                        const item = document.createElement("li");
+                        item.textContent = `${diagnostic.latestActivity.createdAt || "Date missing"} | Latest application activity | Repository claim: ${diagnostic.latestActivity.repository || "Missing"}`;
+                        list.appendChild(item);
+                    }
                     details.appendChild(list);
                     environments.appendChild(details);
                 });

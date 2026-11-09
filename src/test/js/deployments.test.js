@@ -129,7 +129,8 @@ test("unknown rows explain the per-environment reason and show raw deployment me
     unknown.repositoryDiagnostic = {
         reason: "No deployment had SUCCESS as its latest status.",
         deploymentsChecked: 3,
-        recentDeployments: [{ repository: "<raw-repo>", status: "INACTIVE", createdAt: "2026-11-09" }]
+        recentDeployments: [{ repository: "<raw-repo>", status: "INACTIVE", createdAt: "2026-11-09" }],
+        latestActivity: { repository: "<raw-claim>", createdAt: "2026-11-09" }
     };
     context.fetch = async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [unknown] }) });
     await context.loadDeployments();
@@ -139,4 +140,27 @@ test("unknown rows explain the per-environment reason and show raw deployment me
     assert.equal(details.children[0].textContent, "Why unknown? dev-gcp");
     assert.match(details.children[1].textContent, /SUCCESS.*Deployments checked: 3/);
     assert.match(details.children[2].children[0].textContent, /INACTIVE.*<raw-repo>/);
+    assert.match(details.children[2].children[1].textContent, /Latest application activity.*<raw-claim>/);
+});
+
+test("environment tooltips distinguish activity provenance from successful deployments", async () => {
+    const { context, get } = app();
+    const activityApp = {
+        ...application("team-a", "orders", "dev-gcp"),
+        repositorySource: "ACTIVITY_LOG",
+        repositoryAssociationTime: "2026-11-09T13:00:00Z"
+    };
+    const deployedApp = {
+        ...application("team-a", "orders", "prod-gcp"),
+        repositorySource: "SUCCESSFUL_DEPLOYMENT",
+        repositoryAssociationTime: "2026-11-09T12:00:00Z"
+    };
+    context.fetch = async () => ({
+        ok: true, json: async () => ({ teams: ["team-a"], applications: [activityApp, deployedApp] })
+    });
+    await context.loadDeployments();
+    const pills = get("deploymentsContainer").children[0].children[1].children[1].children[0].children[0].children[1].children[0].children;
+    assert.match(pills[0].title, /application activity \(not rollout confirmation\) at 2026-11-09T13:00:00Z/);
+    assert.doesNotMatch(pills[0].title, /successful deployment/i);
+    assert.match(pills[1].title, /successful deployment at 2026-11-09T12:00:00Z/);
 });

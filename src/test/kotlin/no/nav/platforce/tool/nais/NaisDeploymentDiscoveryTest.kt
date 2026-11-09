@@ -37,7 +37,123 @@ class NaisDeploymentDiscoveryTest {
     private fun deployment(
         state: String,
         repository: String,
-    ): String = """{"repository":"$repository","createdAt":"2026-11-09T12:00:00Z","statuses":{"nodes":[{"state":"$state"}]}}"""
+        createdAt: String = "2026-11-09T12:00:00Z",
+    ): String = """{"repository":"$repository","createdAt":"$createdAt","statuses":{"nodes":[{"state":"$state"}]}}"""
+
+    private fun activity(
+        repository: String,
+        createdAt: String = "2026-11-09T13:00:00Z",
+    ): String = """{"createdAt":"$createdAt","gitHubActorClaims":{"repository":"$repository"}}"""
+
+    private fun discover(
+        deployments: String,
+        activity: String = "",
+    ): RunningApplication =
+        NaisDeploymentDiscovery { query, _ ->
+            when {
+                "query DeploymentTeams" in query -> json("""{"user":{"teams":${connection("""{"team":{"slug":"team"}}""")}}}""")
+                "query DeploymentApplications" in query -> json("""{"team":{"applications":${connection(app("app"))}}}""")
+                "query DeploymentInstances" in query -> json("""{"node":{"instances":${connection(instance("RUNNING"))}}}""")
+                else -> json("""{"node":{"activityLog":{"nodes":[$activity]},"deployments":${connection(deployments)}}}""")
+            }
+        }.get("alice").applications.single()
+
+    @Test
+    fun `activity claims associate running applications even when deployment history is empty`() {
+        val result = discover("", activity("https://github.com/navikt/sf-arkiv-jobbsporet.git"))
+        assertEquals("navikt/sf-arkiv-jobbsporet", result.repository)
+        assertEquals(RepositorySource.ACTIVITY_LOG, result.repositorySource)
+        assertEquals("2026-11-09T13:00:00Z", result.repositoryAssociationTime)
+        assertEquals(null, result.deploymentTime)
+        assertEquals(null, result.repositoryDiagnostic)
+    }
+
+    @Test
+    fun `newest valid provenance wins and equal timestamps prefer a successful deployment`() {
+        listOf(
+            "2026-11-09T13:00:00Z" to RepositorySource.ACTIVITY_LOG,
+            "2026-11-09T11:00:00Z" to RepositorySource.SUCCESSFUL_DEPLOYMENT,
+            "2026-11-09T12:00:00Z" to RepositorySource.SUCCESSFUL_DEPLOYMENT,
+            "2026-11-09T13:30:00+02:00" to RepositorySource.SUCCESSFUL_DEPLOYMENT,
+        ).forEach { (time, source) ->
+            val result = discover(deployment("SUCCESS", "example/deployed"), activity("example/activity", time))
+            assertEquals(source, result.repositorySource)
+            assertEquals(if (source == RepositorySource.ACTIVITY_LOG) "example/activity" else "example/deployed", result.repository)
+            assertEquals(null, result.repositoryDiagnostic)
+        }
+    }
+
+    @Test
+    fun `valid activity claims recover associations from failed or incomplete deployment metadata`() {
+        listOf(
+            deployment("FAILURE", "example/failed"),
+            deployment("SUCCESS", "unsupported-repo"),
+            """{"repository":null,"createdAt":"2026-11-09T12:00:00Z","statuses":{"nodes":[{"state":"SUCCESS"}]}}""",
+        ).forEach { deployments ->
+            val result = discover(deployments, activity("example/activity"))
+            assertEquals("example/activity", result.repository)
+            assertEquals(RepositorySource.ACTIVITY_LOG, result.repositorySource)
+            assertEquals(null, result.repositoryDiagnostic)
+        }
+    }
+
+    @Test
+    fun `missing or unsupported activity claims preserve valid deployment provenance and explain unknown associations`() {
+        listOf(
+            "" to "no matching application activity",
+            """{"createdAt":"2026-11-09T13:00:00Z","gitHubActorClaims":null}""" to "no GitHub repository claim",
+            """{"createdAt":"2026-11-09T13:00:00Z","gitHubActorClaims":{"repository":null}}""" to "no GitHub repository claim",
+            activity("https://elsewhere.test/example/repo") to "not a supported GitHub",
+        ).forEach { (entry, reason) ->
+            val known = discover(deployment("SUCCESS", "example/deployed"), entry)
+            assertEquals("example/deployed", known.repository)
+            assertEquals(RepositorySource.SUCCESSFUL_DEPLOYMENT, known.repositorySource)
+            val unknown = discover("", entry)
+            assertEquals(null, unknown.repository)
+            assertTrue(unknown.repositoryDiagnostic!!.reason.contains(reason), unknown.repositoryDiagnostic.reason)
+        }
+        assertEquals(
+            "https://elsewhere.test/example/repo",
+            discover("", activity("https://elsewhere.test/example/repo")).repositoryDiagnostic!!.latestActivity!!.repository,
+        )
+    }
+
+    @Test
+    fun `activity from the first page is retained while searching older successful deployments`() {
+        val discovery =
+            NaisDeploymentDiscovery { query, variables ->
+                when {
+                    "query DeploymentTeams" in query -> {
+                        json("""{"user":{"teams":${connection("""{"team":{"slug":"team"}}""")}}}""")
+                    }
+
+                    "query DeploymentApplications" in query -> {
+                        json("""{"team":{"applications":${connection(app("app"))}}}""")
+                    }
+
+                    "query DeploymentInstances" in query -> {
+                        json("""{"node":{"instances":${connection(instance("RUNNING"))}}}""")
+                    }
+
+                    variables["after"] == null -> {
+                        json(
+                            """{"node":{"activityLog":{"nodes":[${activity("example/activity")}]},"deployments":${
+                                connection(deployment("FAILURE", "example/failed"), "older")
+                            }}}""",
+                        )
+                    }
+
+                    else -> {
+                        json(
+                            """{"node":{"activityLog":{"nodes":[]},"deployments":${connection(deployment("SUCCESS", "example/old"))}}}""",
+                        )
+                    }
+                }
+            }
+        val result = discovery.get("alice").applications.single()
+        assertEquals("example/activity", result.repository)
+        assertEquals(RepositorySource.ACTIVITY_LOG, result.repositorySource)
+    }
 
     @Test
     fun `discovery paginates teams apps instances and deployments and uses successful deploy repository for running apps`() {
@@ -88,7 +204,7 @@ class NaisDeploymentDiscoveryTest {
                                 cursor == null -> connection(deployment("FAILURE", "example/wrong"), "deployments-2")
                                 else -> connection(deployment("SUCCESS", "example/monorepo"))
                             }
-                        json("""{"node":{"deployments":$page}}""")
+                        json("""{"node":{"activityLog":{"nodes":[]},"deployments":$page}}""")
                     }
                 }
             }
@@ -126,16 +242,7 @@ class NaisDeploymentDiscoveryTest {
             deployment("SUCCESS", "sf-arkiv-jobbsporet") to "not a supported GitHub",
             """{"repository":"example/repo","statuses":{"nodes":[]}}""" to "No deployment had SUCCESS",
         ).forEach { (deployments, reason) ->
-            val discovery =
-                NaisDeploymentDiscovery { query, _ ->
-                    when {
-                        "query DeploymentTeams" in query -> json("""{"user":{"teams":${connection("""{"team":{"slug":"team"}}""")}}}""")
-                        "query DeploymentApplications" in query -> json("""{"team":{"applications":${connection(app("app"))}}}""")
-                        "query DeploymentInstances" in query -> json("""{"node":{"instances":${connection(instance("RUNNING"))}}}""")
-                        else -> json("""{"node":{"deployments":${connection(deployments)}}}""")
-                    }
-                }
-            val result = discovery.get("alice").applications.single()
+            val result = discover(deployments)
             assertEquals(null, result.repository)
             assertTrue(result.repositoryDiagnostic!!.reason.contains(reason), result.repositoryDiagnostic.reason)
         }
