@@ -8,7 +8,7 @@ const { html, scripts, loadGuiScripts } = require("./gui-scripts");
 function browser(fetch) {
     const elements = new Map();
     const documentListeners = [];
-    const tabs = ["scanner", "targets", "ignored"].map(tab => ({
+    const tabs = ["scanner", "targets", "ignored", "deployments"].map(tab => ({
         dataset: { tab },
         classList: { add() {}, remove() {} },
         listeners: {},
@@ -54,6 +54,7 @@ test("HTML loads every frontend feature file once, with shared definitions first
         "js/target-security.js",
         "js/scan-status.js",
         "js/ignored.js",
+        "js/deployments.js",
         "js/bootstrap.js"
     ]);
     const files = readdirSync(resolve(__dirname, "../../main/resources/gui/js"))
@@ -99,13 +100,18 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
         "applySecurityUpgrade", "createPr", "ignoreRepository", "refreshRepository"
     ]);
 
+    let deploymentLoads = 0;
+    app.context.loadDeployments = () => deploymentLoads++;
     for (const tab of app.tabs) {
         tab.listeners.click();
-        for (const name of ["scanner", "targets", "ignored"]) {
+        for (const name of ["scanner", "targets", "ignored", "deployments"]) {
             assert.equal(app.element(`${name}Tab`).style.display,
                 name === tab.dataset.tab ? "block" : "none");
         }
     }
+    assert.equal(deploymentLoads, 1);
+    app.element("refreshDeployments").listeners.click();
+    assert.equal(deploymentLoads, 2);
 });
 
 test("bootstrap preserves startup order, selected team, cached security and uncached repository reads", async () => {

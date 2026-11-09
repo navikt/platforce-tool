@@ -14,6 +14,7 @@ import no.nav.platforce.tool.ignore.ignoredRepositoriesRoutes
 import no.nav.platforce.tool.internal.databaseAdminRoutes
 import no.nav.platforce.tool.internal.internalRoutes
 import no.nav.platforce.tool.nais.NaisConsoleClient
+import no.nav.platforce.tool.nais.deploymentsRoutes
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
 import no.nav.platforce.tool.repositories.DependencyScanCache
@@ -143,6 +144,7 @@ class Application {
             ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
+            *deploymentsRoutes(naisClient).toTypedArray(),
             *repositoryViewRoutes(naisClient, githubClient, dependencyScanViewService, repositoryViewService).toTypedArray(),
         ).withUserCacheControl()
 

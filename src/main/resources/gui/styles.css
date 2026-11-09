@@ -54,6 +54,78 @@ body {
     background: #f4f8fc;
 }
 
+.tabs > button.tab {
+    background: transparent;
+    border: 0;
+    border-bottom: 4px solid transparent;
+    border-radius: 0;
+    font-family: inherit;
+}
+
+.tabs > button.tab.active {
+    background: white;
+    border-bottom-color: #3498db;
+}
+
+.tabs > button.tab:hover {
+    background: #f4f8fc;
+}
+
+.tab-divider {
+    align-self: stretch;
+    border-left: 1px solid #d9e3ee;
+    margin: 12px 8px;
+}
+
+.deployment-repository {
+    padding: 12px 16px;
+}
+
+.deployment-repository h2 {
+    font-size: 15px;
+    margin: 0 0 8px;
+}
+
+.deployment-team {
+    border-top: 1px solid #d9e3ee;
+    padding-top: 8px;
+    margin-top: 8px;
+}
+
+.deployment-team h3 {
+    color: #607080;
+    font-size: 12px;
+    margin: 0 0 4px;
+}
+
+.deployment-apps {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.deployment-apps th,
+.deployment-apps td {
+    padding: 4px 8px 4px 0;
+    text-align: left;
+    font-size: 13px;
+}
+
+.deployment-apps th {
+    width: 260px;
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.deployment-environments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.deployment-environment {
+    display: inline-block;
+}
+
 .tab.active {
     color: #0e2a3d;
     border-bottom: 4px solid #3498DB;

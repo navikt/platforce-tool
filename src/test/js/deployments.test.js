@@ -1,0 +1,99 @@
+const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
+const { resolve } = require("node:path");
+const test = require("node:test");
+const vm = require("node:vm");
+
+function element(tag = "div") {
+    return {
+        tag, children: [], attributes: {}, textContent: "",
+        append(...children) { this.children.push(...children); },
+        appendChild(child) { this.children.push(child); },
+        replaceChildren(...children) { this.children = children; },
+        setAttribute(name, value) { this.attributes[name] = value; }
+    };
+}
+
+function app() {
+    const elements = new Map();
+    const get = id => {
+        if (!elements.has(id)) elements.set(id, element());
+        return elements.get(id);
+    };
+    const context = vm.createContext({
+        document: { createElement: element, getElementById: get },
+        selectedTeam: "team-a",
+        console: { error() {} },
+        fetch: () => { throw new Error("Unexpected request"); }
+    });
+    vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/deployments.js"), "utf8"), context);
+    return { context, get };
+}
+
+const application = (team, name, environment, repository = "example/mono") => ({
+    team, name, environment, repository, instances: 2, readyInstances: 1, images: []
+});
+const data = {
+    teams: ["team-a", "team-b"],
+    applications: [
+        application("team-a", "orders", "prod-gcp"),
+        application("team-a", "orders", "dev-gcp"),
+        application("team-a", "worker", "prod-gcp"),
+        application("team-b", "orders", "prod-gcp"),
+        application("team-b", "unknown", "dev-gcp", null)
+    ]
+};
+
+test("groups monorepo applications by repository then owning team and merges environments by app name", () => {
+    const { context } = app();
+    const grouped = JSON.parse(JSON.stringify(context.groupDeploymentApplications(data.applications)));
+    const mono = grouped.find(repo => repo.repository === "example/mono");
+    assert.equal(mono.teams.length, 2);
+    assert.equal(mono.teams[0].applications.length, 2);
+    assert.deepEqual(mono.teams[0].applications[0].environments.map(env => env.environment), ["dev-gcp", "prod-gcp"]);
+    assert.equal(mono.teams[1].applications[0].environments.length, 1);
+    assert.equal(grouped.find(repo => repo.repository === "").teams[0].applications[0].name, "unknown");
+});
+
+test("loads lazily once, renders team filters and concise merged rows, refreshes explicitly", async () => {
+    const { context, get } = app();
+    let calls = 0;
+    context.fetch = async (url, options) => {
+        calls++;
+        assert.equal(url, "/internal/api/deployments");
+        assert.equal(options.cache, "no-store");
+        return { ok: true, json: async () => data };
+    };
+    await context.loadDeployments();
+    await context.loadDeployments();
+    assert.equal(calls, 1);
+    const cards = get("deploymentsContainer").children;
+    assert.equal(cards.length, 1);
+    const rows = cards[0].children[1].children[1].children[0].children;
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].children[0].textContent, "orders");
+    assert.deepEqual(rows[0].children[1].children[0].children.map(pill => pill.textContent), ["dev-gcp", "prod-gcp"]);
+    get("deploymentTeamTabs").children[0].onclick();
+    assert.equal(get("deploymentsContainer").children.length, 2);
+    await context.loadDeployments(true);
+    assert.equal(calls, 2);
+});
+
+test("failed refresh retains previous results and reports stale data explicitly", async () => {
+    const { context, get } = app();
+    context.fetch = async () => ({ ok: true, json: async () => data });
+    await context.loadDeployments();
+    const card = get("deploymentsContainer").children[0];
+    context.fetch = async () => ({ ok: false, json: async () => ({ error: "Nais unavailable" }) });
+    await context.loadDeployments(true);
+    assert.equal(get("deploymentsContainer").children[0], card);
+    assert.match(get("deploymentsStatus").textContent, /Nais unavailable.*Showing previous results/);
+    assert.equal(get("refreshDeployments").disabled, false);
+});
+
+test("empty team selection renders an explicit empty state", async () => {
+    const { context, get } = app();
+    context.fetch = async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [] }) });
+    await context.loadDeployments();
+    assert.match(get("deploymentsContainer").children[0].textContent, /No running applications/);
+});

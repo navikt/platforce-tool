@@ -40,6 +40,9 @@ document
 
             const selected =
                 tab.dataset.tab;
+            document.getElementById("deploymentsTab").style.display =
+                selected === "deployments" ? "block" : "none";
+            if (selected === "deployments") loadDeployments();
 
             document
                 .getElementById("scannerTab")
@@ -63,6 +66,9 @@ document
                     : "none";
         });
     });
+
+document.getElementById("refreshDeployments")
+    .addEventListener("click", () => loadDeployments(true));
 
 document
     .getElementById("scanTargets")

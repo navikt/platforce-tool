@@ -155,7 +155,7 @@ class LocalFrontendTest {
             assertEquals(200, page.statusCode())
             assertTrue(page.body().contains("id=\"container\""))
             val scripts = Regex("""<script\s+src="([^"]+)"""").findAll(page.body()).map { it.groupValues[1] }.toList()
-            assertEquals(10, scripts.size)
+            assertEquals(11, scripts.size)
             scripts.forEach { asset ->
                 assertEquals(200, get(asset).statusCode(), asset)
             }
@@ -168,6 +168,7 @@ class LocalFrontendTest {
                 "/internal/api/repository-notes",
                 "/internal/api/target-resolution/security",
                 "/internal/api/dependency-scan/progress",
+                "/internal/api/deployments",
             ).forEach { path ->
                 val response = get(path)
                 assertEquals(200, response.statusCode(), path)

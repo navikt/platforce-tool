@@ -12,6 +12,44 @@ import java.util.concurrent.atomic.AtomicReference
 
 class NaisConsoleClientTest {
     @Test
+    fun `deployment discovery uses authenticated GraphQL and rejects partial responses`() {
+        val authorization = AtomicReference<String>()
+        val status =
+            java.util.concurrent.atomic
+                .AtomicInteger(200)
+        val payload = AtomicReference("""{"data":{"user":{"teams":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}""")
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/graphql") { exchange ->
+            authorization.set(exchange.requestHeaders.getFirst("Authorization"))
+            val request = JsonParser.parseString(exchange.requestBody.bufferedReader().use { it.readText() }).asJsonObject
+            assertEquals("alice@example.test", request["variables"].asJsonObject["email"].asString)
+            assertTrue(request["query"].asString.contains("DeploymentTeams"))
+            val response = payload.get().toByteArray()
+            exchange.sendResponseHeaders(status.get(), response.size.toLong())
+            exchange.responseBody.use { it.write(response) }
+        }
+        server.start()
+        try {
+            val client =
+                NaisConsoleClient(
+                    OkHttpClient(),
+                    endpoint = "http://127.0.0.1:${server.address.port}/graphql",
+                    serviceToken = { "synthetic-service-token" },
+                )
+            assertEquals(emptyList<String>(), client.getRunningDeployments("alice@example.test").teams)
+            assertEquals("Bearer synthetic-service-token", authorization.get())
+            payload.set("""{"data":{"user":null},"errors":[{"message":"Forbidden"}]}""")
+            val partial = assertThrows(IllegalStateException::class.java) { client.getRunningDeployments("alice@example.test") }
+            assertTrue(partial.message!!.contains("GraphQL errors"))
+            status.set(503)
+            val unavailable = assertThrows(IllegalStateException::class.java) { client.getRunningDeployments("alice@example.test") }
+            assertTrue(unavailable.message!!.contains("HTTP 503"))
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
     fun `extracted NAIS client preserves GraphQL authentication user variables and repository sorting`() {
         val requestBody = AtomicReference<String>()
         val authorization = AtomicReference<String>()

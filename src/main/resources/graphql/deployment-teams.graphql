@@ -1,0 +1,8 @@
+query DeploymentTeams($email: String!, $after: Cursor) {
+  user(email: $email) {
+    teams(first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes { team { slug } }
+    }
+  }
+}

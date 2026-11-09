@@ -1,0 +1,13 @@
+query DeploymentInstances($id: ID!, $after: Cursor) {
+  node(id: $id) {
+    ... on Application {
+      instances(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          status { state ready }
+          image { name tag digest }
+        }
+      }
+    }
+  }
+}

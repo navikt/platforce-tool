@@ -1,0 +1,12 @@
+query DeploymentApplications($team: Slug!, $after: Cursor) {
+  team(slug: $team) {
+    applications(first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        name
+        teamEnvironment { environment { name } }
+      }
+    }
+  }
+}

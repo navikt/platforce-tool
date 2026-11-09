@@ -5,6 +5,9 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.ignore.parseIgnoredDependencies
+import no.nav.platforce.tool.nais.RunningApplication
+import no.nav.platforce.tool.nais.RunningDeployments
+import no.nav.platforce.tool.nais.RunningImage
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.RepositoryViewService
 import no.nav.platforce.tool.repositories.withoutIgnoredDependencies
@@ -161,6 +164,29 @@ class LocalFrontendApi(
     private val api =
         routes(
             "/" bind Method.GET to { Response(Status.FOUND).header("Location", "/internal/gui") },
+            "/internal/api/deployments" bind Method.GET to {
+                json(
+                    RunningDeployments(
+                        listOf("demo-commerce", "demo-platform"),
+                        listOf(
+                            RunningApplication("demo-commerce", "orders-api", "dev-gcp", "demo/orders", 1, 1, emptyList(), null),
+                            RunningApplication("demo-commerce", "orders-api", "prod-gcp", "demo/orders", 2, 2, emptyList(), null),
+                            RunningApplication("demo-commerce", "orders-worker", "prod-gcp", "demo/orders", 1, 1, emptyList(), null),
+                            RunningApplication("demo-platform", "customer-api", "prod-gcp", "demo/orders", 1, 1, emptyList(), null),
+                            RunningApplication(
+                                "demo-platform",
+                                "unmapped-app",
+                                "dev-gcp",
+                                null,
+                                1,
+                                0,
+                                listOf(RunningImage("registry/demo", "abc", "sha256:abc")),
+                                null,
+                            ),
+                        ),
+                    ),
+                )
+            },
             "/internal/gui" bind Method.GET to static(ResourceLoader.Directory(guiDirectory.toString())),
             "/internal/repos/view" bind Method.GET to {
                 json(

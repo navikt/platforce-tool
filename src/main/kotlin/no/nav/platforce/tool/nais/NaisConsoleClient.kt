@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.nais
 
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -25,6 +26,27 @@ class NaisConsoleClient(
             .readText()
 
     private fun readServiceToken(): String = serviceToken()
+
+    fun getRunningDeployments(email: String): RunningDeployments = NaisDeploymentDiscovery(::deploymentQuery).get(email)
+
+    private fun deploymentQuery(
+        query: String,
+        variables: Map<String, Any?>,
+    ): JsonObject {
+        val request =
+            Request
+                .Builder()
+                .url(endpoint)
+                .header("Authorization", "Bearer ${readServiceToken()}")
+                .post(gson.toJson(GraphQLRequest(query, variables)).toRequestBody(mediaTypeJson))
+                .build()
+        return httpClient.newCall(request).execute().use { response ->
+            check(response.isSuccessful) { "Nais Console returned HTTP ${response.code}" }
+            val root = JsonParser.parseString(response.body.string()).asJsonObject
+            check(root.getAsJsonArray("errors")?.isEmpty != false) { "Nais Console returned GraphQL errors" }
+            checkNotNull(root.getAsJsonObject("data")) { "Nais Console returned no data" }
+        }
+    }
 
     fun getRepositoriesForUser(email: String): UserRepositoriesResponse {
         val token = readServiceToken()

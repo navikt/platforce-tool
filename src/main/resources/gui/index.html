@@ -25,6 +25,17 @@
             data-tab="ignored">
         Ignored
     </div>
+    <span class="tab-divider" aria-hidden="true"></span>
+    <button class="tab" data-tab="deployments" type="button">Deployments</button>
+</div>
+
+<div id="deploymentsTab" style="display:none">
+    <div class="toolbar">
+        <button id="refreshDeployments" type="button">Refresh deployments</button>
+        <span id="deploymentsStatus" role="status" aria-live="polite"></span>
+    </div>
+    <div id="deploymentTeamTabs" class="team-tabs" aria-label="Deployment teams"></div>
+    <div id="deploymentsContainer"></div>
 </div>
 
 <div id="scannerTab">
@@ -195,6 +206,7 @@
 <script src="/internal/gui/js/target-security.js"></script>
 <script src="/internal/gui/js/scan-status.js"></script>
 <script src="/internal/gui/js/ignored.js"></script>
+<script src="/internal/gui/js/deployments.js"></script>
 <script src="/internal/gui/js/bootstrap.js"></script>
 </body>
 </html>

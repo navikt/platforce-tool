@@ -1,0 +1,14 @@
+query ApplicationDeployments($id: ID!, $after: Cursor) {
+  node(id: $id) {
+    ... on Application {
+      deployments(first: 20, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          repository
+          createdAt
+          statuses(first: 1) { nodes { state } }
+        }
+      }
+    }
+  }
+}
