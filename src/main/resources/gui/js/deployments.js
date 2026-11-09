@@ -70,7 +70,13 @@ function renderDeployments() {
     });
     const container = document.getElementById("deploymentsContainer");
     container.replaceChildren();
-    const applications = deploymentData.applications.filter(app => !deploymentTeam || app.team === deploymentTeam);
+    const selectedRepositories = new Set(deploymentData.applications
+        .filter(app => app.team === deploymentTeam && app.repository)
+        .map(app => app.repository));
+    const applications = deploymentData.applications.filter(app =>
+        !deploymentTeam || (app.repository
+            ? selectedRepositories.has(app.repository)
+            : app.team === deploymentTeam));
     if (!applications.length) {
         const empty = document.createElement("p");
         empty.textContent = "No running applications for this selection.";

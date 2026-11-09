@@ -91,6 +91,31 @@ test("failed refresh retains previous results and reports stale data explicitly"
     assert.equal(get("refreshDeployments").disabled, false);
 });
 
+test("team selection filters repositories but keeps their applications from every discovered namespace", async () => {
+    const { context, get } = app();
+    context.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+            ...data,
+            applications: [
+                ...data.applications,
+                application("team-b", "unrelated", "prod-gcp", "example/other")
+            ]
+        })
+    });
+    await context.loadDeployments();
+    const cards = get("deploymentsContainer").children;
+    assert.equal(cards.length, 1);
+    assert.equal(cards[0].children[0].children[0].textContent, "example/mono");
+    assert.deepEqual(cards[0].children.slice(1).map(section => section.children[0].textContent), ["team-a", "team-b"]);
+    assert.equal(cards[0].children[2].children[1].children[0].children[0].children[0].textContent, "orders");
+    get("deploymentTeamTabs").children[2].onclick();
+    assert.equal(get("deploymentsContainer").children.length, 3);
+    const mono = get("deploymentsContainer").children.find(card =>
+        card.children[0].children[0]?.textContent === "example/mono");
+    assert.deepEqual(mono.children.slice(1).map(section => section.children[0].textContent), ["team-a", "team-b"]);
+});
+
 test("empty team selection renders an explicit empty state", async () => {
     const { context, get } = app();
     context.fetch = async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [] }) });
