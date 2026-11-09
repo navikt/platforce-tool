@@ -97,6 +97,12 @@ class NaisDeploymentDiscoveryTest {
         assertEquals(3, result.applications.size)
         assertEquals(2, result.applications.count { it.repository == "example/monorepo" })
         assertEquals(1, result.applications.count { it.repository == null })
+        val diagnostic = result.applications.single { it.repository == null }.repositoryDiagnostic!!
+        assertTrue(diagnostic.reason.contains("No deployment had SUCCESS"))
+        assertEquals(1, diagnostic.deploymentsChecked)
+        assertEquals("FAILURE", diagnostic.recentDeployments.single().status)
+        assertEquals("example/wrong", diagnostic.recentDeployments.single().repository)
+        assertTrue(result.applications.filter { it.repository != null }.all { it.repositoryDiagnostic == null })
         assertEquals(
             setOf("dev-gcp", "prod-gcp"),
             result.applications
@@ -110,6 +116,29 @@ class NaisDeploymentDiscoveryTest {
         assertTrue(calls.any { it.endsWith(":apps-2") })
         assertTrue(calls.any { it.endsWith(":instances-2") })
         assertTrue(calls.any { it.endsWith(":deployments-2") })
+    }
+
+    @Test
+    fun `unknown repository diagnostics distinguish absent history missing repository and unsupported format`() {
+        listOf(
+            "" to "no deployment history",
+            """{"repository":null,"createdAt":"2026-11-09","statuses":{"nodes":[{"state":"SUCCESS"}]}}""" to "no repository value",
+            deployment("SUCCESS", "sf-arkiv-jobbsporet") to "not a supported GitHub",
+            """{"repository":"example/repo","statuses":{"nodes":[]}}""" to "No deployment had SUCCESS",
+        ).forEach { (deployments, reason) ->
+            val discovery =
+                NaisDeploymentDiscovery { query, _ ->
+                    when {
+                        "query DeploymentTeams" in query -> json("""{"user":{"teams":${connection("""{"team":{"slug":"team"}}""")}}}""")
+                        "query DeploymentApplications" in query -> json("""{"team":{"applications":${connection(app("app"))}}}""")
+                        "query DeploymentInstances" in query -> json("""{"node":{"instances":${connection(instance("RUNNING"))}}}""")
+                        else -> json("""{"node":{"deployments":${connection(deployments)}}}""")
+                    }
+                }
+            val result = discovery.get("alice").applications.single()
+            assertEquals(null, result.repository)
+            assertTrue(result.repositoryDiagnostic!!.reason.contains(reason), result.repositoryDiagnostic.reason)
+        }
     }
 
     @Test

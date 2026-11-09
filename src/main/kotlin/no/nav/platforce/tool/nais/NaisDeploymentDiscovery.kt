@@ -16,6 +16,19 @@ data class RunningApplication(
     val readyInstances: Int,
     val images: List<RunningImage>,
     val deploymentTime: String?,
+    val repositoryDiagnostic: RepositoryDiagnostic? = null,
+)
+
+data class RepositoryDiagnostic(
+    val reason: String,
+    val deploymentsChecked: Int,
+    val recentDeployments: List<DeploymentDiagnostic>,
+)
+
+data class DeploymentDiagnostic(
+    val repository: String?,
+    val createdAt: String?,
+    val status: String?,
 )
 
 data class RunningImage(
@@ -48,7 +61,7 @@ internal class NaisDeploymentDiscovery(
                                 .getAsJsonObject("instances")
                         }.filter { it.getAsJsonObject("status")["state"].asString == "RUNNING" }
                     if (instances.isEmpty()) return@mapNotNull null
-                    val deployment = latestSuccessfulDeployment(id)
+                    val (deployment, diagnostic) = latestSuccessfulDeployment(id)
                     RunningApplication(
                         team = team,
                         name = application["name"].asString,
@@ -67,6 +80,7 @@ internal class NaisDeploymentDiscovery(
                                     RunningImage(image["name"].asString, image["tag"].asString, image.optionalString("digest"))
                                 }.distinct(),
                         deploymentTime = deployment?.optionalString("createdAt"),
+                        repositoryDiagnostic = diagnostic,
                     )
                 }
             }
@@ -76,29 +90,60 @@ internal class NaisDeploymentDiscovery(
         )
     }
 
-    private fun latestSuccessfulDeployment(id: String): JsonObject? {
+    private fun latestSuccessfulDeployment(id: String): Pair<JsonObject?, RepositoryDiagnostic?> {
         var cursor: String? = null
         val seen = mutableSetOf<String>()
+        val recent = mutableListOf<DeploymentDiagnostic>()
+        var checked = 0
         do {
             val connection =
                 query(load("application-deployments"), mapOf("id" to id, "after" to cursor))
                     .getAsJsonObject("node")
                     .getAsJsonObject("deployments")
-            connection
-                .getAsJsonArray("nodes")
-                .map { it.asJsonObject }
-                .firstOrNull {
-                    it
+            for (entry in connection.getAsJsonArray("nodes")) {
+                val deployment = entry.asJsonObject
+                val status =
+                    deployment
                         .getAsJsonObject("statuses")
                         .getAsJsonArray("nodes")
                         .firstOrNull()
                         ?.asJsonObject
-                        ?.get("state")
-                        ?.asString == "SUCCESS"
-                }?.let { return it }
+                        ?.optionalString("state")
+                checked++
+                if (recent.size < 5) {
+                    recent += DeploymentDiagnostic(deployment.optionalString("repository"), deployment.optionalString("createdAt"), status)
+                }
+                if (status == "SUCCESS") {
+                    val raw = deployment.optionalString("repository")
+                    if (checked > 5) {
+                        recent += DeploymentDiagnostic(raw, deployment.optionalString("createdAt"), status)
+                    }
+                    val reason =
+                        when {
+                            raw == null -> {
+                                "The latest successful deployment has no repository value."
+                            }
+
+                            normalizeDeploymentRepository(raw) == null -> {
+                                "The latest successful deployment's repository is not a supported GitHub URL or owner/repository coordinate."
+                            }
+
+                            else -> {
+                                null
+                            }
+                        }
+                    return deployment to reason?.let { RepositoryDiagnostic(it, checked, recent.toList()) }
+                }
+            }
             cursor = nextCursor(connection, seen)
         } while (cursor != null)
-        return null
+        val reason =
+            if (checked == 0) {
+                "Nais returned no deployment history for this application."
+            } else {
+                "No deployment had SUCCESS as its latest status. Console may display a deployment with a different or missing status."
+            }
+        return null to RepositoryDiagnostic(reason, checked, recent)
     }
 
     private fun pages(fetch: (String?) -> JsonObject): List<JsonObject> {

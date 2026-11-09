@@ -128,6 +128,24 @@ function renderDeployments() {
                     pills.appendChild(pill);
                 });
                 environments.appendChild(pills);
+                application.environments.filter(env => env.repositoryDiagnostic).forEach(environment => {
+                    const diagnostic = environment.repositoryDiagnostic;
+                    const details = document.createElement("details");
+                    const summary = document.createElement("summary");
+                    summary.textContent = `Why unknown? ${environment.environment}`;
+                    details.appendChild(summary);
+                    const reason = document.createElement("p");
+                    reason.textContent = `${diagnostic.reason} Deployments checked: ${diagnostic.deploymentsChecked}.`;
+                    details.appendChild(reason);
+                    const list = document.createElement("ul");
+                    diagnostic.recentDeployments.forEach(deployment => {
+                        const item = document.createElement("li");
+                        item.textContent = `${deployment.createdAt || "Date missing"} | Latest status: ${deployment.status || "Missing"} | Repository: ${deployment.repository || "Missing"}`;
+                        list.appendChild(item);
+                    });
+                    details.appendChild(list);
+                    environments.appendChild(details);
+                });
                 row.append(name, environments);
                 body.appendChild(row);
             });

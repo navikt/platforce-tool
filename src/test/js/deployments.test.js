@@ -122,3 +122,21 @@ test("empty team selection renders an explicit empty state", async () => {
     await context.loadDeployments();
     assert.match(get("deploymentsContainer").children[0].textContent, /No running applications/);
 });
+
+test("unknown rows explain the per-environment reason and show raw deployment metadata as text", async () => {
+    const { context, get } = app();
+    const unknown = application("team-a", "sf-arkiv", "dev-gcp", null);
+    unknown.repositoryDiagnostic = {
+        reason: "No deployment had SUCCESS as its latest status.",
+        deploymentsChecked: 3,
+        recentDeployments: [{ repository: "<raw-repo>", status: "INACTIVE", createdAt: "2026-11-09" }]
+    };
+    context.fetch = async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [unknown] }) });
+    await context.loadDeployments();
+    const cell = get("deploymentsContainer").children[0].children[1].children[1].children[0].children[0].children[1];
+    const details = cell.children[1];
+    assert.equal(details.tag, "details");
+    assert.equal(details.children[0].textContent, "Why unknown? dev-gcp");
+    assert.match(details.children[1].textContent, /SUCCESS.*Deployments checked: 3/);
+    assert.match(details.children[2].children[0].textContent, /INACTIVE.*<raw-repo>/);
+});
