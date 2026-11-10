@@ -142,6 +142,16 @@ body {
     margin: 6px 0;
 }
 
+.deployment-refresh-help {
+    margin-top: 6px;
+}
+
+.deployment-refresh-help > summary {
+    cursor: pointer;
+    width: fit-content;
+    font-weight: 600;
+}
+
 #deploymentRefreshError {
     color: #a32626;
 }

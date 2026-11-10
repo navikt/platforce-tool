@@ -38,7 +38,8 @@ function withMarker(fetchDeployments, after = null) {
 }
 
 function firstEnvironmentPill(get) {
-    return get("deploymentsContainer").children[0].children[1].children[1].children[0].children[0].children[1].children[0].children[0];
+    const card = get("deploymentsContainer").children.find(card => card.children[0].children[0]?.textContent === "example/mono");
+    return card.children[1].children[1].children[0].children[0].children[1].children[0].children[0];
 }
 
 const application = (team, name, environment, repository = "example/mono") => ({
@@ -55,6 +56,25 @@ const data = {
     ]
 };
 
+test("deployment timestamps use local calendar dates and zero-padded 24-hour time with seconds", () => {
+    const { context } = app();
+    const localDate = new Date(2026, 0, 2, 15, 4, 9);
+    assert.equal(context.formatDeploymentTimestamp(localDate.toISOString()), "2026-01-02 15:04:09");
+    const midnight = new Date(2026, 10, 10, 0, 0, 0);
+    assert.equal(context.formatDeploymentTimestamp(midnight.toISOString()), "2026-11-10 00:00:00");
+    assert.equal(context.formatDeploymentTimestamp("invalid"), "Timestamp unknown");
+});
+
+test("deployment view has no team selector and explanations are inside a collapsed question-mark toggle", () => {
+    const html = readFileSync(resolve(__dirname, "../../main/resources/gui/index.html"), "utf8");
+    assert.doesNotMatch(html, /id="deploymentTeamTabs"/);
+    const help = html.match(/<details class="deployment-refresh-help">([\s\S]*?)<\/details>/);
+    assert.ok(help);
+    assert.match(help[1], /<summary aria-label="About the rebuild marker">\?<\/summary>/);
+    assert.match(help[1], /Colors track deployment\/activity time/);
+    assert.match(help[1], /id="deploymentRefreshLegend"/);
+});
+
 test("groups monorepo applications by repository then owning team and merges environments by app name", () => {
     const { context } = app();
     const grouped = JSON.parse(JSON.stringify(context.groupDeploymentApplications(data.applications)));
@@ -66,7 +86,7 @@ test("groups monorepo applications by repository then owning team and merges env
     assert.equal(grouped.find(repo => repo.repository === "").teams[0].applications[0].name, "unknown");
 });
 
-test("loads lazily once, renders team filters and concise merged rows, refreshes explicitly", async () => {
+test("loads lazily once, renders all teams and concise merged rows, refreshes explicitly", async () => {
     const { context, get } = app();
     let calls = 0;
     context.fetch = withMarker(async (url, options) => {
@@ -79,13 +99,12 @@ test("loads lazily once, renders team filters and concise merged rows, refreshes
     await context.loadDeployments();
     assert.equal(calls, 1);
     const cards = get("deploymentsContainer").children;
-    assert.equal(cards.length, 1);
-    const rows = cards[0].children[1].children[1].children[0].children;
+    assert.equal(cards.length, 2);
+    const mono = cards.find(card => card.children[0].children[0]?.textContent === "example/mono");
+    const rows = mono.children[1].children[1].children[0].children;
     assert.equal(rows.length, 2);
     assert.equal(rows[0].children[0].textContent, "orders");
     assert.deepEqual(rows[0].children[1].children[0].children.map(pill => pill.textContent), ["dev-gcp", "prod-gcp"]);
-    get("deploymentTeamTabs").children[0].onclick();
-    assert.equal(get("deploymentsContainer").children.length, 2);
     await context.loadDeployments(true);
     assert.equal(calls, 2);
 });
@@ -102,7 +121,7 @@ test("failed refresh retains previous results and reports stale data explicitly"
     assert.equal(get("refreshDeployments").disabled, false);
 });
 
-test("team selection filters repositories but keeps their applications from every discovered namespace", async () => {
+test("scanner team selection does not hide deployments or unknown repositories from other teams", async () => {
     const { context, get } = app();
     context.fetch = withMarker(async () => ({
         ok: true,
@@ -116,18 +135,15 @@ test("team selection filters repositories but keeps their applications from ever
     }));
     await context.loadDeployments();
     const cards = get("deploymentsContainer").children;
-    assert.equal(cards.length, 1);
-    assert.equal(cards[0].children[0].children[0].textContent, "example/mono");
-    assert.deepEqual(cards[0].children.slice(1).map(section => section.children[0].textContent), ["team-a", "team-b"]);
-    assert.equal(cards[0].children[2].children[1].children[0].children[0].children[0].textContent, "orders");
-    get("deploymentTeamTabs").children[2].onclick();
-    assert.equal(get("deploymentsContainer").children.length, 3);
+    assert.equal(cards.length, 3);
+    assert.equal(cards[0].children[0].textContent, "Repository unknown");
+    assert.equal(cards[0].children[1].children[0].textContent, "team-b");
     const mono = get("deploymentsContainer").children.find(card =>
         card.children[0].children[0]?.textContent === "example/mono");
     assert.deepEqual(mono.children.slice(1).map(section => section.children[0].textContent), ["team-a", "team-b"]);
 });
 
-test("empty team selection renders an explicit empty state", async () => {
+test("empty inventory renders an explicit empty state", async () => {
     const { context, get } = app();
     context.fetch = withMarker(async () => ({ ok: true, json: async () => ({ teams: ["team-a"], applications: [] }) }));
     await context.loadDeployments();
@@ -171,9 +187,9 @@ test("environment tooltips distinguish activity provenance from successful deplo
     }));
     await context.loadDeployments();
     const pills = get("deploymentsContainer").children[0].children[1].children[1].children[0].children[0].children[1].children[0].children;
-    assert.match(pills[0].title, /application activity \(not rollout confirmation\) at 2026-11-09T13:00:00Z/);
+    assert.ok(pills[0].title.includes(`application activity (not rollout confirmation) at ${context.formatDeploymentTimestamp(activityApp.repositoryAssociationTime)}`));
     assert.doesNotMatch(pills[0].title, /successful deployment/i);
-    assert.match(pills[1].title, /successful deployment at 2026-11-09T12:00:00Z/);
+    assert.ok(pills[1].title.includes(`successful deployment at ${context.formatDeploymentTimestamp(deployedApp.repositoryAssociationTime)}`));
 });
 
 test("saved marker classifies timestamps strictly and survives refresh and a new GUI session", async () => {
@@ -197,7 +213,7 @@ test("saved marker classifies timestamps strictly and survives refresh and a new
         const pill = firstEnvironmentPill(instance.get);
         assert.match(pill.className, new RegExp(`deployment-freshness-${state}`));
         assert.equal(pill.textContent, `dev-gcp (${state})`);
-        assert.match(instance.get("deploymentRefreshMarker").textContent, /Deployments\/activity must be newer than:/);
+        assert.equal(instance.get("deploymentRefreshMarker").textContent, `Newer than: ${instance.context.formatDeploymentTimestamp(marker)}`);
         assert.equal(instance.get("deploymentRefreshLegend").hidden, false);
         await instance.context.loadDeployments(true);
         assert.equal(firstEnvironmentPill(instance.get).className, pill.className);
@@ -228,8 +244,6 @@ test("mark, advance and clear update the server-backed marker across teams witho
     await context.saveDeploymentRefreshMarker(false);
     assert.equal(saved, now);
     assert.equal(get("clearDeploymentRefreshMarker").disabled, false);
-    assert.match(firstEnvironmentPill(get).className, /freshness-unknown/);
-    get("deploymentTeamTabs").children[2].onclick();
     assert.match(firstEnvironmentPill(get).className, /freshness-unknown/);
     now = "2026-11-10T13:00:00Z";
     await context.saveDeploymentRefreshMarker(false);

@@ -1,9 +1,15 @@
 let deploymentData = null;
-let deploymentTeam = null;
 let deploymentsLoading = false;
 let deploymentRefreshMarker = null;
 let deploymentMarkerLoaded = false;
 let deploymentMarkerSaving = false;
+
+function formatDeploymentTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return "Timestamp unknown";
+    const pad = value => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 
 async function readDeploymentRefreshMarker(response) {
     const data = await response.json();
@@ -19,7 +25,7 @@ function renderDeploymentRefreshMarker() {
     document.getElementById("deploymentRefreshMarker").textContent = !deploymentMarkerLoaded
         ? "Rebuild marker not loaded."
         : deploymentRefreshMarker
-            ? `Deployments/activity must be newer than: ${new Date(deploymentRefreshMarker).toLocaleString()}`
+            ? `Newer than: ${formatDeploymentTimestamp(deploymentRefreshMarker)}`
             : "No rebuild marker set.";
     document.getElementById("deploymentRefreshLegend").hidden = !deploymentRefreshMarker;
     document.getElementById("markDeploymentsForRefresh").disabled = deploymentsLoading || deploymentMarkerSaving;
@@ -112,7 +118,6 @@ async function loadDeployments(refresh = false) {
         deploymentRefreshMarker = marker;
         deploymentMarkerLoaded = true;
         document.getElementById("deploymentRefreshError").textContent = "";
-        if (deploymentTeam === null) deploymentTeam = data.teams.includes(selectedTeam) ? selectedTeam : "";
         renderDeployments();
         status.textContent = data.applications.length ? "" : "No running applications found.";
     } catch (error) {
@@ -125,32 +130,12 @@ async function loadDeployments(refresh = false) {
 }
 
 function renderDeployments() {
-    const tabs = document.getElementById("deploymentTeamTabs");
-    tabs.replaceChildren();
-    ["", ...deploymentData.teams].forEach(team => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `team-pill${deploymentTeam === team ? " active" : ""}`;
-        button.textContent = team || "All teams";
-        button.setAttribute("aria-pressed", String(deploymentTeam === team));
-        button.onclick = () => {
-            deploymentTeam = team;
-            renderDeployments();
-        };
-        tabs.appendChild(button);
-    });
     const container = document.getElementById("deploymentsContainer");
     container.replaceChildren();
-    const selectedRepositories = new Set(deploymentData.applications
-        .filter(app => app.team === deploymentTeam && app.repository)
-        .map(app => app.repository));
-    const applications = deploymentData.applications.filter(app =>
-        !deploymentTeam || (app.repository
-            ? selectedRepositories.has(app.repository)
-            : app.team === deploymentTeam));
+    const applications = deploymentData.applications;
     if (!applications.length) {
         const empty = document.createElement("p");
-        empty.textContent = "No running applications for this selection.";
+        empty.textContent = "No running applications found.";
         container.appendChild(empty);
         return;
     }
@@ -200,8 +185,8 @@ function renderDeployments() {
                     }
                     pill.title = `${environment.readyInstances}/${environment.instances} running instances ready` +
                         (freshness ? `\n${freshness.explanation}` : "") +
-                        (environment.lastDeploymentActivityTime ? `\nLast deployment/activity: ${environment.lastDeploymentActivityTime}` : "") +
-                        (environment.repositorySource ? `\nRepository association: ${environment.repositorySource === "ACTIVITY_LOG" ? "application activity (not rollout confirmation)" : "successful deployment"}${environment.repositoryAssociationTime ? ` at ${environment.repositoryAssociationTime}` : ""}` : "") +
+                        (environment.lastDeploymentActivityTime ? `\nLast deployment/activity: ${formatDeploymentTimestamp(environment.lastDeploymentActivityTime)}` : "") +
+                        (environment.repositorySource ? `\nRepository association: ${environment.repositorySource === "ACTIVITY_LOG" ? "application activity (not rollout confirmation)" : "successful deployment"}${environment.repositoryAssociationTime ? ` at ${formatDeploymentTimestamp(environment.repositoryAssociationTime)}` : ""}` : "") +
                         environment.images.map(image => `\n${image.name}${image.tag ? `:${image.tag}` : ""}${image.digest ? `@${image.digest}` : ""}`).join("");
                     pills.appendChild(pill);
                 });
@@ -218,12 +203,12 @@ function renderDeployments() {
                     const list = document.createElement("ul");
                     diagnostic.recentDeployments.forEach(deployment => {
                         const item = document.createElement("li");
-                        item.textContent = `${deployment.createdAt || "Date missing"} | Latest status: ${deployment.status || "Missing"} | Repository: ${deployment.repository || "Missing"}`;
+                        item.textContent = `${deployment.createdAt ? formatDeploymentTimestamp(deployment.createdAt) : "Date missing"} | Latest status: ${deployment.status || "Missing"} | Repository: ${deployment.repository || "Missing"}`;
                         list.appendChild(item);
                     });
                     if (diagnostic.latestActivity) {
                         const item = document.createElement("li");
-                        item.textContent = `${diagnostic.latestActivity.createdAt || "Date missing"} | Latest application activity | Repository claim: ${diagnostic.latestActivity.repository || "Missing"}`;
+                        item.textContent = `${diagnostic.latestActivity.createdAt ? formatDeploymentTimestamp(diagnostic.latestActivity.createdAt) : "Date missing"} | Latest application activity | Repository claim: ${diagnostic.latestActivity.repository || "Missing"}`;
                         list.appendChild(item);
                     }
                     details.appendChild(list);
