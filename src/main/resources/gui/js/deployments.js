@@ -96,6 +96,79 @@ function groupDeploymentApplications(applications) {
     }));
 }
 
+function deploymentRebuildTargets(repository) {
+    const targets = repository.teams.flatMap(team =>
+        team.applications.flatMap(app => app.environments.map(env => {
+            if (!/^[a-z0-9][a-z0-9-]*$/.test(app.name) || !/^[a-z0-9][a-z0-9-]*$/.test(env.environment)) {
+                throw new Error("Cannot create rebuild targets: unsupported application or environment name.");
+            }
+            return `${app.name}:${env.environment}`;
+        })));
+    return [...new Set(targets)].sort().join(",");
+}
+
+function deploymentShellQuote(value) {
+    return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function deploymentCopyButton(label, text, feedback, repository) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "deployment-copy";
+    button.textContent = label;
+    button.title = text;
+    button.setAttribute("aria-label", `Copy ${label === "gh" ? "rebuild command" : "rebuild targets"} for ${repository}`);
+    const icon = document.createElement("img");
+    icon.src = "/internal/gui/icons/files.svg";
+    icon.alt = "";
+    icon.width = 18;
+    icon.height = 18;
+    icon.setAttribute("aria-hidden", "true");
+    button.appendChild(icon);
+    button.onclick = async () => {
+        feedback.textContent = "";
+        try {
+            await navigator.clipboard.writeText(text);
+            feedback.textContent = `${text} copied into clipboard`;
+        } catch (failure) {
+            console.error("Could not copy rebuild text", failure);
+            feedback.textContent = `Could not copy to clipboard. Copy manually: ${text}`;
+        }
+    };
+    return button;
+}
+
+function appendDeploymentRebuildActions(heading, repository) {
+    const actions = document.createElement("span");
+    actions.className = "deployment-rebuild-actions";
+    const link = document.createElement("a");
+    link.textContent = "Rebuild";
+    link.href = `https://github.com/${repository.repository.split("/").map(encodeURIComponent).join("/")}/actions/workflows/rebuild.yml`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    actions.appendChild(link);
+    const feedback = document.createElement("span");
+    feedback.className = "deployment-copy-feedback";
+    feedback.setAttribute("role", "status");
+    feedback.setAttribute("aria-live", "polite");
+    const workflow = deploymentData.rebuildWorkflows?.[repository.repository];
+    if (!workflow || workflow.error || typeof workflow.monorepo !== "boolean" || !workflow.branch) {
+        feedback.textContent = workflow?.error || "Workflow type unknown. Refresh deployments to check deploy.yml.";
+    } else {
+        try {
+            const targets = workflow.monorepo ? deploymentRebuildTargets(repository) : null;
+            const command = `gh workflow run rebuild.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}` +
+                (targets ? ` -f targets=${deploymentShellQuote(targets)}` : "");
+            actions.appendChild(deploymentCopyButton("gh", command, feedback, repository.repository));
+            if (targets) actions.appendChild(deploymentCopyButton("targets", targets, feedback, repository.repository));
+        } catch (failure) {
+            console.error("Could not create rebuild command", failure);
+            feedback.textContent = failure.message;
+        }
+    }
+    heading.append(actions, feedback);
+}
+
 async function loadDeployments(refresh = false) {
     if (deploymentsLoading || deploymentMarkerSaving || (deploymentData && !refresh)) return;
     deploymentsLoading = true;
@@ -155,6 +228,7 @@ function renderDeployments() {
             heading.textContent = "Repository unknown";
         }
         heading.title = "Repository from successful deployment history or application activity; not verified as the image build source.";
+        if (repository.repository) appendDeploymentRebuildActions(heading, repository);
         card.appendChild(heading);
         repository.teams.forEach(team => {
             const section = document.createElement("section");

@@ -146,7 +146,7 @@ class Application {
             ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
-            *deploymentsRoutes(naisClient).toTypedArray(),
+            *deploymentsRoutes(naisClient, githubClient).toTypedArray(),
             *deploymentRefreshRoutes().toTypedArray(),
             *repositoryViewRoutes(naisClient, githubClient, dependencyScanViewService, repositoryViewService).toTypedArray(),
         ).withUserCacheControl()

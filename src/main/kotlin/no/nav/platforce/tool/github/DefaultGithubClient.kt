@@ -17,6 +17,25 @@ class DefaultGithubClient(
 
     private val log = KotlinLogging.logger { }
 
+    override fun fileExists(
+        owner: String,
+        repo: String,
+        path: String,
+    ): Boolean {
+        val request = authenticatedRequest("https://api.github.com/repos/$owner/$repo/contents/$path")
+        httpClient.newCall(request).execute().use { response ->
+            if (response.code == 404) {
+                val root = authenticatedRequest("https://api.github.com/repos/$owner/$repo/contents")
+                httpClient.newCall(root).execute().use { contents ->
+                    check(contents.isSuccessful) { "Could not verify GitHub contents access: HTTP ${contents.code}" }
+                }
+                return false
+            }
+            check(response.isSuccessful) { "Could not check GitHub file: HTTP ${response.code}" }
+            return true
+        }
+    }
+
     private data class RepoResponse(
         val default_branch: String,
     )

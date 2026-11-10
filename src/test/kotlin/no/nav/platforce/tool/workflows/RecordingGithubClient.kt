@@ -10,6 +10,15 @@ class RecordingGithubClient(
     val updatedFiles = mutableMapOf<String, String>()
     var pullRequestBody: String? = null
 
+    override fun fileExists(
+        owner: String,
+        repo: String,
+        path: String,
+    ): Boolean {
+        calls += "fileExists:$owner/$repo:$path"
+        return path in files
+    }
+
     override fun getFile(
         owner: String,
         repo: String,

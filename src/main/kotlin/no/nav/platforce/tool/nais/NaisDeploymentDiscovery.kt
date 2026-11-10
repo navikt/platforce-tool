@@ -6,6 +6,7 @@ import java.time.Instant
 data class RunningDeployments(
     val teams: List<String>,
     val applications: List<RunningApplication>,
+    val rebuildWorkflows: Map<String, RebuildWorkflow> = emptyMap(),
 )
 
 data class RunningApplication(

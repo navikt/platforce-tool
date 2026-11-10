@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.ignore.parseIgnoredDependencies
+import no.nav.platforce.tool.nais.RebuildWorkflow
 import no.nav.platforce.tool.nais.RunningApplication
 import no.nav.platforce.tool.nais.RunningDeployments
 import no.nav.platforce.tool.nais.RunningImage
@@ -216,6 +217,7 @@ class LocalFrontendApi(
                                 null,
                             ),
                         ),
+                        rebuildWorkflows = mapOf("demo/orders" to RebuildWorkflow(monorepo = true, branch = "main")),
                     ),
                 )
             },

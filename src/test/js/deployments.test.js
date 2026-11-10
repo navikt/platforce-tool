@@ -25,6 +25,7 @@ function app() {
         selectedTeam: "team-a",
         console: { error() {} },
         confirm: () => true,
+        navigator: { clipboard: { writeText: async () => {} } },
         fetch: () => { throw new Error("Unexpected request"); }
     });
     vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/deployments.js"), "utf8"), context);
@@ -312,4 +313,89 @@ test("marker changes cannot race with a deployment refresh or with another marke
     finish({ ok: true, json: async () => ({ after: "2026-11-09T13:00:00Z" }) });
     await saving;
     assert.equal(get("refreshDeployments").disabled, false);
+});
+
+test("normal repository has a rebuild link and copies a shell-safe command with Aksel copy icon and feedback", async () => {
+    const { context, get } = app();
+    const branch = "release/it's-ready";
+    context.fetch = withMarker(async () => ({
+        ok: true,
+        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: false, branch } } })
+    }));
+    let copied;
+    context.navigator.clipboard.writeText = async text => { copied = text; };
+    await context.loadDeployments();
+    const cards = get("deploymentsContainer").children;
+    const heading = cards.find(card => card.children[0].children[0]?.textContent === "example/mono").children[0];
+    const actions = heading.children[1];
+    assert.equal(actions.className, "deployment-rebuild-actions");
+    assert.equal(actions.children.length, 2);
+    assert.equal(actions.children[0].textContent, "Rebuild");
+    assert.equal(actions.children[0].href, "https://github.com/example/mono/actions/workflows/rebuild.yml");
+    assert.equal(actions.children[0].rel, "noopener noreferrer");
+    const button = actions.children[1];
+    assert.equal(button.textContent, "gh");
+    assert.equal(button.children[0].src, "/internal/gui/icons/files.svg");
+    assert.equal(button.children[0].attributes["aria-hidden"], "true");
+    assert.equal(button.attributes["aria-label"], "Copy rebuild command for example/mono");
+    await button.onclick();
+    assert.equal(copied, "gh workflow run rebuild.yml --repo 'example/mono' --ref 'release/it'\\''s-ready'");
+    assert.equal(heading.children[2].textContent, `${copied} copied into clipboard`);
+    assert.equal(heading.children[2].attributes.role, "status");
+    assert.equal(cards[0].children[0].children.length, 0);
+});
+
+test("monorepo copies deduplicated targets for every running app and environment across teams", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true,
+        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: true, branch: "main" } } })
+    }));
+    const copied = [];
+    context.navigator.clipboard.writeText = async text => { copied.push(text); };
+    await context.loadDeployments();
+    const heading = get("deploymentsContainer").children[1].children[0];
+    const actions = heading.children[1];
+    assert.deepEqual(actions.children.map(child => child.textContent), ["Rebuild", "gh", "targets"]);
+    await actions.children[1].onclick();
+    await actions.children[2].onclick();
+    const targets = "orders:dev-gcp,orders:prod-gcp,worker:prod-gcp";
+    assert.deepEqual(copied, [
+        `gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='${targets}'`,
+        targets
+    ]);
+    assert.equal(heading.children[2].textContent, `${targets} copied into clipboard`);
+});
+
+test("workflow check failure keeps rebuild link but does not guess a command or targets", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true,
+        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { error: "GitHub unavailable" } } })
+    }));
+    await context.loadDeployments();
+    const heading = get("deploymentsContainer").children[1].children[0];
+    assert.equal(heading.children[1].children.length, 1);
+    assert.equal(heading.children[1].children[0].textContent, "Rebuild");
+    assert.equal(heading.children[2].textContent, "GitHub unavailable");
+});
+
+test("clipboard failures show manual copy text and never claim success", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true,
+        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: false, branch: "main" } } })
+    }));
+    context.navigator.clipboard.writeText = async () => { throw new Error("Permission denied"); };
+    await context.loadDeployments();
+    const heading = get("deploymentsContainer").children[1].children[0];
+    await heading.children[1].children[1].onclick();
+    assert.match(heading.children[2].textContent, /Could not copy to clipboard.*Copy manually: gh workflow run/);
+    assert.doesNotMatch(heading.children[2].textContent, /copied into clipboard/);
+});
+
+test("unsupported app names cannot be injected into rebuild target commands", () => {
+    const { context } = app();
+    const grouped = context.groupDeploymentApplications([application("team", "app'; echo bad", "dev-gcp")]);
+    assert.throws(() => context.deploymentRebuildTargets(grouped[0]), /unsupported application/);
 });

@@ -1,6 +1,12 @@
 package no.nav.platforce.tool.github
 
 interface GithubClient {
+    fun fileExists(
+        owner: String,
+        repo: String,
+        path: String,
+    ): Boolean
+
     fun getFile(
         owner: String,
         repo: String,

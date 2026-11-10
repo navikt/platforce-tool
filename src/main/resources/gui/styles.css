@@ -84,6 +84,37 @@ body {
 .deployment-repository h2 {
     font-size: 15px;
     margin: 0 0 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.deployment-rebuild-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.deployment-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.deployment-copy-feedback {
+    flex-basis: 100%;
+    text-align: right;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.deployment-copy-feedback:empty {
+    display: none;
 }
 
 .deployment-team {
