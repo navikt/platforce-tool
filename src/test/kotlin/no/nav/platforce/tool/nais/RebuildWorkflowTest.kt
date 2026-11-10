@@ -25,6 +25,7 @@ class RebuildWorkflowTest {
                 when (path) {
                     "/repos/example/normal", "/repos/example/mono" -> 200 to """{"default_branch":"main"}"""
                     "/repos/example/normal/contents/.github/workflows/deploy.yml" -> 200 to "{}"
+                    "/repos/example/normal/contents/.github/workflows/rebuild.yml" -> 200 to "{}"
                     "/repos/example/mono/contents" -> 200 to "[]"
                     else -> 404 to "{}"
                 }
@@ -34,9 +35,9 @@ class RebuildWorkflowTest {
                 listOf("team"),
                 listOf(app("example/normal"), app("example/normal"), app("example/mono"), app(null)),
             ).withRebuildWorkflows(client)
-        assertEquals(RebuildWorkflow(false, "main"), result.rebuildWorkflows["example/normal"])
-        assertEquals(RebuildWorkflow(true, "main"), result.rebuildWorkflows["example/mono"])
-        assertEquals(5, calls.size)
+        assertEquals(RebuildWorkflow(false, "main", exists = true), result.rebuildWorkflows["example/normal"])
+        assertEquals(RebuildWorkflow(true, "main", exists = false), result.rebuildWorkflows["example/mono"])
+        assertEquals(8, calls.size)
         assertEquals(2, result.rebuildWorkflows.size)
         assertEquals(4, result.applications.size)
     }

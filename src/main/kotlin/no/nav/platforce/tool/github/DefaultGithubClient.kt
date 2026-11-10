@@ -188,9 +188,8 @@ class DefaultGithubClient(
             mapOf(
                 "message" to message,
                 "content" to encoded,
-                "sha" to sha,
                 "branch" to branch,
-            )
+            ) + if (sha.isBlank()) emptyMap() else mapOf("sha" to sha)
 
         val request =
             authenticatedRequest("https://api.github.com/repos/$owner/$repo/contents/$path")

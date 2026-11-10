@@ -26,6 +26,8 @@ function app() {
         console: { error() {} },
         confirm: () => true,
         navigator: { clipboard: { writeText: async () => {} } },
+        setTimeout: () => 1,
+        clearTimeout: () => {},
         fetch: () => { throw new Error("Unexpected request"); }
     });
     vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/deployments.js"), "utf8"), context);
@@ -66,14 +68,10 @@ test("deployment timestamps use local calendar dates and zero-padded 24-hour tim
     assert.equal(context.formatDeploymentTimestamp("invalid"), "Timestamp unknown");
 });
 
-test("deployment view has no team selector and explanations are inside a collapsed question-mark toggle", () => {
+test("deployment view has no team selector or explanatory help", () => {
     const html = readFileSync(resolve(__dirname, "../../main/resources/gui/index.html"), "utf8");
     assert.doesNotMatch(html, /id="deploymentTeamTabs"/);
-    const help = html.match(/<details class="deployment-refresh-help">([\s\S]*?)<\/details>/);
-    assert.ok(help);
-    assert.match(help[1], /<summary aria-label="About the rebuild marker">\?<\/summary>/);
-    assert.match(help[1], /Colors track deployment\/activity time/);
-    assert.match(help[1], /id="deploymentRefreshLegend"/);
+    assert.doesNotMatch(html, /deployment-refresh-help|deploymentRefreshLegend/);
 });
 
 test("groups monorepo applications by repository then owning team and merges environments by app name", () => {
@@ -214,8 +212,8 @@ test("saved marker classifies timestamps strictly and survives refresh and a new
         const pill = firstEnvironmentPill(instance.get);
         assert.match(pill.className, new RegExp(`deployment-freshness-${state}`));
         assert.equal(pill.textContent, `dev-gcp (${state})`);
-        assert.equal(instance.get("deploymentRefreshMarker").textContent, `Newer than: ${instance.context.formatDeploymentTimestamp(marker)}`);
-        assert.equal(instance.get("deploymentRefreshLegend").hidden, false);
+        assert.deepEqual(instance.get("deploymentRefreshMarker").children.map(pill => pill.textContent),
+            ["Older", instance.context.formatDeploymentTimestamp(marker), "Newer"]);
         await instance.context.loadDeployments(true);
         assert.equal(firstEnvironmentPill(instance.get).className, pill.className);
     }
@@ -256,7 +254,6 @@ test("mark, advance and clear update the server-backed marker across teams witho
     await context.saveDeploymentRefreshMarker(true);
     assert.equal(saved, null);
     assert.equal(get("clearDeploymentRefreshMarker").disabled, true);
-    assert.equal(get("deploymentRefreshLegend").hidden, true);
     assert.doesNotMatch(firstEnvironmentPill(get).className, /freshness/);
     assert.equal(deploymentRequests, 1);
     assert.deepEqual(calls, ["GET", "POST", "POST", "DELETE"]);
@@ -320,7 +317,7 @@ test("normal repository has a rebuild link and copies a shell-safe command with 
     const branch = "release/it's-ready";
     context.fetch = withMarker(async () => ({
         ok: true,
-        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: false, branch } } })
+        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: false, branch, exists: true } } })
     }));
     let copied;
     context.navigator.clipboard.writeText = async text => { copied = text; };
@@ -340,7 +337,7 @@ test("normal repository has a rebuild link and copies a shell-safe command with 
     assert.equal(button.attributes["aria-label"], "Copy rebuild command for example/mono");
     await button.onclick();
     assert.equal(copied, "gh workflow run rebuild.yml --repo 'example/mono' --ref 'release/it'\\''s-ready'");
-    assert.equal(heading.children[2].textContent, `${copied} copied into clipboard`);
+    assert.equal(heading.children[2].children[0].textContent, `${copied} copied into clipboard`);
     assert.equal(heading.children[2].attributes.role, "status");
     assert.equal(cards[0].children[0].children.length, 0);
 });
@@ -349,7 +346,7 @@ test("monorepo copies deduplicated targets for every running app and environment
     const { context, get } = app();
     context.fetch = withMarker(async () => ({
         ok: true,
-        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: true, branch: "main" } } })
+        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: true, branch: "main", exists: true } } })
     }));
     const copied = [];
     context.navigator.clipboard.writeText = async text => { copied.push(text); };
@@ -364,10 +361,10 @@ test("monorepo copies deduplicated targets for every running app and environment
         `gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='${targets}'`,
         targets
     ]);
-    assert.equal(heading.children[2].textContent, `${targets} copied into clipboard`);
+    assert.equal(heading.children[2].children[0].textContent, `${targets} copied into clipboard`);
 });
 
-test("workflow check failure keeps rebuild link but does not guess a command or targets", async () => {
+test("workflow check failure does not guess rebuild availability, command or targets", async () => {
     const { context, get } = app();
     context.fetch = withMarker(async () => ({
         ok: true,
@@ -375,27 +372,70 @@ test("workflow check failure keeps rebuild link but does not guess a command or 
     }));
     await context.loadDeployments();
     const heading = get("deploymentsContainer").children[1].children[0];
-    assert.equal(heading.children[1].children.length, 1);
-    assert.equal(heading.children[1].children[0].textContent, "Rebuild");
-    assert.equal(heading.children[2].textContent, "GitHub unavailable");
+    assert.equal(heading.children[1].children.length, 0);
+    assert.equal(heading.children[2].children[0].textContent, "GitHub unavailable");
 });
 
 test("clipboard failures show manual copy text and never claim success", async () => {
     const { context, get } = app();
     context.fetch = withMarker(async () => ({
         ok: true,
-        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: false, branch: "main" } } })
+        json: async () => ({ ...data, rebuildWorkflows: { "example/mono": { monorepo: false, branch: "main", exists: true } } })
     }));
     context.navigator.clipboard.writeText = async () => { throw new Error("Permission denied"); };
     await context.loadDeployments();
     const heading = get("deploymentsContainer").children[1].children[0];
     await heading.children[1].children[1].onclick();
-    assert.match(heading.children[2].textContent, /Could not copy to clipboard.*Copy manually: gh workflow run/);
-    assert.doesNotMatch(heading.children[2].textContent, /copied into clipboard/);
+    assert.match(heading.children[2].children[0].textContent, /Could not copy to clipboard.*Copy manually: gh workflow run/);
+    assert.doesNotMatch(heading.children[2].children[0].textContent, /copied into clipboard/);
 });
 
 test("unsupported app names cannot be injected into rebuild target commands", () => {
     const { context } = app();
     const grouped = context.groupDeploymentApplications([application("team", "app'; echo bad", "dev-gcp")]);
     assert.throws(() => context.deploymentRebuildTargets(grouped[0]), /unsupported application/);
+});
+
+test("copy banners can be dismissed, success expires and errors remain", () => {
+    const { context } = app();
+    const banner = element();
+    let expire;
+    context.setTimeout = (callback, delay) => { assert.equal(delay, 6000); expire = callback; return 1; };
+    context.showDeploymentFeedback(banner, "copied");
+    assert.match(banner.className, /save-banner-success/);
+    assert.equal(banner.hidden, false);
+    banner.children[1].onclick();
+    assert.equal(banner.hidden, true);
+    context.showDeploymentFeedback(banner, "copied again");
+    expire();
+    assert.equal(banner.hidden, true);
+    context.showDeploymentFeedback(banner, "failed", false);
+    assert.match(banner.className, /save-banner-error/);
+    assert.equal(banner.hidden, false);
+});
+
+test("missing rebuild workflow offers PR generation instead of dispatch or copy controls", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true, json: async () => ({ ...data, rebuildWorkflows: {
+            "example/mono": { monorepo: true, branch: "main", exists: false }
+        } })
+    }));
+    await context.loadDeployments();
+    const heading = get("deploymentsContainer").children[1].children[0];
+    const actions = heading.children[1];
+    assert.equal(actions.children.length, 1);
+    const generate = actions.children[0];
+    assert.equal(generate.textContent, "Generate rebuild.yml");
+    context.fetch = async (url, options) => {
+        assert.equal(url, "/internal/api/deployments/rebuild-pr/example/mono");
+        assert.equal(options.method, "POST");
+        return { ok: true, json: async () => ({ url: "https://github.com/example/mono/pull/42" }) };
+    };
+    await generate.onclick();
+    assert.equal(generate.disabled, true);
+    assert.equal(generate.textContent, "PR created");
+    const message = heading.children[2].children[0];
+    assert.equal(message.textContent, "Rebuild workflow PR created.");
+    assert.equal(message.children[0].href, "https://github.com/example/mono/pull/42");
 });

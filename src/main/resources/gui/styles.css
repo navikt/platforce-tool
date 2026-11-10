@@ -107,10 +107,17 @@ body {
 
 .deployment-copy-feedback {
     flex-basis: 100%;
-    text-align: right;
+    text-align: left;
     overflow-wrap: anywhere;
     font-size: 12px;
     font-weight: normal;
+}
+
+#deploymentRefreshMarker {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
 }
 
 .deployment-copy-feedback:empty {
@@ -171,16 +178,6 @@ body {
 
 .deployment-refresh-marker p {
     margin: 6px 0;
-}
-
-.deployment-refresh-help {
-    margin-top: 6px;
-}
-
-.deployment-refresh-help > summary {
-    cursor: pointer;
-    width: fit-content;
-    font-weight: 600;
 }
 
 #deploymentRefreshError {

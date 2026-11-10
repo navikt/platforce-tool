@@ -22,12 +22,21 @@ async function readDeploymentRefreshMarker(response) {
 }
 
 function renderDeploymentRefreshMarker() {
-    document.getElementById("deploymentRefreshMarker").textContent = !deploymentMarkerLoaded
-        ? "Rebuild marker not loaded."
-        : deploymentRefreshMarker
-            ? `Newer than: ${formatDeploymentTimestamp(deploymentRefreshMarker)}`
-            : "No rebuild marker set.";
-    document.getElementById("deploymentRefreshLegend").hidden = !deploymentRefreshMarker;
+    const marker = document.getElementById("deploymentRefreshMarker");
+    marker.replaceChildren();
+    if (deploymentRefreshMarker) {
+        [["Older", "older"], [formatDeploymentTimestamp(deploymentRefreshMarker), "unknown"], ["Newer", "newer"]]
+            .forEach(([text, state]) => {
+                const pill = document.createElement("span");
+                pill.className = `target-version-pill deployment-freshness-${state}`;
+                pill.textContent = text;
+                marker.appendChild(pill);
+            });
+        marker.setAttribute("aria-label", `Deployment/activity cutoff: ${formatDeploymentTimestamp(deploymentRefreshMarker)}`);
+    } else {
+        marker.textContent = deploymentMarkerLoaded ? "No rebuild marker set." : "Rebuild marker not loaded.";
+        marker.setAttribute("aria-label", marker.textContent);
+    }
     document.getElementById("markDeploymentsForRefresh").disabled = deploymentsLoading || deploymentMarkerSaving;
     document.getElementById("clearDeploymentRefreshMarker").disabled =
         deploymentsLoading || deploymentMarkerSaving || !deploymentRefreshMarker;
@@ -111,6 +120,36 @@ function deploymentShellQuote(value) {
     return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+const deploymentBannerTimers = new WeakMap();
+
+function showDeploymentFeedback(banner, text, success = true, url = null) {
+    clearTimeout(deploymentBannerTimers.get(banner));
+    banner.replaceChildren();
+    banner.hidden = false;
+    banner.className = `deployment-copy-feedback save-banner ${success ? "save-banner-success" : "save-banner-error"}`;
+    const message = document.createElement("span");
+    message.textContent = text;
+    if (url) {
+        const link = document.createElement("a");
+        link.textContent = " Open pull request";
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        message.appendChild(link);
+    }
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "save-banner-close";
+    close.textContent = "\u00d7";
+    close.setAttribute("aria-label", "Dismiss message");
+    close.onclick = () => {
+        clearTimeout(deploymentBannerTimers.get(banner));
+        banner.hidden = true;
+    };
+    banner.append(message, close);
+    if (success) deploymentBannerTimers.set(banner, setTimeout(() => { banner.hidden = true; }, 6000));
+}
+
 function deploymentCopyButton(label, text, feedback, repository) {
     const button = document.createElement("button");
     button.type = "button";
@@ -126,13 +165,13 @@ function deploymentCopyButton(label, text, feedback, repository) {
     icon.setAttribute("aria-hidden", "true");
     button.appendChild(icon);
     button.onclick = async () => {
-        feedback.textContent = "";
+        feedback.hidden = true;
         try {
             await navigator.clipboard.writeText(text);
-            feedback.textContent = `${text} copied into clipboard`;
+            showDeploymentFeedback(feedback, `${text} copied into clipboard`);
         } catch (failure) {
             console.error("Could not copy rebuild text", failure);
-            feedback.textContent = `Could not copy to clipboard. Copy manually: ${text}`;
+            showDeploymentFeedback(feedback, `Could not copy to clipboard. Copy manually: ${text}`, false);
         }
     };
     return button;
@@ -141,20 +180,55 @@ function deploymentCopyButton(label, text, feedback, repository) {
 function appendDeploymentRebuildActions(heading, repository) {
     const actions = document.createElement("span");
     actions.className = "deployment-rebuild-actions";
-    const link = document.createElement("a");
-    link.textContent = "Rebuild";
-    link.href = `https://github.com/${repository.repository.split("/").map(encodeURIComponent).join("/")}/actions/workflows/rebuild.yml`;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    actions.appendChild(link);
     const feedback = document.createElement("span");
     feedback.className = "deployment-copy-feedback";
     feedback.setAttribute("role", "status");
     feedback.setAttribute("aria-live", "polite");
+    feedback.hidden = true;
     const workflow = deploymentData.rebuildWorkflows?.[repository.repository];
     if (!workflow || workflow.error || typeof workflow.monorepo !== "boolean" || !workflow.branch) {
-        feedback.textContent = workflow?.error || "Workflow type unknown. Refresh deployments to check deploy.yml.";
+        showDeploymentFeedback(feedback, workflow?.error || "Workflow type unknown. Refresh deployments to check deploy.yml.", false);
+    } else if (workflow.exists === false) {
+        const generate = document.createElement("button");
+        generate.type = "button";
+        generate.textContent = "Generate rebuild.yml";
+        generate.onclick = async () => {
+            if (!confirm(`Create a PR in ${repository.repository} adding rebuild.yml and updating the called workflow if needed?`)) return;
+            generate.disabled = true;
+            try {
+                const response = await fetch(`/internal/api/deployments/rebuild-pr/${repository.repository.split("/").map(encodeURIComponent).join("/")}`, {
+                    method: "POST", cache: "no-store"
+                });
+                if (!response.ok) {
+                    const message = await response.text();
+                    let error = message;
+                    if (response.headers.get("Content-Type")?.includes("application/json")) {
+                        error = JSON.parse(message).error || message;
+                    }
+                    throw new Error(error);
+                }
+                const result = await response.json();
+                if (typeof result.url !== "string" || !result.url.startsWith(`https://github.com/${repository.repository}/pull/`)) {
+                    throw new Error("Invalid PR response. Check GitHub before retrying.");
+                }
+                showDeploymentFeedback(feedback, "Rebuild workflow PR created.", true, result.url);
+                generate.textContent = "PR created";
+            } catch (failure) {
+                console.error("Could not generate rebuild workflow", failure);
+                showDeploymentFeedback(feedback, `Could not generate rebuild.yml: ${failure.message}`, false);
+                generate.disabled = false;
+            }
+        };
+        actions.appendChild(generate);
+    } else if (workflow.exists !== true) {
+        showDeploymentFeedback(feedback, "rebuild.yml availability unknown. Refresh deployments.", false);
     } else {
+        const link = document.createElement("a");
+        link.textContent = "Rebuild";
+        link.href = `https://github.com/${repository.repository.split("/").map(encodeURIComponent).join("/")}/actions/workflows/rebuild.yml`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        actions.appendChild(link);
         try {
             const targets = workflow.monorepo ? deploymentRebuildTargets(repository) : null;
             const command = `gh workflow run rebuild.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}` +
@@ -163,7 +237,7 @@ function appendDeploymentRebuildActions(heading, repository) {
             if (targets) actions.appendChild(deploymentCopyButton("targets", targets, feedback, repository.repository));
         } catch (failure) {
             console.error("Could not create rebuild command", failure);
-            feedback.textContent = failure.message;
+            showDeploymentFeedback(feedback, failure.message, false);
         }
     }
     heading.append(actions, feedback);

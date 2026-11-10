@@ -217,7 +217,7 @@ class LocalFrontendApi(
                                 null,
                             ),
                         ),
-                        rebuildWorkflows = mapOf("demo/orders" to RebuildWorkflow(monorepo = true, branch = "main")),
+                        rebuildWorkflows = mapOf("demo/orders" to RebuildWorkflow(monorepo = true, branch = "main", exists = true)),
                     ),
                 )
             },

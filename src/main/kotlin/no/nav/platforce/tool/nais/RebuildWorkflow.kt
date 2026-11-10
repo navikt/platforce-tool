@@ -9,6 +9,7 @@ data class RebuildWorkflow(
     val monorepo: Boolean? = null,
     val branch: String? = null,
     val error: String? = null,
+    val exists: Boolean? = null,
 )
 
 internal fun RunningDeployments.withRebuildWorkflows(client: GithubClient): RunningDeployments =
@@ -18,7 +19,11 @@ internal fun RunningDeployments.withRebuildWorkflows(client: GithubClient): Runn
                 val (owner, repo) = repository.split("/")
                 try {
                     val branch = client.getDefaultBranch(owner, repo)
-                    RebuildWorkflow(monorepo = !client.fileExists(owner, repo, ".github/workflows/deploy.yml"), branch = branch)
+                    RebuildWorkflow(
+                        monorepo = !client.fileExists(owner, repo, ".github/workflows/deploy.yml"),
+                        branch = branch,
+                        exists = client.fileExists(owner, repo, ".github/workflows/rebuild.yml"),
+                    )
                 } catch (failure: IOException) {
                     rebuildWorkflowFailure(repository, failure)
                 } catch (failure: IllegalStateException) {

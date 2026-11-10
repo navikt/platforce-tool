@@ -1,0 +1,64 @@
+name: Rebuild and deploy selected applications
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Comma-separated app:cluster pairs
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/__DEFAULT_BRANCH__'
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Validate targets
+        id: targets
+        env:
+          TARGETS: ${{ inputs.targets }}
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          targets = []
+          for value in os.environ["TARGETS"].split(","):
+              value = value.strip()
+              if not re.fullmatch(r"[a-z0-9][a-z0-9-]*:(dev-gcp|prod-gcp)", value):
+                  raise SystemExit(f"Invalid target: {value!r}")
+              app, cluster = value.split(":")
+              if not Path(f".nais/{app}/{cluster}.yaml").is_file():
+                  raise SystemExit(f"No deployment manifest for {value}")
+              target = {"app": app, "cluster": cluster}
+              if target not in targets:
+                  targets.append(target)
+          if len(targets) > 50:
+              raise SystemExit("At most 50 deployment targets are allowed")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"targets={json.dumps(targets)}\n")
+          PY
+  rebuild:
+    needs: prepare
+    permissions:
+      contents: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare.outputs.targets) }}
+    uses: ./.github/workflows/workflow.yml
+    secrets: inherit
+    with:
+      DEPLOY_APP: ${{ matrix.target.app }}
+      DEPLOY_CLUSTER: ${{ matrix.target.cluster }}
+__EXTRA_INPUTS__
