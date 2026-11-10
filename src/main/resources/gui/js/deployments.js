@@ -214,7 +214,7 @@ function showDeploymentFeedback(banner, text, success = true, url = null) {
 function deploymentCopyButton(label, text, feedback, repository) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "deployment-copy";
+    button.className = "pr-button deployment-copy";
     button.textContent = label;
     button.title = text;
     button.setAttribute("aria-label", `Copy ${label === "gh" ? "rebuild command" : "rebuild targets"} for ${repository}`);
@@ -309,10 +309,19 @@ function appendDeploymentRebuildActions(heading, repository) {
         showDeploymentFeedback(feedback, "rebuild.yml availability unknown. Refresh deployments.", false);
     } else {
         const link = document.createElement("a");
+        link.className = "pr-button deployment-rebuild-link";
         link.textContent = "Rebuild";
         link.href = `https://github.com/${repository.repository.split("/").map(encodeURIComponent).join("/")}/actions/workflows/rebuild.yml`;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
+        link.setAttribute("aria-label", `Rebuild ${repository.repository} (opens in a new tab)`);
+        const icon = document.createElement("img");
+        icon.src = "/internal/gui/icons/external-link.svg";
+        icon.alt = "";
+        icon.width = 18;
+        icon.height = 18;
+        icon.setAttribute("aria-hidden", "true");
+        link.appendChild(icon);
         actions.appendChild(link);
         try {
             const targets = workflow.monorepo ? deploymentRebuildTargets(repository) : null;

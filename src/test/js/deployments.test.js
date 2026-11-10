@@ -334,7 +334,12 @@ test("normal repository has a rebuild link and copies a shell-safe command with 
     assert.equal(actions.children[0].textContent, "Rebuild");
     assert.equal(actions.children[0].href, "https://github.com/example/mono/actions/workflows/rebuild.yml");
     assert.equal(actions.children[0].rel, "noopener noreferrer");
+    assert.equal(actions.children[0].target, "_blank");
+    assert.equal(actions.children[0].className, "pr-button deployment-rebuild-link");
+    assert.equal(actions.children[0].children[0].src, "/internal/gui/icons/external-link.svg");
+    assert.equal(actions.children[0].children[0].attributes["aria-hidden"], "true");
     const button = actions.children[1];
+    assert.equal(button.className, "pr-button deployment-copy");
     assert.equal(button.textContent, "gh");
     assert.equal(button.children[0].src, "/internal/gui/icons/files.svg");
     assert.equal(button.children[0].attributes["aria-hidden"], "true");
