@@ -6,6 +6,7 @@ import org.yaml.snakeyaml.nodes.MappingNode
 import org.yaml.snakeyaml.nodes.Node
 import org.yaml.snakeyaml.nodes.ScalarNode
 import java.io.StringReader
+import java.time.LocalDate
 
 class RebuildPullRequestService(
     private val github: GithubClient,
@@ -22,7 +23,8 @@ class RebuildPullRequestService(
         require(github.fileExists(owner, repo, calledPath)) { "$calledPath is missing; cannot generate a compatible rebuild workflow." }
         val original = github.getFile(owner, repo, calledPath)
         val plan = rebuildWorkflowPlan(original, mono, base)
-        val branch = github.resolveBranchName(owner, repo, "chore/add-rebuild-workflow")
+        val date = LocalDate.now()
+        val branch = github.resolveBranchName(owner, repo, "chore/add-rebuild-workflow-$date")
         github.createBranch(owner, repo, branch, github.getBranchHeadSha(owner, repo, base))
         if (plan.called != original) {
             github.updateFile(
@@ -39,7 +41,7 @@ class RebuildPullRequestService(
         return github.createPullRequest(
             owner,
             repo,
-            "chore: add manual rebuild workflow",
+            "chore: add manual rebuild workflow $date",
             "Adds a manual rebuild entry point using the existing build and deploy workflow.\n\n" +
                 "Review deployment inputs and production behavior before merging. " +
                 "Rebuilding does not guarantee vulnerability remediation.\n\n" +

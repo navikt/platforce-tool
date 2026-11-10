@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.yaml.snakeyaml.Yaml
+import java.time.LocalDate
 
 class RebuildPullRequestServiceTest {
     private val normal = "name: Deploy\non:\n  push:\n  pull_request:\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
@@ -79,6 +80,9 @@ class RebuildPullRequestServiceTest {
         assertTrue(url.endsWith("/pull/1"))
         assertEquals(setOf(".github/workflows/rebuild.yml", ".github/workflows/deploy.yml"), github.updatedFiles.keys)
         assertTrue(github.calls.any { it.startsWith("createBranch:") })
+        assertTrue(github.calls.any { it == "resolveBranchName:example/repo" })
+        assertTrue(github.pullRequestTitle!!.endsWith(LocalDate.now().toString()))
+        assertTrue(github.requestedBranchName!!.endsWith(LocalDate.now().toString()))
         val existing = RecordingGithubClient(mapOf(".github/workflows/rebuild.yml" to "existing"))
         assertThrows(IllegalArgumentException::class.java) { RebuildPullRequestService(existing).create("example", "repo") }
         assertTrue(existing.updatedFiles.isEmpty())

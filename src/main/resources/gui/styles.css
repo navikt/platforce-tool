@@ -105,6 +105,13 @@ body {
     gap: 4px;
 }
 
+.deployment-rebuild-actions .deployment-generate-button {
+    margin-right: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
 .deployment-copy-feedback {
     flex-basis: 100%;
     text-align: left;

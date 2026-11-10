@@ -12,6 +12,16 @@ data class RebuildWorkflow(
     val exists: Boolean? = null,
 )
 
+internal fun RunningDeployments.availableRepositories(
+    accessible: Set<String>,
+    ignored: Set<String>,
+): RunningDeployments {
+    val allowed = accessible.map { it.lowercase() }.toSet() - ignored.map { it.lowercase() }.toSet()
+    val filtered = applications.filter { it.repository?.lowercase() in allowed }
+    val repositories = filtered.mapNotNull { it.repository }.toSet()
+    return copy(applications = filtered, rebuildWorkflows = rebuildWorkflows.filterKeys { it in repositories })
+}
+
 internal fun RunningDeployments.withRebuildWorkflows(client: GithubClient): RunningDeployments =
     copy(
         rebuildWorkflows =

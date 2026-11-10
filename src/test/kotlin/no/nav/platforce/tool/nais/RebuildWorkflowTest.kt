@@ -17,6 +17,20 @@ class RebuildWorkflowTest {
     private fun app(repository: String?) = RunningApplication("team", "app", "dev-gcp", repository, 1, 1, emptyList(), null)
 
     @Test
+    fun `deployments include only app accessible repositories not ignored by the current user`() {
+        val original =
+            RunningDeployments(
+                listOf("team"),
+                listOf(app("example/keep"), app("example/ignore"), app("example/private"), app(null)),
+            )
+        val alice = original.availableRepositories(setOf("example/keep", "example/ignore"), setOf("EXAMPLE/IGNORE"))
+        assertEquals(listOf("example/keep"), alice.applications.map { it.repository })
+        val bob = original.availableRepositories(setOf("example/keep", "example/ignore"), emptySet())
+        assertEquals(listOf("example/keep", "example/ignore"), bob.applications.map { it.repository })
+        assertEquals(4, original.applications.size)
+    }
+
+    @Test
     fun `deploy workflow existence determines repository type with one lookup per discovered repository`() {
         val calls = mutableListOf<String>()
         val client =

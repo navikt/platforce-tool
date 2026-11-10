@@ -9,6 +9,7 @@ import no.nav.platforce.tool.nais.RebuildWorkflow
 import no.nav.platforce.tool.nais.RunningApplication
 import no.nav.platforce.tool.nais.RunningDeployments
 import no.nav.platforce.tool.nais.RunningImage
+import no.nav.platforce.tool.nais.availableRepositories
 import no.nav.platforce.tool.nais.deploymentRefreshMarkerResponse
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.RepositoryViewService
@@ -218,7 +219,7 @@ class LocalFrontendApi(
                             ),
                         ),
                         rebuildWorkflows = mapOf("demo/orders" to RebuildWorkflow(monorepo = true, branch = "main", exists = true)),
-                    ),
+                    ).availableRepositories(setOf("demo/orders"), ignored),
                 )
             },
             "/internal/gui" bind Method.GET to static(ResourceLoader.Directory(guiDirectory.toString())),

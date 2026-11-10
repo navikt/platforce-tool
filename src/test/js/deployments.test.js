@@ -28,6 +28,7 @@ function app() {
         navigator: { clipboard: { writeText: async () => {} } },
         setTimeout: () => 1,
         clearTimeout: () => {},
+        window: { open: () => null },
         fetch: () => { throw new Error("Unexpected request"); }
     });
     vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/deployments.js"), "utf8"), context);
@@ -426,7 +427,11 @@ test("missing rebuild workflow offers PR generation instead of dispatch or copy 
     const actions = heading.children[1];
     assert.equal(actions.children.length, 1);
     const generate = actions.children[0];
-    assert.equal(generate.textContent, "Generate rebuild.yml");
+    assert.equal(generate.textContent, "Generate rebuild.yml monorepo");
+    assert.match(generate.className, /pr-button/);
+    const opened = { location: {}, close() {} };
+    context.window.open = () => opened;
+    context.confirm = () => { throw new Error("Generation must not request confirmation"); };
     context.fetch = async (url, options) => {
         assert.equal(url, "/internal/api/deployments/rebuild-pr/example/mono");
         assert.equal(options.method, "POST");
@@ -435,7 +440,38 @@ test("missing rebuild workflow offers PR generation instead of dispatch or copy 
     await generate.onclick();
     assert.equal(generate.disabled, true);
     assert.equal(generate.textContent, "PR created");
+    assert.equal(opened.location.href, "https://github.com/example/mono/pull/42");
+    assert.equal(generate.attributes["aria-busy"], "false");
     const message = heading.children[2].children[0];
     assert.equal(message.textContent, "Rebuild workflow PR created.");
     assert.equal(message.children[0].href, "https://github.com/example/mono/pull/42");
+});
+
+test("generation shows spinner while waiting, avoids duplicate requests and restores the label on failure", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true, json: async () => ({ ...data, rebuildWorkflows: {
+            "example/mono": { monorepo: false, branch: "main", exists: false }
+        } })
+    }));
+    await context.loadDeployments();
+    const button = get("deploymentsContainer").children[1].children[0].children[1].children[0];
+    assert.equal(button.textContent, "Generate rebuild.yml");
+    let finish;
+    let calls = 0;
+    let closed = false;
+    context.window.open = () => ({ close() { closed = true; } });
+    context.fetch = () => { calls++; return new Promise(resolve => { finish = resolve; }); };
+    const pending = button.onclick();
+    assert.equal(button.disabled, true);
+    assert.equal(button.attributes["aria-busy"], "true");
+    assert.equal(button.children[0].className, "spinner");
+    await button.onclick();
+    assert.equal(calls, 1);
+    finish({ ok: false, text: async () => "Synthetic failure", headers: { get: () => "text/plain" } });
+    await pending;
+    assert.equal(button.disabled, false);
+    assert.equal(button.attributes["aria-busy"], "false");
+    assert.equal(button.textContent, "Generate rebuild.yml");
+    assert.equal(closed, true);
 });

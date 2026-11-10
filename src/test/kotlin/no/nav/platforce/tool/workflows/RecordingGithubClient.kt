@@ -9,6 +9,8 @@ class RecordingGithubClient(
     val calls = mutableListOf<String>()
     val updatedFiles = mutableMapOf<String, String>()
     var pullRequestBody: String? = null
+    var pullRequestTitle: String? = null
+    var requestedBranchName: String? = null
 
     override fun fileExists(
         owner: String,
@@ -89,6 +91,7 @@ class RecordingGithubClient(
     ): String {
         calls += "createPullRequest:$owner/$repo:$head:$base"
         pullRequestBody = body
+        pullRequestTitle = title
         return "https://github.example.test/$owner/$repo/pull/1"
     }
 
@@ -98,6 +101,7 @@ class RecordingGithubClient(
         baseName: String,
     ): String {
         calls += "resolveBranchName:$owner/$repo"
+        requestedBranchName = baseName
         return "test-dependency-update"
     }
 }

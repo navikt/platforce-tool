@@ -191,10 +191,20 @@ function appendDeploymentRebuildActions(heading, repository) {
     } else if (workflow.exists === false) {
         const generate = document.createElement("button");
         generate.type = "button";
-        generate.textContent = "Generate rebuild.yml";
+        generate.className = "pr-button deployment-generate-button";
+        const label = `Generate rebuild.yml${workflow.monorepo ? " monorepo" : ""}`;
+        generate.textContent = label;
         generate.onclick = async () => {
-            if (!confirm(`Create a PR in ${repository.repository} adding rebuild.yml and updating the called workflow if needed?`)) return;
+            if (generate.disabled) return;
             generate.disabled = true;
+            generate.textContent = "Creating...";
+            const spinner = document.createElement("span");
+            spinner.className = "spinner";
+            spinner.setAttribute("aria-hidden", "true");
+            generate.appendChild(spinner);
+            generate.setAttribute("aria-busy", "true");
+            const prWindow = window.open("about:blank", "_blank");
+            if (prWindow) prWindow.opener = null;
             try {
                 const response = await fetch(`/internal/api/deployments/rebuild-pr/${repository.repository.split("/").map(encodeURIComponent).join("/")}`, {
                     method: "POST", cache: "no-store"
@@ -212,11 +222,19 @@ function appendDeploymentRebuildActions(heading, repository) {
                     throw new Error("Invalid PR response. Check GitHub before retrying.");
                 }
                 showDeploymentFeedback(feedback, "Rebuild workflow PR created.", true, result.url);
+                generate.replaceChildren();
                 generate.textContent = "PR created";
+                if (prWindow) prWindow.location.href = result.url;
+                else window.open(result.url, "_blank", "noopener,noreferrer");
             } catch (failure) {
+                if (prWindow) prWindow.close();
                 console.error("Could not generate rebuild workflow", failure);
                 showDeploymentFeedback(feedback, `Could not generate rebuild.yml: ${failure.message}`, false);
                 generate.disabled = false;
+                generate.replaceChildren();
+                generate.textContent = label;
+            } finally {
+                generate.setAttribute("aria-busy", "false");
             }
         };
         actions.appendChild(generate);

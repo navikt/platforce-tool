@@ -20,9 +20,17 @@ fun deploymentsRoutes(
     "/internal/api/deployments" bind Method.GET to { request ->
         val context = request.userContext()
         try {
+            val deployments =
+                client.getRunningDeployments(context.username).availableRepositories(
+                    githubClient.listRepositories().toSet(),
+                    context.ignoredRepositoriesStore
+                        .get()
+                        .repositories
+                        .toSet(),
+                )
             Response(Status.OK)
                 .header("Content-Type", "application/json")
-                .body(Gson().toJson(client.getRunningDeployments(context.username).withRebuildWorkflows(githubClient)))
+                .body(Gson().toJson(deployments.withRebuildWorkflows(githubClient)))
         } catch (failure: IOException) {
             deploymentsFailure(failure)
         } catch (failure: IllegalStateException) {
@@ -37,7 +45,14 @@ fun deploymentsRoutes(
         val repo = request.path("repo").orEmpty()
         try {
             require("$owner/$repo" == normalizeDeploymentRepository("$owner/$repo")) { "Invalid repository" }
-            val deployments = client.getRunningDeployments(context.username)
+            val deployments =
+                client.getRunningDeployments(context.username).availableRepositories(
+                    githubClient.listRepositories().toSet(),
+                    context.ignoredRepositoriesStore
+                        .get()
+                        .repositories
+                        .toSet(),
+                )
             if (deployments.applications.none { it.repository == "$owner/$repo" }) {
                 Response(Status.FORBIDDEN).body("Repository is not associated with your running applications.")
             } else {

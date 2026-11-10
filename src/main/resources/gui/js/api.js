@@ -47,7 +47,7 @@ async function saveIgnoredRepositories() {
 
     console.log("Ignored repositories list persisted to db")
 
-    await fetch(
+    const response = await fetch(
         "/internal/api/ignored-repositories/update",
         {
             method: "POST",
@@ -60,6 +60,12 @@ async function saveIgnoredRepositories() {
             })
         }
     );
+    if (!response.ok) throw new Error(await response.text());
+    if (typeof deploymentData !== "undefined") {
+        deploymentData = null;
+        const tab = document.getElementById("deploymentsTab");
+        if (tab && tab.style.display !== "none") await loadDeployments(true);
+    }
 }
 
 async function loadSelectedTeam() {

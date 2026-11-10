@@ -45,28 +45,19 @@ class DefaultGithubClient(
     )
 
     override fun listRepositories(): List<String> {
-        val request =
-            authenticatedRequest(
-                "https://api.github.com/installation/repositories",
-            )
-
-        httpClient.newCall(request).execute().use { response ->
-
-            val body =
-                response.body.string()
-
-            if (!response.isSuccessful) {
-                error(body)
-            }
-
-            val parsed =
-                gson.fromJson(
-                    body,
-                    RepositoryResponse::class.java,
-                )
-
-            return parsed.repositories.map { it.full_name }
-        }
+        val repositories = mutableListOf<String>()
+        var page = 1
+        do {
+            val request = authenticatedRequest("https://api.github.com/installation/repositories?per_page=100&page=$page")
+            val entries =
+                httpClient.newCall(request).execute().use { response ->
+                    check(response.isSuccessful) { "Could not list GitHub App repositories: HTTP ${response.code}" }
+                    gson.fromJson(response.body.string(), RepositoryResponse::class.java).repositories
+                }
+            repositories += entries.map { it.full_name }
+            page++
+        } while (entries.size == 100)
+        return repositories.distinct()
     }
 
     override fun getDefaultBranch(

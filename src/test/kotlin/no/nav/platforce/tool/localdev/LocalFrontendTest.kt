@@ -21,6 +21,20 @@ class LocalFrontendTest {
     lateinit var directory: Path
 
     @Test
+    fun `deployments exclude unknown and ignored repositories and restore them when unignored`() {
+        val handler = LocalFrontendApi(directory).handler
+
+        fun deployments() = JsonParser.parseString(handler(Request(Method.GET, "/internal/api/deployments")).bodyString()).asJsonObject
+        assertTrue(deployments()["applications"].asJsonArray.all { it.asJsonObject["repository"].asString == "demo/orders" })
+        val ignore = Request(Method.POST, "/internal/api/ignored-repositories/update")
+        handler(ignore.body("""{"repositories":["demo/orders"]}"""))
+        assertTrue(deployments()["applications"].asJsonArray.isEmpty)
+        assertTrue(deployments()["rebuildWorkflows"].asJsonObject.size() == 0)
+        handler(Request(Method.POST, "/internal/api/ignored-repositories/update").body("""{"repositories":[]}"""))
+        assertEquals(4, deployments()["applications"].asJsonArray.size())
+    }
+
+    @Test
     fun `ignored dependencies disappear from repository scans and resolution but saved versions survive`() {
         var time = 10_000L
         val handler = LocalFrontendApi(directory) { time }.handler
