@@ -99,6 +99,19 @@ body {
     font-size: 13px;
 }
 
+#deploymentsStatus .spinner {
+    display: inline-block;
+    margin-left: 6px;
+    border-color: #b8c5d3;
+    border-top-color: #3498db;
+    vertical-align: middle;
+}
+
+.deployment-rebuild-actions .spinner {
+    border-color: #b8c5d3;
+    border-top-color: #3498db;
+}
+
 .deployment-copy {
     display: inline-flex;
     align-items: center;

@@ -178,6 +178,14 @@ class LocalFrontendApi(
                 deploymentRefreshAfter = null
                 deploymentRefreshMarkerResponse(null)
             },
+            "/internal/api/deployments/workflow/{owner}/{repo}" bind Method.GET to { request ->
+                val repository = "${request.path("owner")}/${request.path("repo")}"
+                if (repository == "demo/orders" && repository !in ignored) {
+                    json(RebuildWorkflow(monorepo = true, branch = "main", exists = true))
+                } else {
+                    Response(Status.FORBIDDEN).body("""{"error":"Repository not available"}""")
+                }
+            },
             "/internal/api/deployments" bind Method.GET to {
                 json(
                     RunningDeployments(
@@ -218,7 +226,6 @@ class LocalFrontendApi(
                                 null,
                             ),
                         ),
-                        rebuildWorkflows = mapOf("demo/orders" to RebuildWorkflow(monorepo = true, branch = "main", exists = true)),
                     ).availableRepositories(setOf("demo/orders"), ignored),
                 )
             },

@@ -3,6 +3,67 @@ let deploymentsLoading = false;
 let deploymentRefreshMarker = null;
 let deploymentMarkerLoaded = false;
 let deploymentMarkerSaving = false;
+let deploymentLookupGeneration = 0;
+let deploymentWorkflowAbort = null;
+const deploymentHeadings = new Map();
+
+function deploymentLoadingStatus(text) {
+    const status = document.getElementById("deploymentsStatus");
+    status.replaceChildren();
+    status.textContent = text;
+    const spinner = document.createElement("span");
+    spinner.className = "spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    status.appendChild(spinner);
+}
+
+async function loadDeploymentWorkflows(data, generation) {
+    data.rebuildWorkflows ||= {};
+    const pending = [...new Set(data.applications.map(app => app.repository).filter(Boolean))]
+        .filter(repository => !Object.hasOwn(data.rebuildWorkflows, repository));
+    if (!pending.length) return;
+    const controller = new AbortController();
+    deploymentWorkflowAbort = controller;
+    let remaining = pending.length;
+    deploymentLoadingStatus(`Loading rebuild workflows (${remaining} remaining)...`);
+    const worker = async () => {
+        while (pending.length && generation === deploymentLookupGeneration && deploymentData === data) {
+            const repository = pending.shift();
+            let workflow;
+            try {
+                const response = await fetch(`/internal/api/deployments/workflow/${repository.split("/").map(encodeURIComponent).join("/")}`, {
+                    cache: "no-store", signal: controller.signal
+                });
+                workflow = await response.json();
+                if (!response.ok) throw new Error(workflow.error || `HTTP ${response.status}`);
+                if (!workflow.error && (typeof workflow.monorepo !== "boolean" ||
+                    typeof workflow.exists !== "boolean" || typeof workflow.branch !== "string" || !workflow.branch)) {
+                    throw new Error("Invalid workflow response");
+                }
+            } catch (failure) {
+                if (controller.signal.aborted) return;
+                console.error("Could not load rebuild workflow", failure);
+                workflow = { error: `Could not load rebuild workflow: ${failure.message}. Refresh deployments to retry.` };
+            }
+            if (generation !== deploymentLookupGeneration || deploymentData !== data) return;
+            data.rebuildWorkflows[repository] = workflow;
+            const rendered = deploymentHeadings.get(repository);
+            if (rendered) {
+                rendered.heading.replaceChildren(rendered.link);
+                appendDeploymentRebuildActions(rendered.heading, rendered.repository);
+            }
+            remaining--;
+            if (remaining) deploymentLoadingStatus(`Loading rebuild workflows (${remaining} remaining)...`);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, pending.length) }, worker));
+    if (generation === deploymentLookupGeneration && deploymentData === data) {
+        const failed = Object.values(data.rebuildWorkflows).filter(workflow => workflow.error).length;
+        const status = document.getElementById("deploymentsStatus");
+        status.replaceChildren();
+        status.textContent = failed ? `${failed} rebuild workflow lookup(s) failed. See repository messages.` : "";
+    }
+}
 
 function formatDeploymentTimestamp(timestamp) {
     const date = new Date(timestamp);
@@ -186,7 +247,13 @@ function appendDeploymentRebuildActions(heading, repository) {
     feedback.setAttribute("aria-live", "polite");
     feedback.hidden = true;
     const workflow = deploymentData.rebuildWorkflows?.[repository.repository];
-    if (!workflow || workflow.error || typeof workflow.monorepo !== "boolean" || !workflow.branch) {
+    if (!workflow) {
+        actions.textContent = "Loading rebuild workflow...";
+        const spinner = document.createElement("span");
+        spinner.className = "spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        actions.appendChild(spinner);
+    } else if (workflow.error || typeof workflow.monorepo !== "boolean" || !workflow.branch) {
         showDeploymentFeedback(feedback, workflow?.error || "Workflow type unknown. Refresh deployments to check deploy.yml.", false);
     } else if (workflow.exists === false) {
         const generate = document.createElement("button");
@@ -264,11 +331,13 @@ function appendDeploymentRebuildActions(heading, repository) {
 async function loadDeployments(refresh = false) {
     if (deploymentsLoading || deploymentMarkerSaving || (deploymentData && !refresh)) return;
     deploymentsLoading = true;
+    const generation = ++deploymentLookupGeneration;
+    deploymentWorkflowAbort?.abort();
     const button = document.getElementById("refreshDeployments");
     const status = document.getElementById("deploymentsStatus");
     button.disabled = true;
     renderDeploymentRefreshMarker();
-    status.textContent = "Loading running applications...";
+    deploymentLoadingStatus("Loading running applications...");
     try {
         const [response, marker] = await Promise.all([
             fetch("/internal/api/deployments", { cache: "no-store" }),
@@ -284,9 +353,12 @@ async function loadDeployments(refresh = false) {
         deploymentMarkerLoaded = true;
         document.getElementById("deploymentRefreshError").textContent = "";
         renderDeployments();
+        status.replaceChildren();
         status.textContent = data.applications.length ? "" : "No running applications found.";
+        void loadDeploymentWorkflows(data, generation);
     } catch (error) {
         console.error("Could not load deployments", error);
+        status.replaceChildren();
         status.textContent = `Could not load deployments: ${error.message}${deploymentData ? ". Showing previous results." : ""}`;
     } finally {
         deploymentsLoading = false;
@@ -297,6 +369,7 @@ async function loadDeployments(refresh = false) {
 function renderDeployments() {
     const container = document.getElementById("deploymentsContainer");
     container.replaceChildren();
+    deploymentHeadings.clear();
     const applications = deploymentData.applications;
     if (!applications.length) {
         const empty = document.createElement("p");
@@ -316,6 +389,7 @@ function renderDeployments() {
             link.target = "_blank";
             link.rel = "noopener noreferrer";
             heading.appendChild(link);
+            deploymentHeadings.set(repository.repository, { heading, link, repository });
         } else {
             heading.textContent = "Repository unknown";
         }
@@ -347,7 +421,6 @@ function renderDeployments() {
                     const freshness = deploymentFreshness(environment);
                     if (freshness) {
                         pill.className += ` deployment-freshness-${freshness.state}`;
-                        pill.textContent += ` (${freshness.state})`;
                     }
                     pill.title = `${environment.readyInstances}/${environment.instances} running instances ready` +
                         (freshness ? `\n${freshness.explanation}` : "") +

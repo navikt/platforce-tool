@@ -1,6 +1,11 @@
 package no.nav.platforce.tool.github
 
 interface GithubClient {
+    fun listWorkflowFiles(
+        owner: String,
+        repo: String,
+    ): Set<String>
+
     fun fileExists(
         owner: String,
         repo: String,

@@ -31,17 +31,27 @@ class RebuildWorkflowTest {
     }
 
     @Test
-    fun `deploy workflow existence determines repository type with one lookup per discovered repository`() {
+    fun `one workflow directory lookup checks both files per distinct repository`() {
         val calls = mutableListOf<String>()
         val client =
             client { path ->
                 calls += path
                 when (path) {
-                    "/repos/example/normal", "/repos/example/mono" -> 200 to """{"default_branch":"main"}"""
-                    "/repos/example/normal/contents/.github/workflows/deploy.yml" -> 200 to "{}"
-                    "/repos/example/normal/contents/.github/workflows/rebuild.yml" -> 200 to "{}"
-                    "/repos/example/mono/contents" -> 200 to "[]"
-                    else -> 404 to "{}"
+                    "/repos/example/normal", "/repos/example/mono" -> {
+                        200 to """{"default_branch":"main"}"""
+                    }
+
+                    "/repos/example/normal/contents/.github/workflows" -> {
+                        200 to """[{"name":"deploy.yml","type":"file"},{"name":"rebuild.yml","type":"file"}]"""
+                    }
+
+                    "/repos/example/mono/contents" -> {
+                        200 to "[]"
+                    }
+
+                    else -> {
+                        404 to "{}"
+                    }
                 }
             }
         val result =
@@ -51,7 +61,10 @@ class RebuildWorkflowTest {
             ).withRebuildWorkflows(client)
         assertEquals(RebuildWorkflow(false, "main", exists = true), result.rebuildWorkflows["example/normal"])
         assertEquals(RebuildWorkflow(true, "main", exists = false), result.rebuildWorkflows["example/mono"])
-        assertEquals(8, calls.size)
+        assertEquals(5, calls.size)
+        assertEquals(1, calls.count { it == "/repos/example/normal/contents/.github/workflows" })
+        assertEquals(1, calls.count { it == "/repos/example/mono/contents/.github/workflows" })
+        assertTrue(calls.none { it.endsWith(".yml") })
         assertEquals(2, result.rebuildWorkflows.size)
         assertEquals(4, result.applications.size)
     }

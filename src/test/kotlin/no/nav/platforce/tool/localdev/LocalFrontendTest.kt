@@ -26,10 +26,16 @@ class LocalFrontendTest {
 
         fun deployments() = JsonParser.parseString(handler(Request(Method.GET, "/internal/api/deployments")).bodyString()).asJsonObject
         assertTrue(deployments()["applications"].asJsonArray.all { it.asJsonObject["repository"].asString == "demo/orders" })
+        assertTrue(deployments()["rebuildWorkflows"].asJsonObject.size() == 0)
+        val workflowPath = "/internal/api/deployments/workflow/demo/orders"
+        assertTrue(
+            JsonParser.parseString(handler(Request(Method.GET, workflowPath)).bodyString()).asJsonObject["monorepo"].asBoolean,
+        )
         val ignore = Request(Method.POST, "/internal/api/ignored-repositories/update")
         handler(ignore.body("""{"repositories":["demo/orders"]}"""))
         assertTrue(deployments()["applications"].asJsonArray.isEmpty)
         assertTrue(deployments()["rebuildWorkflows"].asJsonObject.size() == 0)
+        assertEquals(Status.FORBIDDEN, handler(Request(Method.GET, workflowPath)).status)
         handler(Request(Method.POST, "/internal/api/ignored-repositories/update").body("""{"repositories":[]}"""))
         assertEquals(4, deployments()["applications"].asJsonArray.size())
     }

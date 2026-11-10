@@ -26,23 +26,27 @@ internal fun RunningDeployments.withRebuildWorkflows(client: GithubClient): Runn
     copy(
         rebuildWorkflows =
             applications.mapNotNull { it.repository }.distinct().associateWith { repository ->
-                val (owner, repo) = repository.split("/")
-                try {
-                    val branch = client.getDefaultBranch(owner, repo)
-                    RebuildWorkflow(
-                        monorepo = !client.fileExists(owner, repo, ".github/workflows/deploy.yml"),
-                        branch = branch,
-                        exists = client.fileExists(owner, repo, ".github/workflows/rebuild.yml"),
-                    )
-                } catch (failure: IOException) {
-                    rebuildWorkflowFailure(repository, failure)
-                } catch (failure: IllegalStateException) {
-                    rebuildWorkflowFailure(repository, failure)
-                } catch (failure: JsonParseException) {
-                    rebuildWorkflowFailure(repository, failure)
-                }
+                rebuildWorkflow(client, repository)
             },
     )
+
+internal fun rebuildWorkflow(
+    client: GithubClient,
+    repository: String,
+): RebuildWorkflow {
+    val (owner, repo) = repository.split("/")
+    return try {
+        val branch = client.getDefaultBranch(owner, repo)
+        val files = client.listWorkflowFiles(owner, repo)
+        RebuildWorkflow(monorepo = "deploy.yml" !in files, branch = branch, exists = "rebuild.yml" in files)
+    } catch (failure: IOException) {
+        rebuildWorkflowFailure(repository, failure)
+    } catch (failure: IllegalStateException) {
+        rebuildWorkflowFailure(repository, failure)
+    } catch (failure: JsonParseException) {
+        rebuildWorkflowFailure(repository, failure)
+    }
+}
 
 private fun rebuildWorkflowFailure(
     repository: String,

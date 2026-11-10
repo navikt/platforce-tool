@@ -28,6 +28,7 @@ function app() {
         navigator: { clipboard: { writeText: async () => {} } },
         setTimeout: () => 1,
         clearTimeout: () => {},
+        AbortController,
         window: { open: () => null },
         fetch: () => { throw new Error("Unexpected request"); }
     });
@@ -38,7 +39,9 @@ function app() {
 function withMarker(fetchDeployments, after = null) {
     return (url, options) => url === "/internal/api/deployments/refresh-marker"
         ? Promise.resolve({ ok: true, json: async () => ({ after }) })
-        : fetchDeployments(url, options);
+        : url.includes("/deployments/workflow/")
+            ? Promise.resolve({ ok: true, json: async () => ({ monorepo: false, branch: "main", exists: true }) })
+            : fetchDeployments(url, options);
 }
 
 function firstEnvironmentPill(get) {
@@ -212,7 +215,7 @@ test("saved marker classifies timestamps strictly and survives refresh and a new
         await instance.context.loadDeployments();
         const pill = firstEnvironmentPill(instance.get);
         assert.match(pill.className, new RegExp(`deployment-freshness-${state}`));
-        assert.equal(pill.textContent, `dev-gcp (${state})`);
+        assert.equal(pill.textContent, "dev-gcp");
         assert.deepEqual(instance.get("deploymentRefreshMarker").children.map(pill => pill.textContent),
             ["Older", instance.context.formatDeploymentTimestamp(marker), "Newer"]);
         await instance.context.loadDeployments(true);
@@ -474,4 +477,110 @@ test("generation shows spinner while waiting, avoids duplicate requests and rest
     assert.equal(button.attributes["aria-busy"], "false");
     assert.equal(button.textContent, "Generate rebuild.yml");
     assert.equal(closed, true);
+});
+
+test("renders applications before workflow lookups finish and updates only the resolved repository heading", async () => {
+    const { context, get } = app();
+    let finish;
+    let lookups = 0;
+    context.fetch = async url => {
+        if (url.endsWith("refresh-marker")) return { ok: true, json: async () => ({ after: null }) };
+        if (url.includes("/workflow/")) {
+            lookups++;
+            return new Promise(resolve => { finish = resolve; });
+        }
+        return { ok: true, json: async () => ({ teams: ["team-a"], applications: [application("team-a", "orders", "dev-gcp")] }) };
+    };
+    await context.loadDeployments();
+    const card = get("deploymentsContainer").children[0];
+    const heading = card.children[0];
+    const rows = card.children[1];
+    assert.equal(heading.children[1].textContent, "Loading rebuild workflow...");
+    assert.equal(get("deploymentsStatus").children[0].className, "spinner");
+    assert.equal(get("refreshDeployments").disabled, false);
+    finish({ ok: true, json: async () => ({ monorepo: true, branch: "main", exists: true }) });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(card.children[0], heading);
+    assert.equal(card.children[1], rows);
+    assert.deepEqual(heading.children[1].children.map(child => child.textContent), ["Rebuild", "gh", "targets"]);
+    assert.equal(get("deploymentsStatus").textContent, "");
+    await context.loadDeployments();
+    assert.equal(lookups, 1);
+    await context.loadDeployments(true);
+    assert.equal(lookups, 2);
+    finish({ ok: true, json: async () => ({ monorepo: false, branch: "main", exists: false }) });
+    await new Promise(resolve => setImmediate(resolve));
+});
+
+test("workflow lookup concurrency is bounded and stale refresh results cannot overwrite current data", async () => {
+    const { context, get } = app();
+    const pending = [];
+    let active = 0;
+    let maximum = 0;
+    let calls = 0;
+    const payload = {
+        teams: ["team-a"],
+        applications: Array.from({ length: 7 }, (_, index) =>
+            application("team-a", "orders", "dev-gcp", `example/repo-${index}`))
+    };
+    context.fetch = async url => {
+        if (url.endsWith("refresh-marker")) return { ok: true, json: async () => ({ after: null }) };
+        if (url.includes("/workflow/")) {
+            calls++;
+            active++;
+            maximum = Math.max(maximum, active);
+            return new Promise(resolve => pending.push(() => {
+                active--;
+                resolve({ ok: true, json: async () => ({ monorepo: false, branch: "main", exists: true }) });
+            }));
+        }
+        return { ok: true, json: async () => structuredClone(payload) };
+    };
+    await context.loadDeployments();
+    assert.equal(calls, 4);
+    assert.equal(get("deploymentsContainer").children.length, 7);
+    while (pending.length) {
+        pending.shift()();
+        await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.equal(calls, 7);
+    assert.equal(maximum, 4);
+    await context.loadDeployments(true);
+    const old = pending.splice(0);
+    await context.loadDeployments(true);
+    old.forEach(finish => finish());
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(get("deploymentsContainer").children[0].children[0].children[1].textContent, /Loading/);
+    while (pending.length) {
+        pending.shift()();
+        await new Promise(resolve => setImmediate(resolve));
+    }
+});
+
+test("one workflow lookup failure does not block other repositories and stays cached until refresh", async () => {
+    const { context, get } = app();
+    let lookups = 0;
+    context.fetch = async url => {
+        if (url.endsWith("refresh-marker")) return { ok: true, json: async () => ({ after: null }) };
+        if (url.includes("/workflow/")) {
+            lookups++;
+            if (url.endsWith("/failed")) throw new Error("GitHub unavailable");
+            return { ok: true, json: async () => ({ monorepo: false, branch: "main", exists: true }) };
+        }
+        return { ok: true, json: async () => ({
+            teams: ["team-a"],
+            applications: [
+                application("team-a", "orders", "dev-gcp", "example/failed"),
+                application("team-a", "orders", "dev-gcp", "example/working")
+            ]
+        }) };
+    };
+    await context.loadDeployments();
+    await new Promise(resolve => setImmediate(resolve));
+    const cards = get("deploymentsContainer").children;
+    assert.match(cards[0].children[0].children[2].children[0].textContent, /GitHub unavailable/);
+    assert.equal(cards[1].children[0].children[1].children[0].textContent, "Rebuild");
+    assert.match(get("deploymentsStatus").textContent, /1 rebuild workflow lookup/);
+    await context.loadDeployments();
+    assert.equal(lookups, 2);
 });

@@ -17,6 +17,29 @@ class DefaultGithubClient(
 
     private val log = KotlinLogging.logger { }
 
+    override fun listWorkflowFiles(
+        owner: String,
+        repo: String,
+    ): Set<String> {
+        val request = authenticatedRequest("https://api.github.com/repos/$owner/$repo/contents/.github/workflows")
+        httpClient.newCall(request).execute().use { response ->
+            if (response.code == 404) {
+                val root = authenticatedRequest("https://api.github.com/repos/$owner/$repo/contents")
+                httpClient.newCall(root).execute().use { contents ->
+                    check(contents.isSuccessful) { "Could not verify GitHub contents access: HTTP ${contents.code}" }
+                }
+                return emptySet()
+            }
+            check(response.isSuccessful) { "Could not list workflow files: HTTP ${response.code}" }
+            return com.google.gson.JsonParser
+                .parseString(response.body.string())
+                .asJsonArray
+                .filter { it.asJsonObject["type"].asString == "file" }
+                .map { it.asJsonObject["name"].asString }
+                .toSet()
+        }
+    }
+
     override fun fileExists(
         owner: String,
         repo: String,

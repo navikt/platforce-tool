@@ -12,6 +12,15 @@ class RecordingGithubClient(
     var pullRequestTitle: String? = null
     var requestedBranchName: String? = null
 
+    override fun listWorkflowFiles(
+        owner: String,
+        repo: String,
+    ): Set<String> =
+        files.keys
+            .filter { it.startsWith(".github/workflows/") }
+            .map { it.substringAfterLast("/") }
+            .toSet()
+
     override fun fileExists(
         owner: String,
         repo: String,
