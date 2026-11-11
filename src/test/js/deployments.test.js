@@ -437,8 +437,8 @@ test("missing rebuild workflow offers PR generation instead of dispatch or copy 
     const generate = actions.children[0];
     assert.equal(generate.textContent, "Generate rebuild.yml monorepo");
     assert.match(generate.className, /pr-button/);
-    const opened = { location: {}, close() {} };
-    context.window.open = () => opened;
+    const opened = [];
+    context.window.open = (...args) => opened.push(args);
     context.confirm = () => { throw new Error("Generation must not request confirmation"); };
     context.fetch = async (url, options) => {
         assert.equal(url, "/internal/api/deployments/rebuild-pr/example/mono");
@@ -446,9 +446,11 @@ test("missing rebuild workflow offers PR generation instead of dispatch or copy 
         return { ok: true, json: async () => ({ url: "https://github.com/example/mono/pull/42" }) };
     };
     await generate.onclick();
-    assert.equal(generate.disabled, true);
+    assert.equal(generate.disabled, false);
     assert.equal(generate.textContent, "PR created");
-    assert.equal(opened.location.href, "https://github.com/example/mono/pull/42");
+    assert.equal(opened.length, 0);
+    generate.onclick();
+    assert.deepEqual(opened, [["https://github.com/example/mono/pull/42", "_blank", "noopener,noreferrer"]]);
     assert.equal(generate.attributes["aria-busy"], "false");
     const message = heading.children[2].children[0];
     assert.equal(message.textContent, "Rebuild workflow PR created.");
@@ -467,8 +469,7 @@ test("generation shows spinner while waiting, avoids duplicate requests and rest
     assert.equal(button.textContent, "Generate rebuild.yml");
     let finish;
     let calls = 0;
-    let closed = false;
-    context.window.open = () => ({ close() { closed = true; } });
+    context.window.open = () => { throw new Error("Generation must not open a blank tab"); };
     context.fetch = () => { calls++; return new Promise(resolve => { finish = resolve; }); };
     const pending = button.onclick();
     assert.equal(button.disabled, true);
@@ -481,7 +482,6 @@ test("generation shows spinner while waiting, avoids duplicate requests and rest
     assert.equal(button.disabled, false);
     assert.equal(button.attributes["aria-busy"], "false");
     assert.equal(button.textContent, "Generate rebuild.yml");
-    assert.equal(closed, true);
 });
 
 test("renders applications before workflow lookups finish and updates only the resolved repository heading", async () => {

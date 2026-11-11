@@ -47,7 +47,7 @@ class RebuildPullRequestService(
                 "Rebuilding does not guarantee vulnerability remediation.\n\n" +
                 if (mono) {
                     "Kafka defaults: FLAG_SEEK=false, SEEK_OFFSET=0, NUMBER_OF_SAMPLES=0, FLAG_NO_POST=false, FLAG_ALT_ID=false. " +
-                        "Selected targets are rebuilt separately; imageUrl artifact names are made target-specific."
+                        "Selected targets are rebuilt separately."
                 } else {
                     "The called workflow is enabled for workflow_call while preserving existing triggers."
                 },
@@ -114,13 +114,6 @@ internal fun rebuildWorkflowPlan(
         require(lines[on].matches(Regex("""['"]?on['"]?:\s*(#.*)?"""))) { "Only block-style on: triggers are supported." }
         lines.add(on + 1, "  workflow_call:")
         called = lines.joinToString("\n")
-    }
-    if (mono) {
-        called =
-            Regex("""(?m)^([ \t]*name:[ \t]*)imageUrl[ \t]*$""").replace(called) { match ->
-                "${match.groupValues[1]}\${{ github.workflow == 'Rebuild and deploy selected applications' && " +
-                    "format('imageUrl-{0}-{1}', inputs.DEPLOY_APP, inputs.DEPLOY_CLUSTER) || 'imageUrl' }}"
-            }
     }
     val template =
         checkNotNull(RebuildPullRequestService::class.java.getResource("/workflows/rebuild-${if (mono) "monorepo" else "normal"}.yml"))

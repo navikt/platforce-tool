@@ -54,8 +54,7 @@ class RebuildPullRequestServiceTest {
         assertTrue(plan.wrapper.contains("FLAG_SEEK: false"))
         assertTrue(plan.wrapper.contains("uses: ./.github/workflows/workflow.yml"))
         assertTrue(plan.wrapper.contains("refs/heads/trunk"))
-        assertTrue(plan.called.contains("|| 'imageUrl'"))
-        assertTrue(plan.called.contains("inputs.DEPLOY_CLUSTER"))
+        assertEquals(mono, plan.called)
         assertEquals(plan.called, rebuildWorkflowPlan(plan.called, true, "trunk").called)
         Yaml().compose(plan.called.reader())
         Yaml().compose(plan.wrapper.reader())
@@ -86,5 +85,12 @@ class RebuildPullRequestServiceTest {
         val existing = RecordingGithubClient(mapOf(".github/workflows/rebuild.yml" to "existing"))
         assertThrows(IllegalArgumentException::class.java) { RebuildPullRequestService(existing).create("example", "repo") }
         assertTrue(existing.updatedFiles.isEmpty())
+    }
+
+    @Test
+    fun `monorepo PR preserves called workflow and artifact names when workflow_call already exists`() {
+        val github = RecordingGithubClient(mapOf(".github/workflows/workflow.yml" to mono))
+        RebuildPullRequestService(github).create("example", "repo")
+        assertEquals(setOf(".github/workflows/rebuild.yml"), github.updatedFiles.keys)
     }
 }

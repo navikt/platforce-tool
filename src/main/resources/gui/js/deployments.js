@@ -270,8 +270,6 @@ function appendDeploymentRebuildActions(heading, repository) {
             spinner.setAttribute("aria-hidden", "true");
             generate.appendChild(spinner);
             generate.setAttribute("aria-busy", "true");
-            const prWindow = window.open("about:blank", "_blank");
-            if (prWindow) prWindow.opener = null;
             try {
                 const response = await fetch(`/internal/api/deployments/rebuild-pr/${repository.repository.split("/").map(encodeURIComponent).join("/")}`, {
                     method: "POST", cache: "no-store"
@@ -291,10 +289,10 @@ function appendDeploymentRebuildActions(heading, repository) {
                 showDeploymentFeedback(feedback, "Rebuild workflow PR created.", true, result.url);
                 generate.replaceChildren();
                 generate.textContent = "PR created";
-                if (prWindow) prWindow.location.href = result.url;
-                else window.open(result.url, "_blank", "noopener,noreferrer");
+                generate.disabled = false;
+                generate.setAttribute("aria-label", "Open created pull request in a new tab");
+                generate.onclick = () => window.open(result.url, "_blank", "noopener,noreferrer");
             } catch (failure) {
-                if (prWindow) prWindow.close();
                 console.error("Could not generate rebuild workflow", failure);
                 showDeploymentFeedback(feedback, `Could not generate rebuild.yml: ${failure.message}`, false);
                 generate.disabled = false;
