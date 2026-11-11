@@ -73,6 +73,7 @@ class RebuildPullRequestServiceTest {
         assertFalse(rebuildWorkflowUsesNamespace(mono))
         assertTrue(plan.wrapper.contains("description: Comma-separated app:cluster:namespace triples"))
         assertTrue(plan.wrapper.contains("app, cluster, namespace = value.split"))
+        assertTrue(plan.wrapper.contains("""if namespace == "default":"""))
         assertTrue(plan.wrapper.contains(""".nais/{namespace}/{app}/{cluster}.yaml"""))
         assertTrue(plan.wrapper.contains("DEPLOY_NAMESPACE: \${{ matrix.target.namespace }}"))
         assertTrue(plan.wrapper.contains("""target = {"app": app, "cluster": cluster, "namespace": namespace}"""))
@@ -88,6 +89,21 @@ class RebuildPullRequestServiceTest {
                 "main",
             )
         }
+    }
+
+    @Test
+    fun `namespace monorepo PR generates wrapper that passes namespace to reusable workflow`() {
+        val source =
+            mono.replace(
+                "      FLAG_SEEK:",
+                "      DEPLOY_NAMESPACE:\n        required: true\n        type: string\n      FLAG_SEEK:",
+            )
+        val github = RecordingGithubClient(mapOf(".github/workflows/workflow.yml" to source))
+        RebuildPullRequestService(github).create("example", "repo")
+        val wrapper = github.updatedFiles.getValue(".github/workflows/rebuild.yml")
+        assertTrue(wrapper.contains("DEPLOY_NAMESPACE: \${{ matrix.target.namespace }}"))
+        assertTrue(wrapper.contains("app:cluster:namespace triples"))
+        assertEquals(setOf(".github/workflows/rebuild.yml"), github.updatedFiles.keys)
     }
 
     @Test

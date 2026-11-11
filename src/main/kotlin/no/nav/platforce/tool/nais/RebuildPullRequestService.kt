@@ -22,6 +22,7 @@ class RebuildPullRequestService(
         val calledPath = ".github/workflows/${if (mono) "workflow" else "deploy"}.yml"
         require(github.fileExists(owner, repo, calledPath)) { "$calledPath is missing; cannot generate a compatible rebuild workflow." }
         val original = github.getFile(owner, repo, calledPath)
+        val namespace = mono && rebuildWorkflowUsesNamespace(original)
         val plan = rebuildWorkflowPlan(original, mono, base)
         val date = LocalDate.now()
         val branch = github.resolveBranchName(owner, repo, "chore/add-rebuild-workflow-$date")
@@ -45,7 +46,9 @@ class RebuildPullRequestService(
             "Adds a manual rebuild entry point using the existing build and deploy workflow.\n\n" +
                 "Review deployment inputs and production behavior before merging. " +
                 "Rebuilding does not guarantee vulnerability remediation.\n\n" +
-                if (mono) {
+                if (namespace) {
+                    "Selected targets include the application, cluster, and namespace and are rebuilt separately."
+                } else if (mono) {
                     "Kafka defaults: FLAG_SEEK=false, SEEK_OFFSET=0, NUMBER_OF_SAMPLES=0, FLAG_NO_POST=false, FLAG_ALT_ID=false. " +
                         "Selected targets are rebuilt separately."
                 } else {
@@ -128,7 +131,16 @@ internal fun rebuildWorkflowPlan(
             .replace("__NAMESPACE_PATTERN__", if (namespace) ":[a-z0-9][a-z0-9-]*" else "")
             .replace("__TARGET_FIELDS__", if (namespace) "app, cluster, namespace" else "app, cluster")
             .replace("__MANIFEST_PREFIX__", if (namespace) "{namespace}/" else "")
-            .replace("__NAMESPACE_ENTRY__", if (namespace) """, "namespace": namespace""" else "")
+            .replace(
+                "__NAMESPACE_GUARD__",
+                if (namespace) {
+                    """              if namespace == "default":
+                raise SystemExit("The default namespace cannot be deployed through this workflow")
+"""
+                } else {
+                    ""
+                },
+            ).replace("__NAMESPACE_ENTRY__", if (namespace) """, "namespace": namespace""" else "")
     return RebuildWorkflowPlan(called, wrapper)
 }
 

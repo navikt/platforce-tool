@@ -42,32 +42,6 @@ class RebuildWorkflowTest {
                         200 to """{"default_branch":"main"}"""
                     }
 
-                    @Test
-                    fun `workflow lookup detects namespace input for missing and existing rebuild wrappers`() {
-                        val source =
-                            """
-                            on:
-                              workflow_call:
-                                inputs:
-                                  DEPLOY_NAMESPACE:
-                                    required: true
-                                    type: string
-                            """.trimIndent()
-                        listOf(false, true).forEach { exists ->
-                            val files = mutableMapOf(".github/workflows/workflow.yml" to source)
-                            if (exists) files[".github/workflows/rebuild.yml"] = "existing"
-                            val workflow = rebuildWorkflow(RecordingGithubClient(files), "example/mono")
-                            assertTrue(workflow.namespace)
-                            assertEquals(true, workflow.monorepo)
-                            assertEquals(exists, workflow.exists)
-                            assertNull(workflow.error)
-                        }
-                        val invalid = RecordingGithubClient(mapOf(".github/workflows/workflow.yml" to source.replace("type: string", "type: boolean")))
-                        val failed = rebuildWorkflow(invalid, "example/mono")
-                        assertNull(failed.monorepo)
-                        assertTrue(failed.error!!.isNotBlank())
-                    }
-
                     "/repos/example/normal/contents/.github/workflows" -> {
                         200 to """[{"name":"deploy.yml","type":"file"},{"name":"rebuild.yml","type":"file"}]"""
                     }
@@ -94,6 +68,35 @@ class RebuildWorkflowTest {
         assertTrue(calls.none { it.endsWith(".yml") })
         assertEquals(2, result.rebuildWorkflows.size)
         assertEquals(4, result.applications.size)
+    }
+
+    @Test
+    fun `workflow lookup detects namespace input for missing and existing rebuild wrappers`() {
+        val source =
+            """
+            on:
+              workflow_call:
+                inputs:
+                  DEPLOY_NAMESPACE:
+                    required: true
+                    type: string
+            """.trimIndent()
+        listOf(false, true).forEach { exists ->
+            val files = mutableMapOf(".github/workflows/workflow.yml" to source)
+            if (exists) files[".github/workflows/rebuild.yml"] = "existing"
+            val workflow = rebuildWorkflow(RecordingGithubClient(files), "example/mono")
+            assertTrue(workflow.namespace)
+            assertEquals(true, workflow.monorepo)
+            assertEquals(exists, workflow.exists)
+            assertNull(workflow.error)
+        }
+        val invalid =
+            RecordingGithubClient(
+                mapOf(".github/workflows/workflow.yml" to source.replace("type: string", "type: boolean")),
+            )
+        val failed = rebuildWorkflow(invalid, "example/mono")
+        assertNull(failed.monorepo)
+        assertTrue(failed.error!!.isNotBlank())
     }
 
     @Test

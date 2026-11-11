@@ -37,7 +37,7 @@ jobs:
               if not re.fullmatch(r"[a-z0-9][a-z0-9-]*:(dev-gcp|prod-gcp)__NAMESPACE_PATTERN__", value):
                   raise SystemExit(f"Invalid target: {value!r}")
               __TARGET_FIELDS__ = value.split(":")
-              if not Path(f".nais/__MANIFEST_PREFIX__{app}/{cluster}.yaml").is_file():
+__NAMESPACE_GUARD__              if not Path(f".nais/__MANIFEST_PREFIX__{app}/{cluster}.yaml").is_file():
                   raise SystemExit(f"No deployment manifest for {value}")
               target = {"app": app, "cluster": cluster__NAMESPACE_ENTRY__}
               if target not in targets:

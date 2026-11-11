@@ -172,7 +172,7 @@ function deploymentRebuildTargets(repository, namespace = false) {
             if (!/^[a-z0-9][a-z0-9-]*$/.test(app.name) || !/^[a-z0-9][a-z0-9-]*$/.test(env.environment)) {
                 throw new Error("Cannot create rebuild targets: unsupported application or environment name.");
             }
-            if (namespace && !/^[a-z0-9][a-z0-9-]*$/.test(team.team)) {
+            if (namespace && (team.team === "default" || !/^[a-z0-9][a-z0-9-]*$/.test(team.team))) {
                 throw new Error("Cannot create rebuild targets: unsupported namespace name.");
             }
             return `${app.name}:${env.environment}${namespace ? `:${team.team}` : ""}`;
