@@ -112,7 +112,8 @@ body {
     border-top-color: #3498db;
 }
 
-.deployment-rebuild-actions .pr-button {
+.deployment-rebuild-actions .pr-button,
+#deploymentRebuildAll .pr-button {
     margin-right: 0;
     display: inline-flex;
     align-items: center;
@@ -196,6 +197,10 @@ body {
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+}
+
+#deploymentRebuildAll {
+    margin-left: auto;
 }
 
 .deployment-refresh-marker p {

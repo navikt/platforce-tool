@@ -12,6 +12,7 @@ data class RebuildWorkflow(
     val error: String? = null,
     val exists: Boolean? = null,
     val namespace: Boolean = false,
+    val fixedApp: Boolean = false,
 )
 
 internal fun RunningDeployments.availableRepositories(
@@ -41,10 +42,10 @@ internal fun rebuildWorkflow(
         val branch = client.getDefaultBranch(owner, repo)
         val files = client.listWorkflowFiles(owner, repo)
         val mono = "deploy.yml" !in files
-        val namespace =
-            mono && "workflow.yml" in files &&
-                rebuildWorkflowUsesNamespace(client.getFile(owner, repo, ".github/workflows/workflow.yml"))
-        RebuildWorkflow(monorepo = mono, branch = branch, exists = "rebuild.yml" in files, namespace = namespace)
+        val source = if (mono && "workflow.yml" in files) client.getFile(owner, repo, ".github/workflows/workflow.yml") else null
+        val namespace = source != null && rebuildWorkflowUsesNamespace(source)
+        val fixedApp = namespace && rebuildWorkflowUsesFixedApplication(checkNotNull(source))
+        RebuildWorkflow(monorepo = mono, branch = branch, exists = "rebuild.yml" in files, namespace = namespace, fixedApp = fixedApp)
     } catch (failure: IllegalArgumentException) {
         rebuildWorkflowFailure(repository, failure)
     } catch (failure: YAMLException) {

@@ -72,6 +72,86 @@ test("deployment timestamps use local calendar dates and zero-padded 24-hour tim
     assert.equal(context.formatDeploymentTimestamp("invalid"), "Timestamp unknown");
 });
 
+test("gh all copies exactly the available repository commands including namespace targets", async () => {
+    const { context, get } = app();
+    const workflows = {
+        "example/normal": { monorepo: false, branch: "release/it's-ready", exists: true },
+        "example/mono": { monorepo: true, namespace: true, branch: "main", exists: true },
+        "example/missing": { monorepo: false, branch: "main", exists: false },
+        "example/failed": { error: "GitHub unavailable" },
+        "example/invalid": { monorepo: true, branch: "main", exists: true }
+    };
+    context.fetch = withMarker(async () => ({
+        ok: true, json: async () => ({
+            teams: ["team-a", "team-b"],
+            applications: [
+                application("team-a", "orders", "dev-gcp", "example/normal"),
+                application("team-a", "orders", "prod-gcp", "example/normal"),
+                application("team-a", "orders", "dev-gcp", "example/mono"),
+                application("team-b", "orders", "dev-gcp", "example/mono"),
+                application("team-a", "orders", "dev-gcp", "example/missing"),
+                application("team-a", "orders", "dev-gcp", "example/failed"),
+                application("team-a", "bad/name", "dev-gcp", "example/invalid")
+            ],
+            rebuildWorkflows: workflows
+        })
+    }));
+    let copied;
+    context.navigator.clipboard.writeText = async text => { copied = text; };
+    await context.loadDeployments();
+    const button = get("deploymentRebuildAll").children[0];
+    assert.equal(button.textContent, "gh all");
+    assert.equal(button.className, "pr-button deployment-copy");
+    assert.equal(button.children[0].src, "/internal/gui/icons/files.svg");
+    assert.match(button.attributes["aria-label"], /all rebuild commands/);
+    await button.onclick();
+    const individualCommands = get("deploymentsContainer").children.flatMap(card =>
+        card.children[0].children[1].children.filter(child => child.textContent === "gh").map(child => child.title));
+    assert.equal(copied, individualCommands.join("\n"));
+    assert.equal(copied.split("\n").length, 2);
+    assert.match(copied, /orders:dev-gcp:team-a,orders:dev-gcp:team-b/);
+    assert.match(get("deploymentRebuildAllFeedback").className, /save-banner-success/);
+    context.navigator.clipboard.writeText = async () => { throw new Error("Clipboard denied"); };
+    await button.onclick();
+    assert.match(get("deploymentRebuildAllFeedback").className, /save-banner-error/);
+    assert.match(get("deploymentRebuildAllFeedback").children[0].textContent, /Copy manually:/);
+});
+
+test("gh all waits for every workflow lookup and hides during refresh and for an empty inventory", async () => {
+    const { context, get } = app();
+    let finish;
+    let empty = false;
+    context.fetch = async url => {
+        if (url.endsWith("refresh-marker")) return { ok: true, json: async () => ({ after: null }) };
+        if (url.includes("/workflow/")) return new Promise(resolve => { finish = resolve; });
+        return { ok: true, json: async () => ({
+            teams: ["team-a"],
+            applications: empty ? [] : [
+                application("team-a", "orders", "dev-gcp", "example/normal"),
+                application("team-a", "worker", "prod-gcp", "example/pending")
+            ],
+            rebuildWorkflows: { "example/normal": { monorepo: false, branch: "main", exists: true } }
+        }) };
+    };
+    await context.loadDeployments();
+    assert.equal(get("deploymentRebuildAll").children.length, 0);
+    finish({ ok: true, json: async () => ({ monorepo: false, branch: "main", exists: false }) });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(get("deploymentRebuildAll").children.length, 1);
+    await context.loadDeployments();
+    assert.equal(get("deploymentRebuildAll").children.length, 1);
+    const refresh = context.loadDeployments(true);
+    assert.equal(get("deploymentRebuildAll").children.length, 0);
+    await refresh;
+    assert.equal(get("deploymentRebuildAll").children.length, 0);
+    const stale = finish;
+    empty = true;
+    await context.loadDeployments(true);
+    stale({ ok: true, json: async () => ({ monorepo: false, branch: "main", exists: true }) });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(get("deploymentRebuildAll").children.length, 0);
+});
+
 test("deployment view has no team selector or explanatory help", () => {
     const html = readFileSync(resolve(__dirname, "../../main/resources/gui/index.html"), "utf8");
     assert.doesNotMatch(html, /id="deploymentTeamTabs"/);
@@ -371,6 +451,34 @@ test("monorepo copies deduplicated targets for every running app and environment
         targets
     ]);
     assert.equal(heading.children[2].children[0].textContent, `${targets} copied into clipboard`);
+});
+
+test("fixed-app monorepo copies deduplicated cluster namespace targets in individual and all commands", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true, json: async () => ({
+            teams: ["team-a", "team-b"],
+            applications: [
+                application("team-a", "sf-nada", "dev-gcp"),
+                application("team-a", "sf-nada", "prod-gcp"),
+                application("team-a", "sf-nada", "dev-gcp"),
+                application("team-b", "sf-nada", "dev-gcp")
+            ],
+            rebuildWorkflows: {
+                "example/mono": { monorepo: true, namespace: true, fixedApp: true, branch: "main", exists: true }
+            }
+        })
+    }));
+    const copied = [];
+    context.navigator.clipboard.writeText = async text => copied.push(text);
+    await context.loadDeployments();
+    const actions = get("deploymentsContainer").children[0].children[0].children[1];
+    await actions.children[1].onclick();
+    await actions.children[2].onclick();
+    await get("deploymentRebuildAll").children[0].onclick();
+    const targets = "dev-gcp:team-a,dev-gcp:team-b,prod-gcp:team-a";
+    const command = `gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='${targets}'`;
+    assert.deepEqual(copied, [command, targets, command]);
 });
 
 test("workflow check failure does not guess rebuild availability, command or targets", async () => {

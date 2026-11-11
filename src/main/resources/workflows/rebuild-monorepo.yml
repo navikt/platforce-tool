@@ -34,12 +34,12 @@ jobs:
           targets = []
           for value in os.environ["TARGETS"].split(","):
               value = value.strip()
-              if not re.fullmatch(r"[a-z0-9][a-z0-9-]*:(dev-gcp|prod-gcp)__NAMESPACE_PATTERN__", value):
+              if not re.fullmatch(r"__APP_PATTERN__(dev-gcp|prod-gcp)__NAMESPACE_PATTERN__", value):
                   raise SystemExit(f"Invalid target: {value!r}")
               __TARGET_FIELDS__ = value.split(":")
-__NAMESPACE_GUARD__              if not Path(f".nais/__MANIFEST_PREFIX__{app}/{cluster}.yaml").is_file():
+__NAMESPACE_GUARD__              if not Path(f".nais/__MANIFEST_PREFIX____MANIFEST_APP__{cluster}.yaml").is_file():
                   raise SystemExit(f"No deployment manifest for {value}")
-              target = {"app": app, "cluster": cluster__NAMESPACE_ENTRY__}
+              target = {__APP_ENTRY__"cluster": cluster__NAMESPACE_ENTRY__}
               if target not in targets:
                   targets.append(target)
           if len(targets) > 50:
@@ -59,6 +59,5 @@ __NAMESPACE_GUARD__              if not Path(f".nais/__MANIFEST_PREFIX__{app}/{c
     uses: ./.github/workflows/workflow.yml
     secrets: inherit
     with:
-      DEPLOY_APP: ${{ matrix.target.app }}
-      DEPLOY_CLUSTER: ${{ matrix.target.cluster }}
+__APP_INPUT__      DEPLOY_CLUSTER: ${{ matrix.target.cluster }}
 __EXTRA_INPUTS__

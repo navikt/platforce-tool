@@ -39,7 +39,9 @@
             <button id="markDeploymentsForRefresh" type="button">Mark all as needing rebuild</button>
             <button id="clearDeploymentRefreshMarker" type="button" disabled>Clear marker</button>
             <span id="deploymentRefreshMarker" role="status" aria-live="polite">Rebuild marker not loaded.</span>
+            <span id="deploymentRebuildAll"></span>
         </div>
+        <div id="deploymentRebuildAllFeedback" role="status" aria-live="polite" hidden></div>
         <p id="deploymentRefreshError" role="alert"></p>
     </div>
     <div id="deploymentsContainer"></div>

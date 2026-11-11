@@ -86,6 +86,7 @@ class RebuildWorkflowTest {
             if (exists) files[".github/workflows/rebuild.yml"] = "existing"
             val workflow = rebuildWorkflow(RecordingGithubClient(files), "example/mono")
             assertTrue(workflow.namespace)
+            assertTrue(workflow.fixedApp)
             assertEquals(true, workflow.monorepo)
             assertEquals(exists, workflow.exists)
             assertNull(workflow.error)

@@ -6,6 +6,21 @@ let deploymentMarkerSaving = false;
 let deploymentLookupGeneration = 0;
 let deploymentWorkflowAbort = null;
 const deploymentHeadings = new Map();
+const deploymentRebuildCommands = new Map();
+
+function renderDeploymentRebuildAll() {
+    const slot = document.getElementById("deploymentRebuildAll");
+    slot.replaceChildren();
+    if (deploymentsLoading || !deploymentData ||
+        deploymentData.applications.some(app => app.repository &&
+            !Object.hasOwn(deploymentData.rebuildWorkflows || {}, app.repository)) ||
+        !deploymentRebuildCommands.size) return;
+    const commands = [...deploymentRebuildCommands.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, command]) => command).join("\n");
+    slot.appendChild(deploymentCopyButton("gh all", commands,
+        document.getElementById("deploymentRebuildAllFeedback"), "all available repositories"));
+}
 
 function deploymentLoadingStatus(text) {
     const status = document.getElementById("deploymentsStatus");
@@ -62,6 +77,7 @@ async function loadDeploymentWorkflows(data, generation) {
         const status = document.getElementById("deploymentsStatus");
         status.replaceChildren();
         status.textContent = failed ? `${failed} rebuild workflow lookup(s) failed. See repository messages.` : "";
+        renderDeploymentRebuildAll();
     }
 }
 
@@ -102,6 +118,7 @@ function renderDeploymentRefreshMarker() {
     document.getElementById("clearDeploymentRefreshMarker").disabled =
         deploymentsLoading || deploymentMarkerSaving || !deploymentRefreshMarker;
     document.getElementById("refreshDeployments").disabled = deploymentsLoading || deploymentMarkerSaving;
+    renderDeploymentRebuildAll();
 }
 
 async function saveDeploymentRefreshMarker(clear) {
@@ -166,16 +183,16 @@ function groupDeploymentApplications(applications) {
     }));
 }
 
-function deploymentRebuildTargets(repository, namespace = false) {
+function deploymentRebuildTargets(repository, namespace = false, fixedApp = false) {
     const targets = repository.teams.flatMap(team =>
         team.applications.flatMap(app => app.environments.map(env => {
-            if (!/^[a-z0-9][a-z0-9-]*$/.test(app.name) || !/^[a-z0-9][a-z0-9-]*$/.test(env.environment)) {
+            if ((!fixedApp && !/^[a-z0-9][a-z0-9-]*$/.test(app.name)) || !/^[a-z0-9][a-z0-9-]*$/.test(env.environment)) {
                 throw new Error("Cannot create rebuild targets: unsupported application or environment name.");
             }
             if (namespace && (team.team === "default" || !/^[a-z0-9][a-z0-9-]*$/.test(team.team))) {
                 throw new Error("Cannot create rebuild targets: unsupported namespace name.");
             }
-            return `${app.name}:${env.environment}${namespace ? `:${team.team}` : ""}`;
+            return `${fixedApp ? "" : `${app.name}:`}${env.environment}${namespace ? `:${team.team}` : ""}`;
         })));
     return [...new Set(targets)].sort().join(",");
 }
@@ -220,7 +237,8 @@ function deploymentCopyButton(label, text, feedback, repository) {
     button.className = "pr-button deployment-copy";
     button.textContent = label;
     button.title = text;
-    button.setAttribute("aria-label", `Copy ${label === "gh" ? "rebuild command" : "rebuild targets"} for ${repository}`);
+    button.setAttribute("aria-label", `Copy ${label === "gh all" ? "all rebuild commands" :
+        label === "gh" ? "rebuild command" : "rebuild targets"} for ${repository}`);
     const icon = document.createElement("img");
     icon.src = "/internal/gui/icons/files.svg";
     icon.alt = "";
@@ -325,10 +343,11 @@ function appendDeploymentRebuildActions(heading, repository) {
         link.appendChild(icon);
         actions.appendChild(link);
         try {
-            const targets = workflow.monorepo ? deploymentRebuildTargets(repository, workflow.namespace === true) : null;
+            const targets = workflow.monorepo ? deploymentRebuildTargets(repository, workflow.namespace === true, workflow.fixedApp === true) : null;
             const command = `gh workflow run rebuild.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}` +
                 (targets ? ` -f targets=${deploymentShellQuote(targets)}` : "");
             actions.appendChild(deploymentCopyButton("gh", command, feedback, repository.repository));
+            deploymentRebuildCommands.set(repository.repository, command);
             if (targets) actions.appendChild(deploymentCopyButton("targets", targets, feedback, repository.repository));
         } catch (failure) {
             console.error("Could not create rebuild command", failure);
@@ -341,6 +360,7 @@ function appendDeploymentRebuildActions(heading, repository) {
 async function loadDeployments(refresh = false) {
     if (deploymentsLoading || deploymentMarkerSaving || (deploymentData && !refresh)) return;
     deploymentsLoading = true;
+    document.getElementById("deploymentRebuildAllFeedback").hidden = true;
     const generation = ++deploymentLookupGeneration;
     deploymentWorkflowAbort?.abort();
     const button = document.getElementById("refreshDeployments");
@@ -380,6 +400,7 @@ function renderDeployments() {
     const container = document.getElementById("deploymentsContainer");
     container.replaceChildren();
     deploymentHeadings.clear();
+    deploymentRebuildCommands.clear();
     const applications = deploymentData.applications;
     if (!applications.length) {
         const empty = document.createElement("p");
@@ -472,4 +493,5 @@ function renderDeployments() {
         });
         container.appendChild(card);
     });
+    renderDeploymentRebuildAll();
 }

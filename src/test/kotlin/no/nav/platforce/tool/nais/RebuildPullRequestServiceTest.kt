@@ -107,6 +107,44 @@ class RebuildPullRequestServiceTest {
     }
 
     @Test
+    fun `fixed application monorepo generates cluster namespace targets without passing DEPLOY_APP`() {
+        val source =
+            """
+            name: Build, push, and deploy
+            on:
+              workflow_call:
+                inputs:
+                  DEPLOY_CLUSTER:
+                    required: true
+                    type: string
+                  DEPLOY_NAMESPACE:
+                    required: true
+                    type: string
+            jobs:
+              deploy:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: echo deploying
+            """.trimIndent()
+        val plan = rebuildWorkflowPlan(source, true, "main")
+        assertEquals(source, plan.called)
+        assertTrue(rebuildWorkflowUsesFixedApplication(source))
+        assertFalse(rebuildWorkflowUsesFixedApplication(mono))
+        assertTrue(plan.wrapper.contains("description: Comma-separated cluster:namespace pairs"))
+        assertTrue(plan.wrapper.contains("cluster, namespace = value.split"))
+        assertTrue(plan.wrapper.contains(""".nais/{namespace}/{cluster}.yaml"""))
+        assertTrue(plan.wrapper.contains("""target = {"cluster": cluster, "namespace": namespace}"""))
+        assertTrue(plan.wrapper.contains("DEPLOY_NAMESPACE: \${{ matrix.target.namespace }}"))
+        assertFalse(plan.wrapper.contains("DEPLOY_APP"))
+        assertFalse(plan.wrapper.contains("__"))
+        Yaml().compose(plan.wrapper.reader())
+        val github = RecordingGithubClient(mapOf(".github/workflows/workflow.yml" to source))
+        RebuildPullRequestService(github).create("example", "repo")
+        assertEquals(setOf(".github/workflows/rebuild.yml"), github.updatedFiles.keys)
+        assertEquals(plan.wrapper, github.updatedFiles.getValue(".github/workflows/rebuild.yml"))
+    }
+
+    @Test
     fun `unsupported workflows fail before any repository writes`() {
         listOf(
             "on: [push]" to false,

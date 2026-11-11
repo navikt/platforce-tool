@@ -23,6 +23,7 @@ class RebuildPullRequestService(
         require(github.fileExists(owner, repo, calledPath)) { "$calledPath is missing; cannot generate a compatible rebuild workflow." }
         val original = github.getFile(owner, repo, calledPath)
         val namespace = mono && rebuildWorkflowUsesNamespace(original)
+        val fixedApp = namespace && rebuildWorkflowUsesFixedApplication(original)
         val plan = rebuildWorkflowPlan(original, mono, base)
         val date = LocalDate.now()
         val branch = github.resolveBranchName(owner, repo, "chore/add-rebuild-workflow-$date")
@@ -46,7 +47,9 @@ class RebuildPullRequestService(
             "Adds a manual rebuild entry point using the existing build and deploy workflow.\n\n" +
                 "Review deployment inputs and production behavior before merging. " +
                 "Rebuilding does not guarantee vulnerability remediation.\n\n" +
-                if (namespace) {
+                if (fixedApp) {
+                    "Selected targets include the cluster and namespace; the existing workflow selects the application."
+                } else if (namespace) {
                     "Selected targets include the application, cluster, and namespace and are rebuilt separately."
                 } else if (mono) {
                     "Kafka defaults: FLAG_SEEK=false, SEEK_OFFSET=0, NUMBER_OF_SAMPLES=0, FLAG_NO_POST=false, FLAG_ALT_ID=false. " +
@@ -102,8 +105,11 @@ internal fun rebuildWorkflowPlan(
         }
     }
     if (mono) {
-        require(inputs?.field("DEPLOY_APP") != null && inputs.field("DEPLOY_CLUSTER") != null) {
-            "Monorepo workflow.yml must declare DEPLOY_APP and DEPLOY_CLUSTER in workflow_call.inputs."
+        require(
+            inputs?.field("DEPLOY_CLUSTER") != null &&
+                (inputs.field("DEPLOY_APP") != null || inputs.field("DEPLOY_NAMESPACE") != null),
+        ) {
+            "Monorepo workflow.yml must declare DEPLOY_CLUSTER and either DEPLOY_APP or DEPLOY_NAMESPACE in workflow_call.inputs."
         }
     }
     var called = source
@@ -121,16 +127,37 @@ internal fun rebuildWorkflowPlan(
     val template =
         checkNotNull(RebuildPullRequestService::class.java.getResource("/workflows/rebuild-${if (mono) "monorepo" else "normal"}.yml"))
     val namespace = mono && inputs?.field("DEPLOY_NAMESPACE") != null
+    val fixedApp = namespace && inputs?.field("DEPLOY_APP") == null
     if (namespace) extra += "      DEPLOY_NAMESPACE: \${{ matrix.target.namespace }}"
     val wrapper =
         template
             .readText()
             .replace("__DEFAULT_BRANCH__", branch)
             .replace("__EXTRA_INPUTS__", extra.joinToString("\n"))
-            .replace("__TARGET_FORMAT__", if (namespace) "app:cluster:namespace triples" else "app:cluster pairs")
+            .replace(
+                "__TARGET_FORMAT__",
+                if (fixedApp) {
+                    "cluster:namespace pairs"
+                } else if (namespace) {
+                    "app:cluster:namespace triples"
+                } else {
+                    "app:cluster pairs"
+                },
+            ).replace("__APP_PATTERN__", if (fixedApp) "" else "[a-z0-9][a-z0-9-]*:")
             .replace("__NAMESPACE_PATTERN__", if (namespace) ":[a-z0-9][a-z0-9-]*" else "")
-            .replace("__TARGET_FIELDS__", if (namespace) "app, cluster, namespace" else "app, cluster")
-            .replace("__MANIFEST_PREFIX__", if (namespace) "{namespace}/" else "")
+            .replace(
+                "__TARGET_FIELDS__",
+                if (fixedApp) {
+                    "cluster, namespace"
+                } else if (namespace) {
+                    "app, cluster, namespace"
+                } else {
+                    "app, cluster"
+                },
+            ).replace("__MANIFEST_PREFIX__", if (namespace) "{namespace}/" else "")
+            .replace("__MANIFEST_APP__", if (fixedApp) "" else "{app}/")
+            .replace("__APP_ENTRY__", if (fixedApp) "" else """"app": app, """)
+            .replace("__APP_INPUT__", if (fixedApp) "" else "      DEPLOY_APP: \${{ matrix.target.app }}\n")
             .replace(
                 "__NAMESPACE_GUARD__",
                 if (namespace) {
@@ -150,6 +177,12 @@ internal fun rebuildWorkflowUsesNamespace(source: String): Boolean {
     val namespace = inputs?.field("DEPLOY_NAMESPACE") as? MappingNode ?: return false
     require((namespace.field("type") as? ScalarNode)?.value == "string") { "DEPLOY_NAMESPACE must be a string input" }
     return true
+}
+
+internal fun rebuildWorkflowUsesFixedApplication(source: String): Boolean {
+    val root = Yaml().compose(StringReader(source)) as? MappingNode ?: error("Workflow must be a YAML mapping")
+    val inputs = ((root.field("on") as? MappingNode)?.field("workflow_call") as? MappingNode)?.field("inputs") as? MappingNode
+    return inputs?.field("DEPLOY_NAMESPACE") != null && inputs.field("DEPLOY_APP") == null
 }
 
 private fun MappingNode.field(key: String): Node? = value.singleOrNull { (it.keyNode as? ScalarNode)?.value == key }?.valueNode
