@@ -61,6 +61,36 @@ class RebuildPullRequestServiceTest {
     }
 
     @Test
+    fun `namespace monorepo uses three part targets and namespace specific manifests`() {
+        val source =
+            mono.replace(
+                "      FLAG_SEEK:",
+                "      DEPLOY_NAMESPACE:\n        required: true\n        type: string\n      FLAG_SEEK:",
+            )
+        val plan = rebuildWorkflowPlan(source, true, "main")
+        assertEquals(source, plan.called)
+        assertTrue(rebuildWorkflowUsesNamespace(source))
+        assertFalse(rebuildWorkflowUsesNamespace(mono))
+        assertTrue(plan.wrapper.contains("description: Comma-separated app:cluster:namespace triples"))
+        assertTrue(plan.wrapper.contains("app, cluster, namespace = value.split"))
+        assertTrue(plan.wrapper.contains(""".nais/{namespace}/{app}/{cluster}.yaml"""))
+        assertTrue(plan.wrapper.contains("DEPLOY_NAMESPACE: \${{ matrix.target.namespace }}"))
+        assertTrue(plan.wrapper.contains("""target = {"app": app, "cluster": cluster, "namespace": namespace}"""))
+        assertFalse(plan.wrapper.contains("__"))
+        Yaml().compose(plan.wrapper.reader())
+        assertThrows(IllegalArgumentException::class.java) {
+            rebuildWorkflowPlan(
+                source.replace(
+                    "DEPLOY_NAMESPACE:\n        required: true\n        type: string",
+                    "DEPLOY_NAMESPACE:\n        required: true\n        type: boolean",
+                ),
+                true,
+                "main",
+            )
+        }
+    }
+
+    @Test
     fun `unsupported workflows fail before any repository writes`() {
         listOf(
             "on: [push]" to false,

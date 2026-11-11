@@ -2,6 +2,7 @@ package no.nav.platforce.tool.nais
 
 import no.nav.platforce.tool.github.DefaultGithubClient
 import no.nav.platforce.tool.github.GithubAccessTokenHandler
+import no.nav.platforce.tool.workflows.RecordingGithubClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -39,6 +40,32 @@ class RebuildWorkflowTest {
                 when (path) {
                     "/repos/example/normal", "/repos/example/mono" -> {
                         200 to """{"default_branch":"main"}"""
+                    }
+
+                    @Test
+                    fun `workflow lookup detects namespace input for missing and existing rebuild wrappers`() {
+                        val source =
+                            """
+                            on:
+                              workflow_call:
+                                inputs:
+                                  DEPLOY_NAMESPACE:
+                                    required: true
+                                    type: string
+                            """.trimIndent()
+                        listOf(false, true).forEach { exists ->
+                            val files = mutableMapOf(".github/workflows/workflow.yml" to source)
+                            if (exists) files[".github/workflows/rebuild.yml"] = "existing"
+                            val workflow = rebuildWorkflow(RecordingGithubClient(files), "example/mono")
+                            assertTrue(workflow.namespace)
+                            assertEquals(true, workflow.monorepo)
+                            assertEquals(exists, workflow.exists)
+                            assertNull(workflow.error)
+                        }
+                        val invalid = RecordingGithubClient(mapOf(".github/workflows/workflow.yml" to source.replace("type: string", "type: boolean")))
+                        val failed = rebuildWorkflow(invalid, "example/mono")
+                        assertNull(failed.monorepo)
+                        assertTrue(failed.error!!.isNotBlank())
                     }
 
                     "/repos/example/normal/contents/.github/workflows" -> {

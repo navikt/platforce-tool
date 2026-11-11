@@ -166,13 +166,16 @@ function groupDeploymentApplications(applications) {
     }));
 }
 
-function deploymentRebuildTargets(repository) {
+function deploymentRebuildTargets(repository, namespace = false) {
     const targets = repository.teams.flatMap(team =>
         team.applications.flatMap(app => app.environments.map(env => {
             if (!/^[a-z0-9][a-z0-9-]*$/.test(app.name) || !/^[a-z0-9][a-z0-9-]*$/.test(env.environment)) {
                 throw new Error("Cannot create rebuild targets: unsupported application or environment name.");
             }
-            return `${app.name}:${env.environment}`;
+            if (namespace && !/^[a-z0-9][a-z0-9-]*$/.test(team.team)) {
+                throw new Error("Cannot create rebuild targets: unsupported namespace name.");
+            }
+            return `${app.name}:${env.environment}${namespace ? `:${team.team}` : ""}`;
         })));
     return [...new Set(targets)].sort().join(",");
 }
@@ -322,7 +325,7 @@ function appendDeploymentRebuildActions(heading, repository) {
         link.appendChild(icon);
         actions.appendChild(link);
         try {
-            const targets = workflow.monorepo ? deploymentRebuildTargets(repository) : null;
+            const targets = workflow.monorepo ? deploymentRebuildTargets(repository, workflow.namespace === true) : null;
             const command = `gh workflow run rebuild.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}` +
                 (targets ? ` -f targets=${deploymentShellQuote(targets)}` : "");
             actions.appendChild(deploymentCopyButton("gh", command, feedback, repository.repository));

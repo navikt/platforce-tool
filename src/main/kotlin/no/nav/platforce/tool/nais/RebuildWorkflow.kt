@@ -3,6 +3,7 @@ package no.nav.platforce.tool.nais
 import com.google.gson.JsonParseException
 import mu.KotlinLogging
 import no.nav.platforce.tool.github.GithubClient
+import org.yaml.snakeyaml.error.YAMLException
 import java.io.IOException
 
 data class RebuildWorkflow(
@@ -10,6 +11,7 @@ data class RebuildWorkflow(
     val branch: String? = null,
     val error: String? = null,
     val exists: Boolean? = null,
+    val namespace: Boolean = false,
 )
 
 internal fun RunningDeployments.availableRepositories(
@@ -38,7 +40,15 @@ internal fun rebuildWorkflow(
     return try {
         val branch = client.getDefaultBranch(owner, repo)
         val files = client.listWorkflowFiles(owner, repo)
-        RebuildWorkflow(monorepo = "deploy.yml" !in files, branch = branch, exists = "rebuild.yml" in files)
+        val mono = "deploy.yml" !in files
+        val namespace =
+            mono && "workflow.yml" in files &&
+                rebuildWorkflowUsesNamespace(client.getFile(owner, repo, ".github/workflows/workflow.yml"))
+        RebuildWorkflow(monorepo = mono, branch = branch, exists = "rebuild.yml" in files, namespace = namespace)
+    } catch (failure: IllegalArgumentException) {
+        rebuildWorkflowFailure(repository, failure)
+    } catch (failure: YAMLException) {
+        rebuildWorkflowFailure(repository, failure)
     } catch (failure: IOException) {
         rebuildWorkflowFailure(repository, failure)
     } catch (failure: IllegalStateException) {

@@ -86,7 +86,7 @@ internal fun rebuildWorkflowPlan(
         val name = (tuple.keyNode as ScalarNode).value
         val config = tuple.valueNode as? MappingNode ?: error("Invalid workflow input $name")
         val type = (config.field("type") as? ScalarNode)?.value
-        if (mono && name in setOf("DEPLOY_APP", "DEPLOY_CLUSTER")) {
+        if (mono && name in setOf("DEPLOY_APP", "DEPLOY_CLUSTER", "DEPLOY_NAMESPACE")) {
             require(type == "string") { "$name must be a string input" }
         } else if (mono && name in defaults) {
             val (expectedType, value) = defaults.getValue(name)
@@ -117,8 +117,27 @@ internal fun rebuildWorkflowPlan(
     }
     val template =
         checkNotNull(RebuildPullRequestService::class.java.getResource("/workflows/rebuild-${if (mono) "monorepo" else "normal"}.yml"))
-    val wrapper = template.readText().replace("__DEFAULT_BRANCH__", branch).replace("__EXTRA_INPUTS__", extra.joinToString("\n"))
+    val namespace = mono && inputs?.field("DEPLOY_NAMESPACE") != null
+    if (namespace) extra += "      DEPLOY_NAMESPACE: \${{ matrix.target.namespace }}"
+    val wrapper =
+        template
+            .readText()
+            .replace("__DEFAULT_BRANCH__", branch)
+            .replace("__EXTRA_INPUTS__", extra.joinToString("\n"))
+            .replace("__TARGET_FORMAT__", if (namespace) "app:cluster:namespace triples" else "app:cluster pairs")
+            .replace("__NAMESPACE_PATTERN__", if (namespace) ":[a-z0-9][a-z0-9-]*" else "")
+            .replace("__TARGET_FIELDS__", if (namespace) "app, cluster, namespace" else "app, cluster")
+            .replace("__MANIFEST_PREFIX__", if (namespace) "{namespace}/" else "")
+            .replace("__NAMESPACE_ENTRY__", if (namespace) """, "namespace": namespace""" else "")
     return RebuildWorkflowPlan(called, wrapper)
+}
+
+internal fun rebuildWorkflowUsesNamespace(source: String): Boolean {
+    val root = Yaml().compose(StringReader(source)) as? MappingNode ?: error("Workflow must be a YAML mapping")
+    val inputs = ((root.field("on") as? MappingNode)?.field("workflow_call") as? MappingNode)?.field("inputs") as? MappingNode
+    val namespace = inputs?.field("DEPLOY_NAMESPACE") as? MappingNode ?: return false
+    require((namespace.field("type") as? ScalarNode)?.value == "string") { "DEPLOY_NAMESPACE must be a string input" }
+    return true
 }
 
 private fun MappingNode.field(key: String): Node? = value.singleOrNull { (it.keyNode as? ScalarNode)?.value == key }?.valueNode

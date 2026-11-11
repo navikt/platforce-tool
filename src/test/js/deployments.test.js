@@ -385,6 +385,34 @@ test("workflow check failure does not guess rebuild availability, command or tar
     assert.equal(heading.children[2].children[0].textContent, "GitHub unavailable");
 });
 
+test("namespace monorepo copies app cluster namespace triples without merging targets across namespaces", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true,
+        json: async () => ({
+            teams: ["team-a", "team-b"],
+            applications: [
+                application("team-a", "orders", "dev-gcp", "example/mono"),
+                application("team-b", "orders", "dev-gcp", "example/mono"),
+                application("team-a", "orders", "dev-gcp", "example/mono"),
+                application("team-b", "worker", "prod-gcp", "example/mono")
+            ],
+            rebuildWorkflows: { "example/mono": { monorepo: true, namespace: true, branch: "main", exists: true } }
+        })
+    }));
+    const copied = [];
+    context.navigator.clipboard.writeText = async text => copied.push(text);
+    await context.loadDeployments();
+    const actions = get("deploymentsContainer").children[0].children[0].children[1];
+    await actions.children[1].onclick();
+    await actions.children[2].onclick();
+    const targets = "orders:dev-gcp:team-a,orders:dev-gcp:team-b,worker:prod-gcp:team-b";
+    assert.deepEqual(copied, [
+        `gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='${targets}'`,
+        targets
+    ]);
+});
+
 test("clipboard failures show manual copy text and never claim success", async () => {
     const { context, get } = app();
     context.fetch = withMarker(async () => ({

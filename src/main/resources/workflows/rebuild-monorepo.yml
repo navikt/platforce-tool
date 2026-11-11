@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: Comma-separated app:cluster pairs
+        description: Comma-separated __TARGET_FORMAT__
         required: true
         type: string
 
@@ -34,12 +34,12 @@ jobs:
           targets = []
           for value in os.environ["TARGETS"].split(","):
               value = value.strip()
-              if not re.fullmatch(r"[a-z0-9][a-z0-9-]*:(dev-gcp|prod-gcp)", value):
+              if not re.fullmatch(r"[a-z0-9][a-z0-9-]*:(dev-gcp|prod-gcp)__NAMESPACE_PATTERN__", value):
                   raise SystemExit(f"Invalid target: {value!r}")
-              app, cluster = value.split(":")
-              if not Path(f".nais/{app}/{cluster}.yaml").is_file():
+              __TARGET_FIELDS__ = value.split(":")
+              if not Path(f".nais/__MANIFEST_PREFIX__{app}/{cluster}.yaml").is_file():
                   raise SystemExit(f"No deployment manifest for {value}")
-              target = {"app": app, "cluster": cluster}
+              target = {"app": app, "cluster": cluster__NAMESPACE_ENTRY__}
               if target not in targets:
                   targets.append(target)
           if len(targets) > 50:
