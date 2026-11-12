@@ -1,7 +1,9 @@
 package no.nav.platforce.tool.workflows
 
 import no.nav.platforce.tool.github.GithubClient
+import no.nav.platforce.tool.github.GithubPullRequest
 import no.nav.platforce.tool.main
+import java.io.IOException
 
 class RecordingGithubClient(
     private val files: Map<String, String> = emptyMap(),
@@ -11,6 +13,11 @@ class RecordingGithubClient(
     var pullRequestBody: String? = null
     var pullRequestTitle: String? = null
     var requestedBranchName: String? = null
+    val pullRequests = mutableMapOf<Int, GithubPullRequest>()
+    val pullRequestComments = mutableMapOf<Int, String>()
+    var creationFailure: IOException? = null
+    var failClosing = emptySet<Int>()
+    var onPullRequestRead: (Int) -> Unit = {}
 
     override fun listWorkflowFiles(
         owner: String,
@@ -99,9 +106,52 @@ class RecordingGithubClient(
         base: String,
     ): String {
         calls += "createPullRequest:$owner/$repo:$head:$base"
+        creationFailure?.let { throw it }
         pullRequestBody = body
         pullRequestTitle = title
-        return "https://github.example.test/$owner/$repo/pull/1"
+        val number = (pullRequests.keys.maxOrNull() ?: 0) + 1
+        val url = "https://github.com/$owner/$repo/pull/$number"
+        pullRequests[number] = GithubPullRequest(number, url, 99L, "Bot", head, "$owner/$repo", base, "$owner/$repo", "open", false, body)
+        return url
+    }
+
+    override fun getPullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+    ): GithubPullRequest {
+        calls += "getPullRequest:$owner/$repo:$number"
+        onPullRequestRead(number)
+        return pullRequests.getValue(number)
+    }
+
+    override fun listOpenPullRequests(
+        owner: String,
+        repo: String,
+        base: String,
+    ): List<GithubPullRequest> {
+        calls += "listOpenPullRequests:$owner/$repo:$base"
+        return pullRequests.values.toList()
+    }
+
+    override fun commentOnPullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+        body: String,
+    ) {
+        calls += "commentOnPullRequest:$owner/$repo:$number"
+        pullRequestComments[number] = body
+    }
+
+    override fun closePullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+    ) {
+        calls += "closePullRequest:$owner/$repo:$number"
+        if (number in failClosing) throw IOException("Synthetic PR closure failure")
+        pullRequests[number] = pullRequests.getValue(number).copy(state = "closed")
     }
 
     override fun resolveBranchName(

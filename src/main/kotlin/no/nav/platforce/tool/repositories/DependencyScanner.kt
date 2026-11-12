@@ -21,6 +21,7 @@ class DependencyScanner(
     fun scanAllRepositoriesWithProgress(
         cache: DependencyScanCache,
         username: String,
+        checkActive: () -> Unit = {},
     ): List<RepositoryDependencyInventory> {
         val scanStart = System.nanoTime()
 
@@ -34,6 +35,7 @@ class DependencyScanner(
         )
 
         try {
+            checkActive()
             val start = System.nanoTime()
 
             val repos = githubClient.listRepositories()
@@ -58,11 +60,13 @@ class DependencyScanner(
             val results = mutableListOf<RepositoryDependencyInventory>()
 
             repos.forEachIndexed { index, repo ->
+                checkActive()
                 val start = System.nanoTime()
 
                 scanRepository(repo)?.let {
                     results += it
                 }
+                checkActive()
 
                 val durationMs =
                     (System.nanoTime() - start) / 1_000_000

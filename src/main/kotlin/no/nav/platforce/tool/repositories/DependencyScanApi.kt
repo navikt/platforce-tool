@@ -2,6 +2,7 @@ package no.nav.platforce.tool.repositories
 
 import com.google.gson.Gson
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
+import no.nav.platforce.tool.pullrequests.SupersededPullRequestCleanupException
 import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
 import org.http4k.core.Response
@@ -69,6 +70,10 @@ fun dependencyScanRoutes(
             Response(Status.OK)
                 .header("Content-Type", "text/plain")
                 .body(url)
+        } catch (e: SupersededPullRequestCleanupException) {
+            Response(Status.BAD_GATEWAY)
+                .header("Content-Type", "text/plain")
+                .body(e.message.orEmpty())
         } catch (e: PullRequestReadinessException) {
             Response(Status.CONFLICT)
                 .header("Content-Type", "text/plain")

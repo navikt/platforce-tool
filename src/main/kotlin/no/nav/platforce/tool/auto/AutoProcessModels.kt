@@ -52,7 +52,14 @@ data class AutoProcessSnapshot(
     val run: AutoRun?,
     val logs: List<AppLogEntry>,
     val nextBefore: Long?,
+    val runs: List<AutoRun> = emptyList(),
 )
+
+enum class AutoRunDeletion {
+    DELETED,
+    NOT_FOUND,
+    PROTECTED,
+}
 
 interface AutoRunStore {
     fun tryStart(username: String): AutoRun?
@@ -77,6 +84,8 @@ interface AutoRunStore {
     )
 
     fun snapshot(before: Long? = null): AutoProcessSnapshot
+
+    fun deleteRun(runId: String): AutoRunDeletion
 }
 
 class AutoStopped(

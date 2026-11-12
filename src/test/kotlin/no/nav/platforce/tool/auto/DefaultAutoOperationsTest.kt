@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.auto
 
 import no.nav.platforce.tool.github.GithubClient
+import no.nav.platforce.tool.github.GithubPullRequest
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.IOException
 
 class DefaultAutoOperationsTest {
     private class Fixture {
@@ -43,17 +45,20 @@ class DefaultAutoOperationsTest {
         var vulnerableName: String? = null
         var unresolved = false
         var missingBom = false
-        val recording =
-            RecordingGithubClient(
-                mapOf(
-                    "build.gradle" to "dependencies {\n    implementation 'example:library:1.0'\n}",
-                    "gradle/wrapper/gradle-wrapper.properties" to
-                        "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.0-bin.zip",
-                ),
+        var listingFailure: IOException? = null
+        val files =
+            mutableMapOf(
+                "build.gradle" to "dependencies {\n    implementation 'example:library:1.0'\n}",
+                "gradle/wrapper/gradle-wrapper.properties" to
+                    "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.0-bin.zip",
             )
+        val recording = RecordingGithubClient(files)
         val github =
             object : GithubClient by recording {
-                override fun listRepositories(): List<String> = installed
+                override fun listRepositories(): List<String> {
+                    listingFailure?.let { throw it }
+                    return installed
+                }
 
                 override fun createPullRequest(
                     owner: String,
@@ -186,6 +191,69 @@ class DefaultAutoOperationsTest {
     }
 
     @Test
+    fun `full refresh replaces caller inventories with current GitHub data for every accessible repository`() {
+        val fixture = Fixture()
+        val stale = checkNotNull(fixture.dependencyScanner.scanRepository("example/repo"))
+        fixture.cache.update("alice", listOf(stale))
+        fixture.cache.update("bob", listOf(stale))
+        fixture.installed = listOf("example/repo", "example/not-opted-in")
+        fixture.files["build.gradle"] = "dependencies {\n    implementation 'example:library:1.1'\n}"
+        val report = fixture.operations.refreshRepositories("alice", fixture.state, fixture::tick)
+        val refreshed = fixture.cache.get("alice")
+        assertEquals(fixture.installed.toSet(), refreshed.map { it.repository }.toSet())
+        assertTrue(refreshed.all { it.dependencies["example:library"] == "1.1" })
+        assertEquals(listOf(stale), fixture.cache.get("bob"))
+        assertEquals(2, fixture.cache.getProgress("alice").total)
+        assertEquals(2, fixture.cache.getProgress("alice").done)
+        assertFalse(fixture.cache.getProgress("alice").running)
+        assertEquals(null, fixture.cache.getProgress("alice").error)
+        assertTrue(report.message.contains("2 repository inventories refreshed from GitHub"))
+        assertFalse(fixture.recording.calls.any { it.startsWith("createPullRequest") })
+    }
+
+    @Test
+    fun `failed full refresh retains prior inventories and records a stopped progress error`() {
+        val fixture = Fixture()
+        val stale = checkNotNull(fixture.dependencyScanner.scanRepository("example/repo"))
+        fixture.cache.update("alice", listOf(stale))
+        fixture.listingFailure = IOException("GitHub unavailable")
+        assertThrows(IOException::class.java) {
+            fixture.operations.refreshRepositories("alice", fixture.state, fixture::tick)
+        }
+        assertEquals(listOf(stale), fixture.cache.get("alice"))
+        assertFalse(fixture.cache.getProgress("alice").running)
+        assertEquals("GitHub unavailable", fixture.cache.getProgress("alice").error)
+        assertFalse(fixture.recording.calls.any { it.startsWith("createPullRequest") })
+    }
+
+    @Test
+    fun `changed targets or lost ownership interrupt full refresh without publishing partial inventories`() {
+        listOf(true, false).forEach { changeTargets ->
+            val fixture = Fixture()
+            val stale = checkNotNull(fixture.dependencyScanner.scanRepository("example/previous"))
+            fixture.cache.update("alice", listOf(stale))
+            fixture.installed = listOf("example/first", "example/second")
+            assertThrows(AutoInterrupted::class.java) {
+                fixture.operations.refreshRepositories("alice", fixture.state.snapshot()) {
+                    if (fixture.cache.getProgress("alice").done == 1) {
+                        if (changeTargets) {
+                            fixture.state.dependencies["example:library"] = "1.3"
+                        } else {
+                            throw AutoInterrupted(
+                                "Lost ownership",
+                            )
+                        }
+                    }
+                }
+            }
+            assertEquals(listOf(stale), fixture.cache.get("alice"))
+            assertFalse(fixture.cache.getProgress("alice").running)
+            assertTrue(fixture.cache.getProgress("alice").error != null)
+            assertFalse(fixture.recording.calls.any { it.contains("example/second") })
+        }
+    }
+
+    @Test
     fun `production scan and PR services create a report link only for opted in accessible repositories needing updates`() {
         val fixture = Fixture()
         fixture.scans()
@@ -210,6 +278,60 @@ class DefaultAutoOperationsTest {
         fixture.optedIn = setOf("example/repo")
         fixture.installed = emptyList()
         assertTrue(fixture.operations.repositories().isEmpty())
+    }
+
+    @Test
+    fun `Auto reports closed superseded PRs and retains the replacement link if cleanup fails`() {
+        listOf(false, true).forEach { failCleanup ->
+            val fixture = Fixture()
+            fixture.scans()
+            fixture.recording.pullRequests[1] =
+                GithubPullRequest(
+                    1,
+                    "https://github.com/example/repo/pull/1",
+                    99L,
+                    "Bot",
+                    "chore/update-dependencies-2026-11-01",
+                    "example/repo",
+                    "main",
+                    "example/repo",
+                    "open",
+                    false,
+                    "Automated dependency update via platforce-tool app",
+                )
+            if (failCleanup) fixture.recording.failClosing = setOf(1)
+            if (failCleanup) {
+                val stopped =
+                    assertThrows(AutoStopped::class.java) {
+                        fixture.operations.createPullRequest("alice", fixture.state, "example/repo", fixture::tick)
+                    }
+                assertEquals("https://github.com/example/repo/pull/2", stopped.report.url)
+                assertTrue(stopped.report.message.contains("cleanup is unfinished"))
+                assertTrue(stopped.report.details!!.contains("Review existing PRs before retrying"))
+                assertEquals(
+                    "open",
+                    fixture.recording.pullRequests
+                        .getValue(1)
+                        .state,
+                )
+            } else {
+                val report = fixture.operations.createPullRequest("alice", fixture.state, "example/repo", fixture::tick)
+                assertEquals("https://github.com/example/repo/pull/2", report.url)
+                assertTrue(report.details!!.contains("Closed superseded PRs:\nhttps://github.com/example/repo/pull/1"))
+                assertEquals(
+                    "closed",
+                    fixture.recording.pullRequests
+                        .getValue(1)
+                        .state,
+                )
+            }
+            assertEquals(
+                "open",
+                fixture.recording.pullRequests
+                    .getValue(2)
+                    .state,
+            )
+        }
     }
 
     @Test

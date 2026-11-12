@@ -14,23 +14,35 @@ function app(fetch, confirmedIdle = true) {
         const classes = new Set();
         let text = "";
         const node = {
-            tagName, children: [], dataset: {}, attributes: {}, listeners: {}, style: { display: "none" },
+            tagName, children: [], parentNode: null, dataset: {}, attributes: {}, listeners: {}, style: { display: "none" },
             get textContent() { return text + this.children.map(child => child.textContent).join(""); },
-            set textContent(value) { text = String(value); this.children = []; },
+            set textContent(value) {
+                text = String(value);
+                this.children.forEach(child => { child.parentNode = null; });
+                this.children = [];
+            },
             classList: {
                 toggle(name, active) { if (active) classes.add(name); else classes.delete(name); },
                 contains: name => classes.has(name)
             },
-            append(...children) { this.children.push(...children); },
-            appendChild(child) { this.children.push(child); },
-            prepend(child) { this.children.unshift(child); },
+            append(...children) { children.forEach(child => this.appendChild(child)); },
+            appendChild(child) { child.remove(); this.children.push(child); child.parentNode = this; return child; },
+            prepend(child) { this.insertBefore(child, this.children[0] || null); },
             insertBefore(child, reference) {
-                const current = this.children.indexOf(child);
-                if (current >= 0) this.children.splice(current, 1);
+                if (child === reference) return;
+                child.remove();
                 const index = reference === null ? this.children.length : this.children.indexOf(reference);
                 this.children.splice(index, 0, child);
+                child.parentNode = this;
             },
-            replaceChildren(...children) { text = ""; this.children = children; },
+            remove() {
+                if (this.parentNode) {
+                    const siblings = this.parentNode.children;
+                    siblings.splice(siblings.indexOf(this), 1);
+                    this.parentNode = null;
+                }
+            },
+            replaceChildren(...children) { this.textContent = ""; this.append(...children); },
             setAttribute(key, value) { this.attributes[key] = value; },
             addEventListener(event, listener) { this.listeners[event] = listener; }
         };
@@ -54,7 +66,7 @@ function app(fetch, confirmedIdle = true) {
         clearTimeout: id => timers.delete(id),
         fetch
     });
-    for (const file of ["api", "deployments", "auto"]) {
+    for (const file of ["shared", "api", "deployments", "auto"]) {
         vm.runInContext(readFileSync(resolve(__dirname, `../../main/resources/gui/js/${file}.js`), "utf8"), context);
     }
     if (confirmedIdle) vm.runInContext("autoProcessStatusLoaded = true", context);
@@ -278,13 +290,19 @@ test("Auto process started exposes a preserved expandable snapshot of the opted-
     ]);
     const ui = app(async () => ({ ok: true, json: async () => snapshot }));
     await ui.context.loadAutoProcess();
-    const details = ui.get("autoProcessLogs").children[0].children.find(node => node.tagName === "details");
+    const entry = logEntries(ui)[0];
+    assert.equal(entry.children[1].textContent, "Auto process started Triggered by service-user");
+    assert.equal(entry.children[1].children[0].className, "auto-log-triggered");
+    assert.equal(entry.children[0].children.length, 1);
+    const details = logEntries(ui)[0].children.find(node => node.tagName === "details");
     assert.equal(details.children[0].textContent, "Opted-in repositories");
     assert.match(details.children[1].textContent, /example\/first.*example\/second/);
     details.open = true;
     snapshot.run.status = "COMPLETED";
     await ui.context.loadAutoProcess();
-    assert.equal(ui.get("autoProcessLogs").children[0].children.find(node => node.tagName === "details"), details);
+    assert.equal(ui.get("autoProcessStatus").textContent, "COMPLETED");
+    assert.equal(ui.get("autoProcessStatus").children.length, 0);
+    assert.equal(logEntries(ui)[0].children.find(node => node.tagName === "details"), details);
     assert.equal(details.open, true);
 });
 
@@ -296,13 +314,168 @@ function logEntry(id, overrides = {}) {
     };
 }
 
+function logEntries(ui) {
+    return ui.get("autoProcessLogs").children
+        .flatMap(group => group.children[0].children[1].children.filter(node => node.tagName === "article"))
+        .sort((a, b) => Number(b.dataset.logId) - Number(a.dataset.logId));
+}
+
 function processSnapshot(status = "RUNNING", logs = []) {
+    const run = { id: "run-1", username: "service-user", status, startedAt: "2026-11-12T13:00:00Z",
+        finishedAt: status === "RUNNING" ? null : "2026-11-12T13:05:00Z",
+        step: "Scan Plugins", repository: null, stepStartedAt: "2026-11-12T13:01:00Z" };
     return {
-        run: { id: "run-1", username: "service-user", status, startedAt: "2026-11-12T13:00:00Z",
-            step: "Scan Plugins", repository: null, stepStartedAt: "2026-11-12T13:01:00Z" },
-        logs, nextBefore: null
+        run, runs: [run], logs, nextBefore: null
     };
 }
+
+const olderRunId = "11111111-1111-4111-8111-111111111111";
+const latestRunId = "22222222-2222-4222-8222-222222222222";
+
+function historySnapshot() {
+    const snapshot = processSnapshot();
+    snapshot.run.id = latestRunId;
+    snapshot.runs.push({
+        id: olderRunId, username: "other-user", status: "COMPLETED",
+        startedAt: "2026-11-11T12:00:00Z", finishedAt: "2026-11-11T12:05:00Z"
+    });
+    snapshot.logs = [
+        logEntry(1, { runId: olderRunId, message: "Auto process started" }),
+        logEntry(2, { runId: olderRunId, message: "Auto process finished normally" }),
+        logEntry(3, { runId: latestRunId, message: "Auto process started", details: "Repositories opted in at start:\nexample/repo" }),
+        logEntry(4, { runId: latestRunId, message: "Dependency scan finished: 4 targets checked" })
+    ];
+    return snapshot;
+}
+
+function runGroup(ui, id) {
+    return ui.get("autoProcessLogs").children.find(group => group.dataset.runId === id);
+}
+
+test("Auto groups chronological logs in newest-first run sections with start/end headers and only older-run trash buttons", async () => {
+    const snapshot = historySnapshot();
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+    await ui.context.loadAutoProcess();
+    const groups = ui.get("autoProcessLogs").children;
+    assert.deepEqual(groups.map(group => group.dataset.runId), [latestRunId, olderRunId]);
+    const latest = groups[0].children[0];
+    const older = groups[1].children[0];
+    assert.equal(latest.open, true);
+    assert.equal(older.open, false);
+    assert.equal(groups[0].children[1].hidden, true);
+    assert.equal(groups[1].children[1].hidden, false);
+    assert.match(groups[1].children[1].attributes["aria-label"], /Delete Auto process started/);
+    assert.match(groups[1].children[1].innerHTML, /<svg/);
+    assert.match(latest.children[0].textContent, /RUNNING.*Started.*In progress/);
+    assert.ok(older.children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.runs[1].startedAt)));
+    assert.ok(older.children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.runs[1].finishedAt)));
+    assert.deepEqual(latest.children[1].children.filter(node => node.tagName === "article").map(node => Number(node.dataset.logId)), [3, 4]);
+    assert.equal(ui.get("autoCurrentStep").parentNode, latest.children[1]);
+    assert.equal(latest.children[1].children.at(-1), ui.get("autoCurrentStep"));
+    const report = latest.children[1].children[0].children.find(node => node.tagName === "details");
+    report.open = true;
+    latest.open = false;
+    older.open = true;
+    snapshot.run.status = "COMPLETED";
+    snapshot.run.finishedAt = "2026-11-12T13:05:00Z";
+    await ui.context.loadAutoProcess();
+    assert.equal(runGroup(ui, latestRunId), groups[0]);
+    assert.equal(latest.open, false);
+    assert.equal(older.open, true);
+    assert.equal(report.open, true);
+    assert.ok(latest.children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.run.finishedAt)));
+    assert.equal(ui.get("autoCurrentStep").hidden, true);
+    const next = { ...snapshot.run, id: "33333333-3333-4333-8333-333333333333", status: "RUNNING", finishedAt: null };
+    snapshot.run = next;
+    snapshot.runs.push(next);
+    snapshot.logs.push(logEntry(5, { runId: next.id, message: "Auto process started" }));
+    await ui.context.loadAutoProcess();
+    assert.equal(runGroup(ui, next.id).children[0].open, true);
+    assert.equal(latest.open, false);
+    assert.equal(older.open, true);
+    assert.equal(ui.get("autoCurrentStep").parentNode, runGroup(ui, next.id).children[0].children[1]);
+});
+
+test("Auto run deletion is single-flight, removes only that run after DB confirmation and does not resurrect it on polling", async () => {
+    const snapshot = historySnapshot();
+    const requests = [];
+    let finish;
+    const ui = app(async (url, options) => {
+        requests.push([url, options]);
+        if (options.method === "DELETE") return new Promise(resolve => { finish = resolve; });
+        return { ok: true, json: async () => snapshot };
+    });
+    await ui.context.loadAutoProcess();
+    const latest = runGroup(ui, latestRunId);
+    const remove = runGroup(ui, olderRunId).children[1];
+    let stopped = false;
+    const deletion = remove.listeners.click({ stopPropagation() { stopped = true; } });
+    assert.equal(stopped, true);
+    assert.equal(remove.disabled, true);
+    await ui.context.deleteAutoRun(olderRunId);
+    await ui.context.deleteAutoRun(latestRunId);
+    await ui.context.loadAutoProcess();
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1][0], `/internal/api/auto/runs/${olderRunId}`);
+    assert.equal(requests[1][1].cache, "no-store");
+    assert.equal(logEntries(ui).length, 4);
+    snapshot.logs = snapshot.logs.filter(entry => entry.runId !== olderRunId);
+    snapshot.runs = snapshot.runs.filter(run => run.id !== olderRunId);
+    finish({ status: 204 });
+    await deletion;
+    assert.equal(runGroup(ui, olderRunId), undefined);
+    assert.equal(runGroup(ui, latestRunId), latest);
+    assert.equal(logEntries(ui).length, 2);
+    assert.equal(ui.value(`autoRuns.has("${olderRunId}")`), false);
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("autoProcessLogs").children.length, 1);
+    assert.equal(runGroup(ui, latestRunId), latest);
+    assert.equal(latest.children[0].open, true);
+});
+
+test("Auto preserves history on deletion failures and explicit refresh reconciles history deleted elsewhere", async () => {
+    const snapshot = historySnapshot();
+    const ui = app(async (url, options) => options.method === "DELETE"
+        ? { status: 503, json: async () => ({ error: "Database unavailable" }) }
+        : { ok: true, json: async () => snapshot });
+    await ui.context.loadAutoProcess();
+    const older = runGroup(ui, olderRunId);
+    await ui.context.deleteAutoRun(olderRunId);
+    assert.equal(runGroup(ui, olderRunId), older);
+    assert.equal(older.children[1].disabled, false);
+    assert.equal(logEntries(ui).length, 4);
+    assert.match(ui.get("autoProcessError").textContent, /Database unavailable/);
+    snapshot.logs = snapshot.logs.filter(entry => entry.runId !== olderRunId);
+    snapshot.runs = snapshot.runs.filter(run => run.id !== olderRunId);
+    await ui.context.loadAutoProcess(null, true);
+    assert.equal(runGroup(ui, olderRunId), undefined);
+    assert.equal(logEntries(ui).length, 2);
+    assert.equal(ui.get("autoProcessError").textContent, "");
+});
+
+test("Auto merges split run log pages without duplicate groups or losing report expansion", async () => {
+    const snapshot = historySnapshot();
+    const allLogs = snapshot.logs;
+    snapshot.logs = [allLogs[3]];
+    snapshot.nextBefore = 4;
+    const ui = app(async url => ({
+        ok: true, json: async () => url.includes("before=")
+            ? { ...snapshot, logs: allLogs.slice(0, 3), nextBefore: null } : snapshot
+    }));
+    await ui.context.loadAutoProcess();
+    const latest = runGroup(ui, latestRunId);
+    assert.equal(latest.children[0].children[2].hidden, false);
+    latest.children[0].open = false;
+    const original = logEntries(ui)[0];
+    await ui.context.loadAutoProcess(4);
+    assert.equal(ui.get("autoProcessLogs").children.length, 2);
+    assert.equal(runGroup(ui, latestRunId), latest);
+    assert.equal(latest.children[0].open, false);
+    assert.equal(latest.children[0].children[2].hidden, true);
+    assert.equal(logEntries(ui)[0], original);
+    assert.deepEqual(latest.children[0].children[1].children.filter(node => node.tagName === "article").map(node => Number(node.dataset.logId)), [3, 4]);
+    assert.ok(runGroup(ui, olderRunId).children[0].children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.runs[1].startedAt)));
+});
 
 test("Auto process renders running step and red tab, timestamped expandable reports and safe PR links", async () => {
     const snapshot = processSnapshot("RUNNING", [
@@ -320,7 +493,7 @@ test("Auto process renders running step and red tab, timestamped expandable repo
     assert.equal(ui.get("autoCurrentStep").children[0].className, "spinner");
     assert.equal(ui.get("autoCurrentStep").children[1].textContent, "Scan Plugins");
     assert.equal(ui.get("autoCurrentStep").children[2].dateTime, snapshot.run.stepStartedAt);
-    const entries = ui.get("autoProcessLogs").children;
+    const entries = logEntries(ui);
     assert.equal(entries.length, 2);
     const link = entries[0].children.find(node => node.tagName === "a");
     assert.equal(link.href, "https://github.com/example/repo/pull/42");
@@ -332,14 +505,14 @@ test("Auto process renders running step and red tab, timestamped expandable repo
     assert.match(details.children[1].textContent, /example:library 1.0 -> 1.2/);
     details.open = true;
     await ui.context.loadAutoProcess();
-    assert.equal(ui.get("autoProcessLogs").children[1], entries[1]);
+    assert.equal(logEntries(ui)[1], entries[1]);
     assert.equal(details.open, true);
     snapshot.run.status = "COMPLETED";
     await ui.context.loadAutoProcess();
     assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), false);
     assert.equal(ui.get("autoCurrentStep").hidden, true);
     assert.match(ui.get("autoProcessStatus").textContent, /COMPLETED/);
-    assert.equal(ui.get("autoProcessLogs").children.length, 2);
+    assert.equal(logEntries(ui).length, 2);
 });
 
 test("Auto scan pills and compact successful reports also apply to persisted legacy logs", async () => {
@@ -359,7 +532,7 @@ test("Auto scan pills and compact successful reports also apply to persisted leg
     ]);
     const ui = app(async () => ({ ok: true, json: async () => snapshot }));
     await ui.context.loadAutoProcess();
-    const entries = ui.get("autoProcessLogs").children;
+    const entries = logEntries(ui);
     for (const [index, kind] of ["plugin", "platform-bom", "dependency"].entries()) {
         assert.equal(entries[index].children.some(node => node.tagName === "details"), false);
         assert.match(entries[index].children[1].children[1].className, new RegExp(`${kind}-pill`));
@@ -372,7 +545,7 @@ test("Auto scan pills and compact successful reports also apply to persisted leg
         ui.context.formatDeploymentTimestamp(snapshot.logs[0].timestamp));
 });
 
-test("Auto users only appear in pill tooltips and actionable findings retain styled expandable reports", async () => {
+test("Auto omits repeated user pills while retaining the user inventory and styled actionable reports", async () => {
     const snapshot = processSnapshot("RUNNING", [
         logEntry(1, { message: "Saved Target Versions as service-user", details: "Users in database:\nservice-user\nother-user" }),
         logEntry(2, {
@@ -387,13 +560,12 @@ test("Auto users only appear in pill tooltips and actionable findings retain sty
     ]);
     const ui = app(async () => ({ ok: true, json: async () => snapshot }));
     await ui.context.loadAutoProcess();
-    assert.equal(ui.get("autoProcessStatus").textContent, "RUNNINGuser");
-    assert.equal(ui.get("autoProcessStatus").children[0].title, "service-user");
+    assert.equal(ui.get("autoProcessStatus").textContent, "RUNNING");
+    assert.equal(ui.get("autoProcessStatus").children.length, 0);
     assert.match(ui.get("autoCurrentStep").children[1].children[1].className, /plugin-pill/);
-    const entries = ui.get("autoProcessLogs").children;
+    const entries = logEntries(ui);
     entries.forEach(entry => {
-        assert.equal(entry.children[0].children[1].textContent, "user");
-        assert.equal(entry.children[0].children[1].title, "service-user");
+        assert.equal(entry.children[0].children.some(node => node.className?.includes("auto-log-user")), false);
         assert.doesNotMatch(entry.textContent, /service-user|other-user/);
     });
     const rows = entries[2].children.find(node => node.tagName === "details").children[1].children;
@@ -407,6 +579,35 @@ test("Auto users only appear in pill tooltips and actionable findings retain sty
     assert.equal(entries[1].children.find(node => node.tagName === "details").children[1].children[0].children[0].textContent, "REMOVE");
     assert.match(entries[0].textContent, /VULNERABLE <img src=x>: TEST-123/);
     assert.equal(ui.created.some(node => node.tagName === "img"), false);
+});
+
+test("Auto trigger attribution renders the username as plain text without interpreting HTML", async () => {
+    const username = "<img src=x onerror=alert(1)>";
+    const ui = app(async () => ({
+        ok: true, json: async () => processSnapshot("COMPLETED", [logEntry(1, { username, message: "Auto process started" })])
+    }));
+    await ui.context.loadAutoProcess();
+    assert.equal(logEntries(ui)[0].children[1].textContent, `Auto process started Triggered by ${username}`);
+    assert.equal(ui.created.some(node => node.tagName === "img"), false);
+});
+
+test("Auto cleanup reports keep replacement and superseded PRs as matching safe link buttons", async () => {
+    const ui = app(async () => ({
+        ok: true, json: async () => processSnapshot("COMPLETED", [logEntry(1, {
+            message: "Pull request created",
+            url: "https://github.com/example/repo/pull/42",
+            details: "UPDATE example:library: 1.0 -> 1.2\nClosed superseded PRs:\nhttps://github.com/example/repo/pull/40\nhttps://github.com/example/repo/pull/41"
+        })])
+    }));
+    await ui.context.loadAutoProcess();
+    const entry = logEntries(ui)[0];
+    const links = [
+        entry.children.find(node => node.tagName === "a"),
+        ...entry.children.find(node => node.tagName === "details").children[1].children
+            .flatMap(row => row.children.filter(node => node.tagName === "a"))
+    ];
+    assert.deepEqual(links.map(link => link.textContent), ["repo #42", "repo #40", "repo #41"]);
+    assert.equal(links.every(link => link.className === "pr-button auto-pr-link" && link.rel === "noopener noreferrer"), true);
 });
 
 test("Auto polling speeds up while running and visible, slows when hidden or finished, and does not overlap reads", async () => {
@@ -463,16 +664,16 @@ test("Auto logs paginate without duplicates and fill a gap when more than one pa
     phase = 1;
     await ui.context.loadAutoProcess();
     assert.deepEqual(requests.slice(1), ["/internal/api/auto/status", "/internal/api/auto/status?before=7", "/internal/api/auto/status?before=3"]);
-    assert.equal(ui.get("autoProcessLogs").children.length, 8);
-    assert.equal(ui.get("autoProcessLogs").children[0].children[1].textContent, "Finished step 8");
-    assert.equal(ui.get("autoProcessLogs").children[7].children[1].textContent, "Finished step 1");
+    assert.equal(logEntries(ui).length, 8);
+    assert.equal(logEntries(ui)[0].children[1].textContent, "Finished step 8");
+    assert.equal(logEntries(ui)[7].children[1].textContent, "Finished step 1");
     const other = app(async url => ({
         ok: true, json: async () => ({ ...processSnapshot("COMPLETED"), logs: url.includes("before") ? [logEntry(1)] : [logEntry(2)], nextBefore: url.includes("before") ? null : 2 })
     }));
     await other.context.loadAutoProcess();
     assert.equal(other.get("loadOlderAutoLogs").hidden, false);
     await other.context.loadAutoProcess(2);
-    assert.equal(other.get("autoProcessLogs").children.length, 2);
+    assert.equal(logEntries(other).length, 2);
     assert.equal(other.get("loadOlderAutoLogs").hidden, true);
 });
 
@@ -483,15 +684,15 @@ test("Auto process failures retain confirmed logs and running status with an exp
     await ui.context.loadAutoProcess();
     assert.match(ui.get("autoProcessError").textContent, /Database unavailable.*stale/);
     assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), true);
-    assert.equal(ui.get("autoProcessLogs").children.length, 1);
+    assert.equal(logEntries(ui).length, 1);
     ui.context.fetch = async () => ({ ok: true, json: async () => processSnapshot("INTERRUPTED", [logEntry(2, { level: "WARN", message: "<script>unsafe</script>" })]) });
     await ui.context.loadAutoProcess();
     assert.equal(ui.get("autoProcessError").textContent, "");
     assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), false);
-    assert.match(ui.get("autoProcessLogs").children[0].className, /auto-log-warning/);
-    assert.equal(ui.get("autoProcessLogs").children[0].children[1].textContent, "<script>unsafe</script>");
+    assert.match(logEntries(ui)[0].className, /auto-log-warning/);
+    assert.equal(logEntries(ui)[0].children[1].textContent, "<script>unsafe</script>");
     ui.context.fetch = async () => ({ ok: true, json: async () => processSnapshot("COMPLETED", [logEntry(3, { url: "javascript:alert(1)" })]) });
     await ui.context.loadAutoProcess();
     assert.match(ui.get("autoProcessError").textContent, /Invalid pull request link/);
-    assert.equal(ui.get("autoProcessLogs").children.length, 2);
+    assert.equal(logEntries(ui).length, 2);
 });

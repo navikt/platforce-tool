@@ -7,12 +7,15 @@ class MemoryAutoRunStore(
     private val optedIn: () -> Set<String> = { emptySet() },
 ) : AutoRunStore {
     private var current: AutoRun? = null
+    private val history = mutableMapOf<String, AutoRun>()
     private val logs = mutableListOf<AppLogEntry>()
+    private var nextLogId = 1L
     var healthy = true
 
     @Synchronized
     override fun tryStart(username: String): AutoRun? {
         if (current?.status == AutoRunStatus.RUNNING) return null
+        current?.let { history[it.id] = it }
         current = AutoRun(UUID.randomUUID().toString(), username, AutoRunStatus.RUNNING, Instant.now().toString())
         append(autoStartedReport(optedIn()), "INFO")
         return current
@@ -56,7 +59,20 @@ class MemoryAutoRunStore(
     @Synchronized
     override fun snapshot(before: Long?): AutoProcessSnapshot {
         val page = logs.filter { before == null || it.id < before }.takeLast(101)
-        return AutoProcessSnapshot(current, page.takeLast(100), if (page.size > 100) page[1].id else null)
+        val entries = page.takeLast(100)
+        val ids = entries.map { it.runId }.toSet() + listOfNotNull(current?.id)
+        val runs = (history.values + listOfNotNull(current)).filter { it.id in ids }
+        return AutoProcessSnapshot(current, entries, if (page.size > 100) page[1].id else null, runs)
+    }
+
+    @Synchronized
+    override fun deleteRun(runId: String): AutoRunDeletion {
+        if (current?.id == runId) return AutoRunDeletion.PROTECTED
+        val run = history[runId] ?: return AutoRunDeletion.NOT_FOUND
+        if (run.status == AutoRunStatus.RUNNING) return AutoRunDeletion.PROTECTED
+        logs.removeAll { it.runId == runId }
+        history.remove(runId)
+        return AutoRunDeletion.DELETED
     }
 
     private fun requireOwner(id: String) {
@@ -70,7 +86,7 @@ class MemoryAutoRunStore(
         val run = checkNotNull(current)
         logs +=
             AppLogEntry(
-                logs.size + 1L,
+                nextLogId++,
                 Instant.now().toString(),
                 run.id,
                 run.username,

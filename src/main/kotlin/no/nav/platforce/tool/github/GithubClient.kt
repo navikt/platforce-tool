@@ -69,4 +69,29 @@ interface GithubClient {
         repo: String,
         baseName: String,
     ): String
+
+    fun getPullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+    ): GithubPullRequest
+
+    fun listOpenPullRequests(
+        owner: String,
+        repo: String,
+        base: String,
+    ): List<GithubPullRequest>
+
+    fun commentOnPullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+        body: String,
+    )
+
+    fun closePullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+    )
 }

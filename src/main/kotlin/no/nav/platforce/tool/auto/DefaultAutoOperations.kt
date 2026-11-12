@@ -3,6 +3,7 @@ package no.nav.platforce.tool.auto
 import no.nav.platforce.tool.db.PostgresDatabase
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
+import no.nav.platforce.tool.pullrequests.SupersededPullRequestCleanupException
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
@@ -228,6 +229,21 @@ class DefaultAutoOperations(
         )
     }
 
+    override fun refreshRepositories(
+        username: String,
+        state: TargetVersionsState,
+        checkActive: () -> Unit,
+    ): AutoReport {
+        guard(username, state, checkActive)
+        return cache.withRefreshLock(username) {
+            guard(username, state, checkActive)
+            val inventories = scanner.scanAllRepositoriesWithProgress(cache, username) { guard(username, state, checkActive) }
+            guard(username, state, checkActive)
+            cache.update(username, inventories)
+            AutoReport("Dependency Scanner refresh finished: ${inventories.size} repository inventories refreshed from GitHub")
+        }
+    }
+
     override fun repositories(): List<String> {
         val installed = github.listRepositories().map { it.lowercase(Locale.ROOT) }.toSet()
         return optedIn().filter { it in installed }
@@ -264,24 +280,37 @@ class DefaultAutoOperations(
                 if (repository !in repositories()) {
                     AutoReport("Skipped: Auto opt-in or GitHub App access was removed")
                 } else {
+                    val closed = mutableListOf<String>()
                     val url =
-                        pullRequests.createPullRequest(
-                            repository.substringBefore("/"),
-                            repository.substringAfter("/"),
-                            username,
-                            effective,
-                            beforeWrite = {
-                                guard(username, state, checkActive)
-                                if (repository !in optedIn()) throw AutoInterrupted("Repository opted out while creating its PR")
-                            },
-                        )
+                        try {
+                            pullRequests.createPullRequest(
+                                repository.substringBefore("/"),
+                                repository.substringAfter("/"),
+                                username,
+                                effective,
+                                beforeWrite = {
+                                    guard(username, state, checkActive)
+                                    if (repository !in optedIn()) throw AutoInterrupted("Repository opted out while creating its PR")
+                                },
+                                onSuperseded = { closed += it },
+                            )
+                        } catch (failure: SupersededPullRequestCleanupException) {
+                            throw AutoStopped(
+                                AutoReport(
+                                    "Pull request created, but superseded PR cleanup is unfinished",
+                                    failure.message,
+                                    failure.pullRequestUrl,
+                                ),
+                            )
+                        }
                     check(
                         url.startsWith("https://github.com/") && "/pull/" in url,
                     ) { "Pull request creation did not return a GitHub PR link: $url" }
                     AutoReport(
                         "Pull request created",
-                        actionable.joinToString("\n") {
-                            "${it.status} ${it.key}: ${it.currentVersion} -> ${it.targetVersion}"
+                        buildString {
+                            append(actionable.joinToString("\n") { "${it.status} ${it.key}: ${it.currentVersion} -> ${it.targetVersion}" })
+                            if (closed.isNotEmpty()) append("\nClosed superseded PRs:\n${closed.joinToString("\n")}")
                         },
                         url,
                     )

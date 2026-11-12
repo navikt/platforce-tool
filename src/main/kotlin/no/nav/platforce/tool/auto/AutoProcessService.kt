@@ -31,6 +31,8 @@ class AutoProcessService(
 
     fun snapshot(before: Long? = null): AutoProcessSnapshot = store.snapshot(before)
 
+    fun deleteRun(runId: String): AutoRunDeletion = store.deleteRun(runId)
+
     private fun execute(run: AutoRun) {
         val healthy = AtomicBoolean(true)
         var heartbeat: java.util.concurrent.ScheduledFuture<*>? = null

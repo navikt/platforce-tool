@@ -130,7 +130,7 @@ test("bootstrap preserves startup order, selected team, cached security and unca
     const security = { targets: [{ key: "example:library", targetVersion: "1.0" }] };
     const data = {
         "/internal/selectedTeam": { selectedTeam: "saved-team" },
-        "/internal/api/auto/status": { run: null, logs: [] },
+        "/internal/api/auto/status": { run: null, runs: [], logs: [] },
         "/internal/api/target-versions": { dependencies: { "example:library": "1.0" } },
         "/internal/api/auto-repositories": { repositories: [] },
         "/internal/repos/view": [],

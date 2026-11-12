@@ -7,6 +7,7 @@ import no.nav.platforce.tool.db.PostgresDatabase
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -112,13 +113,7 @@ class DatabaseAutoRunStore(
 
     override fun snapshot(before: Long?): AutoProcessSnapshot =
         locked {
-            val latest =
-                AutoRunsTable
-                    .selectAll()
-                    .orderBy(AutoRunsTable.startedAt, SortOrder.DESC)
-                    .limit(1)
-                    .singleOrNull()
-                    ?.toRun()
+            val latest = latestRun()
             val rows =
                 AppLogsTable
                     .selectAll()
@@ -128,8 +123,45 @@ class DatabaseAutoRunStore(
                     .limit(101)
                     .toList()
             val page = rows.take(100).map { it.toLog() }
-            AutoProcessSnapshot(latest, page.reversed(), if (rows.size > 100) page.last().id else null)
+            val runIds = (page.map { it.runId } + listOfNotNull(latest?.id)).toSet()
+            val runs =
+                AutoRunsTable.selectAll().where { AutoRunsTable.id inList runIds }.map { it.toRun() }
+            AutoProcessSnapshot(latest, page.reversed(), if (rows.size > 100) page.last().id else null, runs)
         }
+
+    override fun deleteRun(runId: String): AutoRunDeletion =
+        locked {
+            val target =
+                AutoRunsTable
+                    .selectAll()
+                    .where { AutoRunsTable.id eq runId }
+                    .singleOrNull()
+                    ?.toRun()
+            when {
+                target == null -> {
+                    AutoRunDeletion.NOT_FOUND
+                }
+
+                target.id == latestRun()?.id || target.status == AutoRunStatus.RUNNING ||
+                    lock()[AutoRunLockTable.runId] == target.id -> {
+                    AutoRunDeletion.PROTECTED
+                }
+
+                else -> {
+                    AppLogsTable.deleteWhere { AppLogsTable.runId eq runId }
+                    AutoRunsTable.deleteWhere { AutoRunsTable.id eq runId }
+                    AutoRunDeletion.DELETED
+                }
+            }
+        }
+
+    private fun latestRun(): AutoRun? =
+        AppLogsTable
+            .select(AppLogsTable.runId)
+            .orderBy(AppLogsTable.id, SortOrder.DESC)
+            .limit(1)
+            .singleOrNull()
+            ?.let { run(it[AppLogsTable.runId]) }
 
     private fun lock(): ResultRow = AutoRunLockTable.selectAll().where { AutoRunLockTable.id eq 1 }.single()
 

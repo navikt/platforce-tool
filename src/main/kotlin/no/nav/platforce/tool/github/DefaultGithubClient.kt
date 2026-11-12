@@ -1,8 +1,11 @@
 package no.nav.platforce.tool.github
 
 import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
 import mu.KotlinLogging
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -252,6 +255,134 @@ class DefaultGithubClient(
             val parsed = gson.fromJson(bodyStr, PullRequestResponse::class.java)
             return parsed.html_url
         }
+    }
+
+    override fun getPullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+    ): GithubPullRequest {
+        val request = authenticatedRequest("https://api.github.com/repos/$owner/$repo/pulls/$number")
+        return httpClient.newCall(request).execute().use { response ->
+            check(response.isSuccessful) { "Could not read pull request #$number: HTTP ${response.code}" }
+            parsePullRequest(JsonParser.parseString(response.body.string()).asJsonObject)
+        }
+    }
+
+    override fun listOpenPullRequests(
+        owner: String,
+        repo: String,
+        base: String,
+    ): List<GithubPullRequest> {
+        val results = mutableListOf<GithubPullRequest>()
+        var page = 1
+        do {
+            val url =
+                "https://api.github.com/repos/$owner/$repo/pulls"
+                    .toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("state", "open")
+                    .addQueryParameter("base", base)
+                    .addQueryParameter("sort", "created")
+                    .addQueryParameter("direction", "asc")
+                    .addQueryParameter("per_page", "100")
+                    .addQueryParameter("page", page.toString())
+                    .build()
+            val entries =
+                httpClient.newCall(authenticatedRequest(url.toString())).execute().use { response ->
+                    check(response.isSuccessful) { "Could not list open pull requests: HTTP ${response.code}" }
+                    JsonParser.parseString(response.body.string()).asJsonArray.map { parsePullRequest(it.asJsonObject) }
+                }
+            results += entries
+            page++
+        } while (entries.size == 100)
+        return results.distinctBy { it.number }
+    }
+
+    override fun commentOnPullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+        body: String,
+    ) {
+        val request =
+            authenticatedRequest("https://api.github.com/repos/$owner/$repo/issues/$number/comments")
+                .newBuilder()
+                .post(gson.toJson(mapOf("body" to body)).toRequestBody("application/json".toMediaType()))
+                .build()
+        httpClient.newCall(request).execute().use { response ->
+            check(response.isSuccessful) { "Could not comment on superseded pull request #$number: HTTP ${response.code}" }
+        }
+    }
+
+    override fun closePullRequest(
+        owner: String,
+        repo: String,
+        number: Int,
+    ) {
+        val request =
+            authenticatedRequest("https://api.github.com/repos/$owner/$repo/pulls/$number")
+                .newBuilder()
+                .patch("""{"state":"closed"}""".toRequestBody("application/json".toMediaType()))
+                .build()
+        httpClient.newCall(request).execute().use { response ->
+            check(response.isSuccessful) { "Could not close superseded pull request #$number: HTTP ${response.code}" }
+            val result = JsonParser.parseString(response.body.string()).asJsonObject
+            check(
+                result["state"]?.takeIf { it.isJsonPrimitive }?.asString == "closed" &&
+                    result["number"]?.takeIf { it.isJsonPrimitive }?.asInt == number,
+            ) { "GitHub did not confirm closure of pull request #$number" }
+        }
+    }
+
+    private fun parsePullRequest(json: JsonObject): GithubPullRequest {
+        fun objectValue(
+            parent: JsonObject,
+            key: String,
+        ): JsonObject {
+            val value = checkNotNull(parent[key])
+            check(value.isJsonObject) { "Invalid pull request object: $key" }
+            return value.asJsonObject
+        }
+
+        fun string(
+            objectValue: JsonObject,
+            key: String,
+        ): String {
+            val value = checkNotNull(objectValue[key])
+            check(value.isJsonPrimitive && value.asJsonPrimitive.isString) { "Invalid pull request field: $key" }
+            return value.asString
+        }
+
+        fun positiveNumber(
+            parent: JsonObject,
+            key: String,
+        ): Long {
+            val value = checkNotNull(parent[key])
+            check(value.isJsonPrimitive && value.asJsonPrimitive.isNumber) { "Invalid pull request number: $key" }
+            val number = checkNotNull(value.asString.toLongOrNull())
+            check(number > 0) { "Invalid pull request identity: $key" }
+            return number
+        }
+        val author = objectValue(json, "user")
+        val head = objectValue(json, "head")
+        val base = objectValue(json, "base")
+        val mergedAt = checkNotNull(json["merged_at"])
+        val number = positiveNumber(json, "number")
+        check(number <= Int.MAX_VALUE) { "Pull request number exceeds supported range" }
+        return GithubPullRequest(
+            number.toInt(),
+            string(json, "html_url"),
+            positiveNumber(author, "id"),
+            string(author, "type"),
+            string(head, "ref"),
+            head["repo"]?.takeUnless { it.isJsonNull }?.asJsonObject?.let { string(it, "full_name") },
+            string(base, "ref"),
+            string(objectValue(base, "repo"), "full_name"),
+            string(json, "state"),
+            !mergedAt.isJsonNull,
+            json["body"]?.takeUnless { it.isJsonNull }?.asString,
+        )
     }
 
     override fun getFile(

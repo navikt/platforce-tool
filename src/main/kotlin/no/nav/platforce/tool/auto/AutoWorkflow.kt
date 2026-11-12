@@ -38,6 +38,12 @@ interface AutoOperations {
         checkActive: () -> Unit,
     ): AutoReport
 
+    fun refreshRepositories(
+        username: String,
+        state: TargetVersionsState,
+        checkActive: () -> Unit,
+    ): AutoReport
+
     fun repositories(): List<String>
 
     fun createPullRequest(
@@ -94,6 +100,7 @@ class AutoWorkflow(
         progress.step("Scan Dependencies") { operations.scanDependencies(username, state, progress::checkActive) }
         progress.step("Scan BOMs") { operations.scanBoms(username, state, progress::checkActive) }
         progress.step("Scan Plugins") { operations.scanPlugins(username, state, progress::checkActive) }
+        progress.step("Refresh Dependency Scanner") { operations.refreshRepositories(username, state, progress::checkActive) }
         var created = 0
         val repositories = operations.repositories().distinct().sorted()
         repositories.forEach { repository ->

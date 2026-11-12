@@ -122,6 +122,64 @@ body {
     font-size: 12px;
 }
 
+.auto-run {
+    position: relative;
+    margin-top: 10px;
+    border: 1px solid #dfe4e9;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.auto-run-summary {
+    cursor: pointer;
+    padding: 12px 48px 12px 14px;
+    background: #f5f7f9;
+    font-size: 13px;
+}
+
+.auto-run-heading {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    vertical-align: middle;
+    gap: 6px 12px;
+}
+
+.auto-run-state {
+    background: #e8edf2;
+    color: #435367;
+}
+
+.auto-run-state-warning {
+    background: #fbeeee;
+    color: #a32626;
+}
+
+.auto-run-time {
+    color: #607080;
+    font-size: 12px;
+}
+
+.auto-run-logs {
+    padding: 0 14px;
+}
+
+.auto-run-partial {
+    margin: 0 14px 12px;
+    color: #607080;
+    font-size: 12px;
+}
+
+.auto-run .auto-run-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
+
+.auto-run-delete[hidden] {
+    display: none;
+}
+
 .auto-log-entry {
     border-top: 1px solid #e8edf2;
     padding: 10px 0;
@@ -162,8 +220,10 @@ body {
     cursor: help;
 }
 
-#autoProcessStatus .auto-log-user {
+.auto-log-triggered {
     margin-left: 8px;
+    color: #607080;
+    font-size: 12px;
 }
 
 .auto-log-entry .auto-pr-link {
@@ -746,7 +806,7 @@ button:hover {
     color: #898e94;
     background: linear-gradient(#f7f8f9, #eeeff1);
     border-color: #d3d6da;
-    border-left: 3px solid var(--pr-lock-accent);
+    border-left: 1px solid var(--pr-lock-accent);
 }
 
 .btn-primary {

@@ -1,9 +1,11 @@
 package no.nav.platforce.tool.workflows
 
+import no.nav.platforce.tool.github.GithubPullRequest
 import no.nav.platforce.tool.gradle.GradleDependencyParser
 import no.nav.platforce.tool.gradle.GradleWrapperParser
 import no.nav.platforce.tool.main
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
+import no.nav.platforce.tool.pullrequests.SupersededPullRequestCleanupException
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
@@ -14,9 +16,11 @@ import no.nav.platforce.tool.security.TargetSecurityService
 import no.nav.platforce.tool.targets.TargetVersionsState
 import no.nav.platforce.tool.targets.snapshot
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.IOException
 
 class DependencyPullRequestFlowTest {
     private val wrapperPath = "gradle/wrapper/gradle-wrapper.properties"
@@ -56,7 +60,7 @@ class DependencyPullRequestFlowTest {
         ready()
         val url = service.createPullRequest("example", "repository", "alice", targets)
 
-        assertEquals("https://github.example.test/example/repository/pull/1", url)
+        assertEquals("https://github.com/example/repository/pull/1", url)
         assertEquals(
             listOf(
                 "getDefaultBranch:example/repository",
@@ -70,6 +74,8 @@ class DependencyPullRequestFlowTest {
                 "getFileSha:example/repository:$wrapperPath:test-dependency-update",
                 "updateFile:example/repository:$wrapperPath:file-sha:test-dependency-update",
                 "createPullRequest:example/repository:test-dependency-update:main",
+                "getPullRequest:example/repository:1",
+                "listOpenPullRequests:example/repository:main",
             ),
             github.calls,
         )
@@ -80,6 +86,144 @@ class DependencyPullRequestFlowTest {
         assertEquals("8.1", GradleWrapperParser().parse(github.updatedFiles.getValue(wrapperPath)))
         assertTrue(github.pullRequestBody.orEmpty().contains("example:library"))
         // Verified every GitHub call in order and parsed both proposed files; no real GitHub calls were made.
+    }
+
+    private fun oldPullRequest(number: Int) =
+        GithubPullRequest(
+            number,
+            "https://github.com/example/repository/pull/$number",
+            99L,
+            "Bot",
+            "chore/update-dependencies-2026-11-01",
+            "example/repository",
+            "main",
+            "example/repository",
+            "open",
+            false,
+            "Automated dependency update via platforce-tool app\n\nOld findings",
+        )
+
+    @Test
+    fun `successful replacement closes only app authored older dependency PRs on the same repository and base`() {
+        cache.update("alice", listOf(inventory("example:library" to "1.0.0")))
+        ready()
+        val candidates =
+            listOf(
+                oldPullRequest(1),
+                oldPullRequest(2).copy(authorId = 123),
+                oldPullRequest(3).copy(authorType = "User"),
+                oldPullRequest(4).copy(headBranch = "chore/add-rebuild"),
+                oldPullRequest(5).copy(baseBranch = "release"),
+                oldPullRequest(6).copy(headRepository = "other/fork"),
+                oldPullRequest(7).copy(state = "closed"),
+                oldPullRequest(8).copy(merged = true),
+                oldPullRequest(9).copy(body = "Human-authored update"),
+                oldPullRequest(10).copy(baseRepository = "other/repository"),
+                oldPullRequest(11).copy(headRepository = null),
+                oldPullRequest(12).copy(headBranch = "chore/update-dependencies-not-a-date"),
+                oldPullRequest(13).copy(headBranch = "chore/update-dependencies-2026-11-01-2"),
+            )
+        candidates.forEach { github.pullRequests[it.number] = it }
+        val closed = mutableListOf<String>()
+        val url = service.createPullRequest("example", "repository", "alice", targets, onSuperseded = { closed += it })
+        assertEquals("https://github.com/example/repository/pull/14", url)
+        assertEquals(listOf(candidates.first().url, candidates.last().url), closed)
+        assertEquals(listOf(1, 13), github.pullRequestComments.keys.toList())
+        assertTrue(github.pullRequestComments.values.all { it.contains(url) })
+        assertTrue(
+            github.calls.indexOfFirst { it.startsWith("createPullRequest:") } <
+                github.calls.indexOfFirst { it.startsWith("closePullRequest:") },
+        )
+        assertEquals("open", github.pullRequests.getValue(14).state)
+        candidates.filter { it.number !in setOf(1, 13) }.forEach { assertEquals(it, github.pullRequests[it.number]) }
+    }
+
+    @Test
+    fun `replacement creation failure never comments on or closes an existing PR`() {
+        cache.update("alice", listOf(inventory("example:library" to "1.0.0")))
+        ready()
+        github.pullRequests[1] = oldPullRequest(1)
+        github.creationFailure = IOException("Synthetic creation failure")
+        assertThrows(IOException::class.java) { service.createPullRequest("example", "repository", "alice", targets) }
+        assertEquals("open", github.pullRequests.getValue(1).state)
+        assertTrue(github.pullRequestComments.isEmpty())
+        assertFalse(github.calls.any { it.startsWith("listOpenPullRequests") || it.startsWith("closePullRequest") })
+    }
+
+    @Test
+    fun `closed or retargeted PRs are rechecked and concurrent newer PRs are not superseded`() {
+        cache.update("alice", listOf(inventory("example:library" to "1.0.0")))
+        ready()
+        github.pullRequests[1] = oldPullRequest(1)
+        github.pullRequests[2] = oldPullRequest(2)
+        github.onPullRequestRead = { number ->
+            when (number) {
+                3 -> github.pullRequests[4] = oldPullRequest(4)
+                1 -> github.pullRequests[1] = oldPullRequest(1).copy(state = "closed", merged = true)
+                2 -> github.pullRequests[2] = oldPullRequest(2).copy(baseBranch = "release")
+            }
+        }
+        service.createPullRequest("example", "repository", "alice", targets)
+        assertTrue(github.pullRequestComments.isEmpty())
+        assertFalse(github.calls.any { it.startsWith("closePullRequest") })
+        assertEquals("open", github.pullRequests.getValue(4).state)
+    }
+
+    @Test
+    fun `cleanup failures explicitly report the created replacement and already closed PRs`() {
+        cache.update("alice", listOf(inventory("example:library" to "1.0.0")))
+        ready()
+        github.pullRequests[1] = oldPullRequest(1)
+        github.pullRequests[2] = oldPullRequest(2)
+        github.failClosing = setOf(2)
+        val failure =
+            assertThrows(SupersededPullRequestCleanupException::class.java) {
+                service.createPullRequest("example", "repository", "alice", targets)
+            }
+        assertEquals("https://github.com/example/repository/pull/3", failure.pullRequestUrl)
+        assertEquals(listOf("https://github.com/example/repository/pull/1"), failure.closedUrls)
+        assertTrue(failure.message!!.contains("Review existing PRs before retrying"))
+        assertEquals("closed", github.pullRequests.getValue(1).state)
+        assertEquals("open", github.pullRequests.getValue(2).state)
+        assertEquals("open", github.pullRequests.getValue(3).state)
+    }
+
+    @Test
+    fun `replacement metadata must still describe the open PR created by the app before any cleanup`() {
+        cache.update("alice", listOf(inventory("example:library" to "1.0.0")))
+        ready()
+        listOf("closed", "User").forEach { changed ->
+            github.pullRequests.clear()
+            github.pullRequests[1] = oldPullRequest(1)
+            github.onPullRequestRead = { number ->
+                if (number == 2) {
+                    val replacement = github.pullRequests.getValue(2)
+                    github.pullRequests[2] =
+                        if (changed == "closed") replacement.copy(state = "closed") else replacement.copy(authorType = "User")
+                }
+            }
+            assertThrows(SupersededPullRequestCleanupException::class.java) {
+                service.createPullRequest("example", "repository", "alice", targets)
+            }
+            assertEquals("open", github.pullRequests.getValue(1).state)
+            assertTrue(github.pullRequestComments.isEmpty())
+            assertFalse(github.calls.any { it.startsWith("closePullRequest") })
+        }
+    }
+
+    @Test
+    fun `write fencing still applies to comments and closure after replacement creation`() {
+        cache.update("alice", listOf(inventory("example:library" to "1.0.0")))
+        ready()
+        github.pullRequests[1] = oldPullRequest(1)
+        assertThrows(SupersededPullRequestCleanupException::class.java) {
+            service.createPullRequest("example", "repository", "alice", targets, beforeWrite = {
+                if (github.pullRequestComments.isNotEmpty()) error("Lost write ownership")
+            })
+        }
+        assertTrue(github.pullRequestComments.getValue(1).contains("/pull/2"))
+        assertFalse(github.calls.any { it.startsWith("closePullRequest") })
+        assertEquals("open", github.pullRequests.getValue(1).state)
     }
 
     @Test

@@ -37,6 +37,7 @@ class AutoProcessTest {
         var fail: String? = null
         var users = listOf("alice", "bob", "service-user")
         var onDependencies: () -> Unit = {}
+        var onRefresh: () -> Unit = {}
 
         private fun record(step: String) {
             calls += step
@@ -105,6 +106,17 @@ class AutoProcessTest {
             return AutoReport("Plugins checked")
         }
 
+        override fun refreshRepositories(
+            username: String,
+            state: TargetVersionsState,
+            checkActive: () -> Unit,
+        ): AutoReport {
+            record("refresh")
+            onRefresh()
+            checkActive()
+            return AutoReport("Repository inventories refreshed")
+        }
+
         override fun repositories(): List<String> = listOf("example/updated", "example/current", "example/updated")
 
         override fun createPullRequest(
@@ -159,6 +171,7 @@ class AutoProcessTest {
                 "dependencies",
                 "boms",
                 "plugins",
+                "refresh",
                 "pr:example/current",
                 "pr:example/updated",
             ),
@@ -174,6 +187,7 @@ class AutoProcessTest {
         assertEquals("2.0", operations.stored.plugins["example.plugin"])
         assertEquals("example/updated", logs.single { it.url != null }.repository)
         assertEquals("https://github.com/example/updated/pull/42", logs.single { it.url != null }.url)
+        assertEquals("Repository inventories refreshed", logs.single { it.step == "Refresh Dependency Scanner" }.message)
         assertNotNull(logs.last().details)
         assertNotNull(service.start("alice"))
     }
@@ -207,12 +221,13 @@ class AutoProcessTest {
         executor.runNext()
         assertFalse(operations.calls.any { it.startsWith("save:") })
         assertTrue(operations.calls.contains("plugins"))
+        assertTrue(operations.calls.indexOf("refresh") < operations.calls.indexOf("pr:example/current"))
         assertEquals(AutoRunStatus.COMPLETED, service.snapshot().run?.status)
     }
 
     @Test
-    fun `each unsafe or incomplete scan stops all following stages and PR creation`() {
-        listOf("dependencies", "boms", "plugins").forEach { stage ->
+    fun `each unsafe scan or unsuccessful refresh stops all following stages and PR creation`() {
+        listOf("dependencies", "boms", "plugins", "refresh").forEach { stage ->
             val operations = Operations().apply { fail = stage }
             val executor = QueuedExecutor()
             val service = AutoProcessService(MemoryAutoRunStore(), AutoWorkflow(operations), executor)
@@ -272,6 +287,11 @@ class AutoProcessTest {
             assertEquals("Scan Dependencies", service.snapshot().run?.step)
             assertNotNull(service.snapshot().run?.stepStartedAt)
         }
+        operations.onRefresh = {
+            assertEquals("Refresh Dependency Scanner", service.snapshot().run?.step)
+            assertNotNull(service.snapshot().run?.stepStartedAt)
+            assertFalse(operations.calls.any { it.startsWith("pr:") })
+        }
         service.start("alice")
         executor.runNext()
         val handler = routes(*autoProcessRoutes(service, username = { "bob" }).toTypedArray()).withUserCacheControl()
@@ -299,6 +319,86 @@ class AutoProcessTest {
         val secured = routes(*autoProcessRoutes(service).toTypedArray())
         assertThrows(RuntimeException::class.java) { secured(Request(Method.GET, "/internal/triggerAuto")) }
         assertThrows(RuntimeException::class.java) { secured(Request(Method.GET, "/internal/api/auto/status")) }
+    }
+
+    @Test
+    fun `run metadata spans log pages and only older inactive runs can be deleted globally`() {
+        val store = MemoryAutoRunStore()
+        val previous = checkNotNull(store.tryStart("alice"))
+        repeat(150) { store.report(previous.id, AutoReport("Previous report $it")) }
+        store.finish(previous.id, AutoRunStatus.COMPLETED, AutoReport("Finished"))
+        val latest = checkNotNull(store.tryStart("bob"))
+        val snapshot = store.snapshot()
+        assertEquals(100, snapshot.logs.size)
+        assertNotNull(snapshot.nextBefore)
+        assertTrue(snapshot.logs.none { it.runId == previous.id && it.message == "Auto process started" })
+        val previousMetadata = snapshot.runs.single { it.id == previous.id }
+        assertEquals(previous.startedAt, previousMetadata.startedAt)
+        assertNotNull(previousMetadata.finishedAt)
+        assertEquals(AutoRunStatus.COMPLETED, previousMetadata.status)
+        val service = AutoProcessService(store, AutoWorkflow(Operations()), QueuedExecutor())
+        val handler = routes(*autoProcessRoutes(service, username = { "another-user" }).toTypedArray()).withUserCacheControl()
+
+        fun delete(id: String) = handler(Request(Method.DELETE, "/internal/api/auto/runs/$id"))
+        assertEquals(Status.CONFLICT, delete(latest.id).status)
+        store.finish(latest.id, AutoRunStatus.FAILED, AutoReport("Failed"))
+        assertEquals(Status.CONFLICT, delete(latest.id).status)
+        val deleted = delete(previous.id.uppercase())
+        assertEquals(Status.NO_CONTENT, deleted.status)
+        assertEquals("no-store", deleted.header("Cache-Control"))
+        assertEquals(Status.NOT_FOUND, delete(previous.id).status)
+        val recreated = AutoProcessService(store, AutoWorkflow(Operations()), QueuedExecutor())
+        assertEquals(latest.id, recreated.snapshot().run?.id)
+        assertTrue(recreated.snapshot().logs.all { it.runId == latest.id })
+        assertEquals(listOf(latest.id), recreated.snapshot().runs.map { it.id })
+        listOf("invalid", "1-1-1-1-1", "00000000-0000-0000-0000-00000000000x").forEach {
+            assertEquals(Status.BAD_REQUEST, delete(it).status)
+        }
+        val secured = routes(*autoProcessRoutes(service).toTypedArray())
+        assertThrows(RuntimeException::class.java) {
+            secured(Request(Method.DELETE, "/internal/api/auto/runs/${latest.id}"))
+        }
+    }
+
+    @Test
+    fun `deleting history preserves remaining logs pagination and monotonic new log IDs`() {
+        val store = MemoryAutoRunStore()
+        val first = checkNotNull(store.tryStart("alice"))
+        store.finish(first.id, AutoRunStatus.COMPLETED, AutoReport("First finished"))
+        val second = checkNotNull(store.tryStart("alice"))
+        store.finish(second.id, AutoRunStatus.COMPLETED, AutoReport("Second finished"))
+        val cursor =
+            store
+                .snapshot()
+                .logs
+                .last()
+                .id
+        val third = checkNotNull(store.tryStart("bob"))
+        store.finish(third.id, AutoRunStatus.COMPLETED, AutoReport("Third finished"))
+        val largest =
+            store
+                .snapshot()
+                .logs
+                .last()
+                .id
+        assertEquals(AutoRunDeletion.DELETED, store.deleteRun(second.id))
+        assertEquals(
+            listOf(first.id),
+            store
+                .snapshot(cursor)
+                .logs
+                .map { it.runId }
+                .distinct(),
+        )
+        val fourth = checkNotNull(store.tryStart("alice"))
+        assertTrue(
+            store
+                .snapshot()
+                .logs
+                .last()
+                .id > largest,
+        )
+        assertEquals(fourth.id, store.snapshot().run?.id)
     }
 
     @Test
