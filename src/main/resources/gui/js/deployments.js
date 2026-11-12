@@ -358,7 +358,6 @@ function appendDeploymentRebuildActions(heading, repository) {
         icon.height = 18;
         icon.setAttribute("aria-hidden", "true");
         link.appendChild(icon);
-        actions.appendChild(link);
         try {
             const targets = workflow.monorepo ? deploymentRebuildTargets(repository, workflow.namespace === true, workflow.fixedApp === true) : null;
             const rebuildCommand = `gh workflow run rebuild.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}` +
@@ -367,11 +366,13 @@ function appendDeploymentRebuildActions(heading, repository) {
                 ? `gh workflow run deploy-job.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}`
                 : null;
             const command = [rebuildCommand, jobCommand].filter(Boolean).join("\n");
+            if (targets) actions.appendChild(deploymentCopyButton("targets", targets, feedback, repository.repository));
+            actions.appendChild(link);
             actions.appendChild(deploymentCopyButton("gh", command, feedback, repository.repository));
             deploymentRebuildCommands.set(repository.repository, command);
-            if (targets) actions.appendChild(deploymentCopyButton("targets", targets, feedback, repository.repository));
         } catch (failure) {
             console.error("Could not create rebuild command", failure);
+            actions.appendChild(link);
             showDeploymentFeedback(feedback, failure.message, false);
         }
     }

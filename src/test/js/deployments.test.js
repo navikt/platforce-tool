@@ -197,7 +197,7 @@ test("renders repository-associated jobs with a job pill and excludes them from 
     assert.equal(applicationRow.children[0].textContent, "daily");
     assert.match(job.children[0].children[0].className, /deployment-job-pill/);
     const actions = get("deploymentsContainer").children[0].children[0].children[1];
-    await actions.children[2].onclick();
+    await actions.children[0].onclick();
     assert.equal(copied, "daily:prod-gcp");
 });
 
@@ -222,18 +222,18 @@ test("repositories with jobs open both workflow pages and copy both dispatch com
     context.navigator.clipboard.writeText = async text => { copied = text; };
     await context.loadDeployments();
     const actions = get("deploymentsContainer").children[0].children[0].children[1];
-    actions.children[0].onclick({ preventDefault() {} });
+    actions.children[1].onclick({ preventDefault() {} });
     assert.deepEqual(opened, [
         ["https://github.com/example/mono/actions/workflows/rebuild.yml", "_blank", "noopener,noreferrer"],
         ["https://github.com/example/mono/actions/workflows/deploy-job.yml", "_blank", "noopener,noreferrer"]
     ]);
-    await actions.children[1].onclick();
+    await actions.children[2].onclick();
     const rebuild = "gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='orders:prod-gcp'";
     const job = "gh workflow run deploy-job.yml --repo 'example/mono' --ref 'main'";
     assert.equal(copied, `${rebuild}\n${job}`);
     await get("deploymentRebuildAll").children[0].onclick();
     assert.equal(copied, `${rebuild}\n${job}`);
-    await actions.children[2].onclick();
+    await actions.children[0].onclick();
     assert.equal(copied, "orders:prod-gcp");
 });
 
@@ -510,9 +510,9 @@ test("monorepo copies deduplicated targets for every running app and environment
     await context.loadDeployments();
     const heading = get("deploymentsContainer").children[1].children[0];
     const actions = heading.children[1];
-    assert.deepEqual(actions.children.map(child => child.textContent), ["Rebuild", "gh", "targets"]);
-    await actions.children[1].onclick();
+    assert.deepEqual(actions.children.map(child => child.textContent), ["targets", "Rebuild", "gh"]);
     await actions.children[2].onclick();
+    await actions.children[0].onclick();
     const targets = "orders:dev-gcp,orders:prod-gcp,worker:prod-gcp";
     assert.deepEqual(copied, [
         `gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='${targets}'`,
@@ -541,8 +541,8 @@ test("fixed-app monorepo copies deduplicated cluster namespace targets in indivi
     context.navigator.clipboard.writeText = async text => copied.push(text);
     await context.loadDeployments();
     const actions = get("deploymentsContainer").children[0].children[0].children[1];
-    await actions.children[1].onclick();
     await actions.children[2].onclick();
+    await actions.children[0].onclick();
     await get("deploymentRebuildAll").children[0].onclick();
     const targets = "dev-gcp:team-a,dev-gcp:team-b,prod-gcp:team-a";
     const command = `gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='${targets}'`;
@@ -580,8 +580,8 @@ test("namespace monorepo copies app cluster namespace triples without merging ta
     context.navigator.clipboard.writeText = async text => copied.push(text);
     await context.loadDeployments();
     const actions = get("deploymentsContainer").children[0].children[0].children[1];
-    await actions.children[1].onclick();
     await actions.children[2].onclick();
+    await actions.children[0].onclick();
     const targets = "orders:dev-gcp:team-a,orders:dev-gcp:team-b,worker:prod-gcp:team-b";
     assert.deepEqual(copied, [
         `gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='${targets}'`,
@@ -711,7 +711,7 @@ test("renders applications before workflow lookups finish and updates only the r
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(card.children[0], heading);
     assert.equal(card.children[1], rows);
-    assert.deepEqual(heading.children[1].children.map(child => child.textContent), ["Rebuild", "gh", "targets"]);
+    assert.deepEqual(heading.children[1].children.map(child => child.textContent), ["targets", "Rebuild", "gh"]);
     assert.equal(get("deploymentsStatus").textContent, "");
     await context.loadDeployments();
     assert.equal(lookups, 1);
