@@ -22,6 +22,7 @@ data class RunningApplication(
     val repositorySource: RepositorySource? = null,
     val repositoryAssociationTime: String? = null,
     val lastDeploymentActivityTime: String? = null,
+    val workloadType: String = "APPLICATION",
 )
 
 enum class RepositorySource {
@@ -103,9 +104,47 @@ internal class NaisDeploymentDiscovery(
                     )
                 }
             }
+        val jobs =
+            teams.flatMap { team ->
+                pages { cursor ->
+                    query(load("deployment-jobs"), mapOf("team" to team, "after" to cursor))
+                        .getAsJsonObject("team")
+                        .getAsJsonObject("jobs")
+                }.map { job ->
+                    val association = repositoryAssociation(job["id"].asString)
+                    val image = job.get("image")?.takeUnless { it.isJsonNull }?.asJsonObject
+                    RunningApplication(
+                        team = team,
+                        name = job["name"].asString,
+                        environment = job.getAsJsonObject("teamEnvironment").getAsJsonObject("environment")["name"].asString,
+                        repository = association.repository,
+                        instances = 0,
+                        readyInstances = 0,
+                        images =
+                            image
+                                ?.let {
+                                    listOf(
+                                        RunningImage(
+                                            it.optionalString("name").orEmpty(),
+                                            it.optionalString("tag").orEmpty(),
+                                            it.optionalString("digest"),
+                                        ),
+                                    )
+                                }.orEmpty(),
+                        deploymentTime = association.createdAt.takeIf { association.source == RepositorySource.SUCCESSFUL_DEPLOYMENT },
+                        repositoryDiagnostic = association.diagnostic,
+                        repositorySource = association.source,
+                        repositoryAssociationTime = association.createdAt,
+                        lastDeploymentActivityTime = association.lastDeploymentActivityTime,
+                        workloadType = "JOB",
+                    )
+                }
+            }
         return RunningDeployments(
             teams,
-            applications.sortedWith(compareBy({ it.repository ?: "" }, { it.team }, { it.name }, { it.environment })),
+            (applications + jobs).sortedWith(
+                compareBy({ it.repository ?: "" }, { it.team }, { it.name }, { it.environment }, { it.workloadType }),
+            ),
         )
     }
 

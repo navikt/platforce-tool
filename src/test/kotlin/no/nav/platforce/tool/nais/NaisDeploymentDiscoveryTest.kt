@@ -54,6 +54,7 @@ class NaisDeploymentDiscoveryTest {
                 "query DeploymentTeams" in query -> json("""{"user":{"teams":${connection("""{"team":{"slug":"team"}}""")}}}""")
                 "query DeploymentApplications" in query -> json("""{"team":{"applications":${connection(app("app"))}}}""")
                 "query DeploymentInstances" in query -> json("""{"node":{"instances":${connection(instance("RUNNING"))}}}""")
+                "query DeploymentJobs" in query -> json("""{"team":{"jobs":${connection("")}}}""")
                 else -> json("""{"node":{"activityLog":{"nodes":[$activity]},"deployments":${connection(deployments)}}}""")
             }
         }.get("alice").applications.single()
@@ -152,6 +153,10 @@ class NaisDeploymentDiscoveryTest {
                         json("""{"team":{"applications":${connection(app("app"))}}}""")
                     }
 
+                    "query DeploymentJobs" in query -> {
+                        json("""{"team":{"jobs":${connection("")}}}""")
+                    }
+
                     "query DeploymentInstances" in query -> {
                         json("""{"node":{"instances":${connection(instance("RUNNING"))}}}""")
                     }
@@ -205,6 +210,10 @@ class NaisDeploymentDiscoveryTest {
                                 else -> connection(app("prod", "prod-gcp") + "," + app("unknown"))
                             }
                         json("""{"team":{"applications":$page}}""")
+                    }
+
+                    "query DeploymentJobs" in query -> {
+                        json("""{"team":{"jobs":${connection("")}}}""")
                     }
 
                     "query DeploymentInstances" in query -> {
@@ -290,6 +299,10 @@ class NaisDeploymentDiscoveryTest {
                         )
                     }
 
+                    "query DeploymentJobs" in query -> {
+                        json("""{"team":{"jobs":${connection("")}}}""")
+                    }
+
                     else -> {
                         json("""{"team":{"applications":${connection("")}}}""")
                     }
@@ -297,5 +310,46 @@ class NaisDeploymentDiscoveryTest {
             }
         assertEquals(listOf("alice"), discovery.get("alice").teams)
         assertEquals(listOf("bob"), discovery.get("bob").teams)
+    }
+
+    @Test
+    fun `repository associated jobs are included with their environment and image`() {
+        val discovery =
+            NaisDeploymentDiscovery { query, _ ->
+                when {
+                    "query DeploymentTeams" in query -> {
+                        json("""{"user":{"teams":${connection("""{"team":{"slug":"team-a"}}""")}}}""")
+                    }
+
+                    "query DeploymentApplications" in query -> {
+                        json("""{"team":{"applications":${connection("")}}}""")
+                    }
+
+                    "query DeploymentJobs" in query -> {
+                        json(
+                            """{"team":{"jobs":${connection(
+                                """{"id":"job-1","name":"nightly","teamEnvironment":{"environment":{"name":"prod-gcp"}},"image":{"name":"registry/nightly","tag":"v1","digest":"sha256:abc"}}""",
+                            )}}}""",
+                        )
+                    }
+
+                    else -> {
+                        json(
+                            """{"node":{"activityLog":{"nodes":[${activity("example/jobs")}]},"deployments":${connection("")}}}""",
+                        )
+                    }
+                }
+            }
+
+        val jobs = discovery.get("alice").applications
+        assertEquals(1, jobs.size)
+        val job = jobs.single()
+        assertEquals("JOB", job.workloadType)
+        assertEquals("nightly", job.name)
+        assertEquals("prod-gcp", job.environment)
+        assertEquals("example/jobs", job.repository)
+        assertEquals(0, job.instances)
+        assertEquals("registry/nightly", job.images.single().name)
+        assertEquals("sha256:abc", job.images.single().digest)
     }
 }

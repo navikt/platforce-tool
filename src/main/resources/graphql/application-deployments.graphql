@@ -1,6 +1,6 @@
 query ApplicationDeployments($id: ID!, $after: Cursor) {
   node(id: $id) {
-    ... on Application {
+    ... on Workload {
       activityLog(first: 1, filter: { activityTypes: [
         DEPLOYMENT
         APPLICATION_UPDATED

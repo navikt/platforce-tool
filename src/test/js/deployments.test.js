@@ -169,6 +169,38 @@ test("groups monorepo applications by repository then owning team and merges env
     assert.equal(grouped.find(repo => repo.repository === "").teams[0].applications[0].name, "unknown");
 });
 
+test("renders repository-associated jobs with a job pill and excludes them from rebuild targets", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true,
+        json: async () => ({
+            teams: ["team-a"],
+            applications: [
+                application("team-a", "nightly", "prod-gcp"),
+                { ...application("team-a", "nightly", "prod-gcp"), workloadType: "JOB" }
+            ],
+            rebuildWorkflows: {
+                "example/mono": { monorepo: true, branch: "main", exists: true }
+            }
+        })
+    }));
+    let copied;
+    context.navigator.clipboard.writeText = async text => { copied = text; };
+    await context.loadDeployments();
+    const table = get("deploymentsContainer").children[0].children[1].children[1];
+    const rows = table.children[0].children;
+    assert.equal(rows.length, 2);
+    const job = rows.find(row => row.children[0].children[0]?.textContent === "job");
+    const applicationRow = rows.find(row => row.children[0].children.length === 0);
+    assert.equal(job.children[0].textContent, "nightly");
+    assert.equal(job.children[0].children[0].textContent, "job");
+    assert.equal(applicationRow.children[0].textContent, "nightly");
+    assert.match(job.children[0].children[0].className, /deployment-job-pill/);
+    const actions = get("deploymentsContainer").children[0].children[0].children[1];
+    await actions.children[2].onclick();
+    assert.equal(copied, "nightly:prod-gcp");
+});
+
 test("loads lazily once, renders all teams and concise merged rows, refreshes explicitly", async () => {
     const { context, get } = app();
     let calls = 0;

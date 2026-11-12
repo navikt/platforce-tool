@@ -1,0 +1,13 @@
+query DeploymentJobs($team: Slug!, $after: Cursor) {
+  team(slug: $team) {
+    jobs(first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        name
+        teamEnvironment { environment { name } }
+        image { name tag digest }
+      }
+    }
+  }
+}

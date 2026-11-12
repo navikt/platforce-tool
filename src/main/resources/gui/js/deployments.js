@@ -12,7 +12,7 @@ function renderDeploymentRebuildAll() {
     const slot = document.getElementById("deploymentRebuildAll");
     slot.replaceChildren();
     if (deploymentsLoading || !deploymentData ||
-        deploymentData.applications.some(app => app.repository &&
+        deploymentData.applications.some(app => app.repository && app.workloadType !== "JOB" &&
             !Object.hasOwn(deploymentData.rebuildWorkflows || {}, app.repository)) ||
         !deploymentRebuildCommands.size) return;
     const commands = [...deploymentRebuildCommands.entries()]
@@ -34,7 +34,9 @@ function deploymentLoadingStatus(text) {
 
 async function loadDeploymentWorkflows(data, generation) {
     data.rebuildWorkflows ||= {};
-    const pending = [...new Set(data.applications.map(app => app.repository).filter(Boolean))]
+    const pending = [...new Set(data.applications
+        .filter(app => app.workloadType !== "JOB")
+        .map(app => app.repository).filter(Boolean))]
         .filter(repository => !Object.hasOwn(data.rebuildWorkflows, repository));
     if (!pending.length) return;
     const controller = new AbortController();
@@ -167,16 +169,18 @@ function groupDeploymentApplications(applications) {
         const teams = repositories.get(repository);
         if (!teams.has(application.team)) teams.set(application.team, new Map());
         const apps = teams.get(application.team);
-        if (!apps.has(application.name)) apps.set(application.name, []);
-        apps.get(application.name).push(application);
+        const key = `${application.workloadType || "APPLICATION"}\u0000${application.name}`;
+        if (!apps.has(key)) apps.set(key, []);
+        apps.get(key).push(application);
     });
     const sorted = map => [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
     return sorted(repositories).map(([repository, teams]) => ({
         repository,
         teams: sorted(teams).map(([team, apps]) => ({
             team,
-            applications: sorted(apps).map(([name, environments]) => ({
-                name,
+            applications: sorted(apps).map(([key, environments]) => ({
+                name: key.split("\u0000")[1],
+                workloadType: key.split("\u0000")[0],
                 environments: [...environments].sort((a, b) => a.environment.localeCompare(b.environment))
             }))
         }))
@@ -185,7 +189,7 @@ function groupDeploymentApplications(applications) {
 
 function deploymentRebuildTargets(repository, namespace = false, fixedApp = false) {
     const targets = repository.teams.flatMap(team =>
-        team.applications.flatMap(app => app.environments.map(env => {
+        team.applications.filter(app => app.workloadType !== "JOB").flatMap(app => app.environments.map(env => {
             if ((!fixedApp && !/^[a-z0-9][a-z0-9-]*$/.test(app.name)) || !/^[a-z0-9][a-z0-9-]*$/.test(env.environment)) {
                 throw new Error("Cannot create rebuild targets: unsupported application or environment name.");
             }
@@ -425,7 +429,10 @@ function renderDeployments() {
             heading.textContent = "Repository unknown";
         }
         heading.title = "Repository from successful deployment history or application activity; not verified as the image build source.";
-        if (repository.repository) appendDeploymentRebuildActions(heading, repository);
+        if (repository.repository && repository.teams.some(team =>
+            team.applications.some(app => app.workloadType !== "JOB"))) {
+            appendDeploymentRebuildActions(heading, repository);
+        }
         card.appendChild(heading);
         repository.teams.forEach(team => {
             const section = document.createElement("section");
@@ -442,6 +449,13 @@ function renderDeployments() {
                 const name = document.createElement("th");
                 name.scope = "row";
                 name.textContent = application.name;
+                if (application.workloadType === "JOB") {
+                    const kind = document.createElement("span");
+                    kind.className = "deployment-job-pill";
+                    kind.textContent = "job";
+                    kind.setAttribute("aria-label", "Job");
+                    name.appendChild(kind);
+                }
                 const environments = document.createElement("td");
                 const pills = document.createElement("div");
                 pills.className = "deployment-environments";
@@ -453,7 +467,9 @@ function renderDeployments() {
                     if (freshness) {
                         pill.className += ` deployment-freshness-${freshness.state}`;
                     }
-                    pill.title = `${environment.readyInstances}/${environment.instances} running instances ready` +
+                    pill.title = (environment.workloadType === "JOB"
+                        ? "Job workload"
+                        : `${environment.readyInstances}/${environment.instances} running instances ready`) +
                         (freshness ? `\n${freshness.explanation}` : "") +
                         (environment.lastDeploymentActivityTime ? `\nLast deployment/activity: ${formatDeploymentTimestamp(environment.lastDeploymentActivityTime)}` : "") +
                         (environment.repositorySource ? `\nRepository association: ${environment.repositorySource === "ACTIVITY_LOG" ? "application activity (not rollout confirmation)" : "successful deployment"}${environment.repositoryAssociationTime ? ` at ${formatDeploymentTimestamp(environment.repositoryAssociationTime)}` : ""}` : "") +
