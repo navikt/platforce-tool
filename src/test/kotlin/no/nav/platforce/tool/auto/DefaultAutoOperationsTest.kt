@@ -263,6 +263,28 @@ class DefaultAutoOperationsTest {
     }
 
     @Test
+    fun `routine scan reports are compact and redundant overrides are non blocking REMOVE findings`() {
+        val fixture = Fixture()
+        val dependencies = fixture.operations.scanDependencies("alice", fixture.state, fixture::tick)
+        assertTrue(dependencies.message.contains("1 targets checked"))
+        assertEquals(null, dependencies.details)
+        val boms = fixture.operations.scanBoms("alice", fixture.state, fixture::tick)
+        assertEquals("BOM scan finished: 1 saved BOMs checked for coverage", boms.message)
+        assertEquals(null, boms.details)
+        assertEquals(null, fixture.operations.scanPlugins("alice", fixture.state, fixture::tick).details)
+
+        fixture.state = fixture.state.copy(transientDependencies = setOf("example:library"))
+        val redundant = fixture.operations.scanDependencies("alice", fixture.state, fixture::tick)
+        assertTrue(redundant.details!!.startsWith("REMOVE example:library:1.2: redundant transient override."))
+        assertTrue(redundant.details.contains("review repository declarations"))
+        fixture.operations.scanBoms("alice", fixture.state, fixture::tick)
+        fixture.operations.scanPlugins("alice", fixture.state, fixture::tick)
+        val report = fixture.operations.createPullRequest("alice", fixture.state, "example/repo", fixture::tick)
+        assertTrue(report.details!!.startsWith("REMOVE example:library:"))
+        assertEquals("https://github.com/example/repo/pull/1", report.url)
+    }
+
+    @Test
     fun `target changes or opting out during PR creation prevent further GitHub writes`() {
         listOf(true, false).forEach { changeTargets ->
             val fixture = Fixture()

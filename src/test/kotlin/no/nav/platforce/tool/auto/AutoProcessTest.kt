@@ -179,6 +179,26 @@ class AutoProcessTest {
     }
 
     @Test
+    fun `started report captures sorted opt ins before asynchronous work and retains them after settings change`() {
+        val repositories = mutableSetOf("example/z-repo", "example/a-repo")
+        val store = MemoryAutoRunStore { repositories.toSet() }
+        val executor = QueuedExecutor()
+        val operations = Operations()
+        val service = AutoProcessService(store, AutoWorkflow(operations), executor)
+        service.start("alice")
+        val started = service.snapshot().logs.single()
+        assertEquals("Auto process started", started.message)
+        assertEquals("Repositories opted in at start (2):\nexample/a-repo\nexample/z-repo", started.details)
+        assertTrue(operations.calls.isEmpty())
+        executor.runNext()
+        repositories.clear()
+        service.start("bob")
+        val reports = service.snapshot().logs.filter { it.message == "Auto process started" }
+        assertEquals(started, reports.first())
+        assertEquals("No repositories were opted in at start.", reports.last().details)
+    }
+
+    @Test
     fun `no upgrades skips saving but still scans and evaluates opted in repositories`() {
         val operations = Operations().apply { upgrade = false }
         val executor = QueuedExecutor()

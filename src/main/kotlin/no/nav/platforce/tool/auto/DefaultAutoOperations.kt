@@ -138,6 +138,16 @@ class DefaultAutoOperations(
                         it.group.isNullOrBlank() || it.version.isBlank() || it.version == "<unresolved>" || it.resolutionError != null
                     }.map { "${it.key}:${it.version}: ${it.resolutionError ?: "Incomplete dependency metadata"}" }
         val vulnerable = result.targets.filter { it.status == TargetSecurityStatus.VULNERABLE }
+        val removals =
+            result.targets.filter { it.status == TargetSecurityStatus.TRANSIENT_UNUSED }.map { target ->
+                val replacements = target.replacementDependencies
+                "REMOVE ${target.key}:${target.targetVersion}: redundant transient override. " +
+                    if (replacements.isEmpty()) {
+                        "No active overrides require it; review repository declarations before removing the saved target."
+                    } else {
+                        "Removable in repositories containing ${replacements.joinToString { "${it.dependency}:${it.targetVersion}" }}."
+                    }
+            }
         if (incomplete.isNotEmpty() || vulnerable.isNotEmpty() ||
             result.targets.associate { it.key to it.targetVersion } != effective.dependencies
         ) {
@@ -148,14 +158,14 @@ class DefaultAutoOperations(
                         incomplete +
                             vulnerable.map { target ->
                                 "${target.key}:${target.targetVersion}: ${target.vulnerabilities.joinToString { it.id }}"
-                            }
+                            } + removals
                     ).joinToString("\n").ifBlank { "Security results do not cover every saved dependency target." },
                 ),
             )
         }
         return AutoReport(
-            "Dependency scan finished: no unresolved target vulnerabilities",
-            "${result.targets.size} targets checked, including transitive dependencies and configured overrides.",
+            "Dependency scan finished: ${result.targets.size} targets checked; no unresolved target vulnerabilities",
+            removals.takeIf { it.isNotEmpty() }?.joinToString("\n"),
         )
     }
 
@@ -172,11 +182,20 @@ class DefaultAutoOperations(
         if (result.platformBoms.associate { it.key to it.targetVersion } != effective.platformBoms ||
             result.platformBoms.any { it.status == TargetSecurityStatus.VULNERABLE || it.vulnerableDependencies.isNotEmpty() }
         ) {
-            throw AutoStopped(AutoReport("Auto stopped: BOM vulnerabilities or incomplete checks; work is unfinished"))
+            throw AutoStopped(
+                AutoReport(
+                    "Auto stopped: BOM vulnerabilities or incomplete checks; work is unfinished",
+                    result.platformBoms
+                        .filter { it.status == TargetSecurityStatus.VULNERABLE || it.vulnerableDependencies.isNotEmpty() }
+                        .joinToString("\n") { bom ->
+                            "${bom.key}:${bom.targetVersion}: VULNERABLE " +
+                                bom.vulnerableDependencies.flatMap { it.vulnerabilities }.joinToString { it.id }
+                        }.ifBlank { "BOM scan results do not cover every saved BOM target." },
+                ),
+            )
         }
         return AutoReport(
-            "BOM scan finished",
-            "${result.platformBoms.size} saved BOMs checked for coverage. This is coverage analysis, not a full managed-catalog vulnerability audit.",
+            "BOM scan finished: ${result.platformBoms.size} saved BOMs checked for coverage",
         )
     }
 
@@ -195,17 +214,17 @@ class DefaultAutoOperations(
             throw AutoStopped(
                 AutoReport(
                     "Auto stopped: plugin vulnerabilities or incomplete checks; work is unfinished",
-                    issues.joinToString("\n") {
-                        "${it.key}:${it.targetVersion}: ${it.status} ${it.error ?: it.vulnerabilities.joinToString { vulnerability ->
-                            vulnerability.id
-                        }}"
-                    },
+                    issues
+                        .joinToString("\n") {
+                            "${it.key}:${it.targetVersion}: ${it.status} ${it.error ?: it.vulnerabilities.joinToString { vulnerability ->
+                                vulnerability.id
+                            }}"
+                        }.ifBlank { "Security results do not cover every saved plugin target." },
                 ),
             )
         }
         return AutoReport(
             "Plugin scan finished: ${result.plugins.size} plugins checked",
-            "Published plugin metadata and transitive build-time dependencies checked without applying plugins.",
         )
     }
 

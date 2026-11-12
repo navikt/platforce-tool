@@ -25,6 +25,16 @@ data class AutoReport(
     val url: String? = null,
 )
 
+internal fun autoStartedReport(repositories: Set<String>) =
+    AutoReport(
+        "Auto process started",
+        if (repositories.isEmpty()) {
+            "No repositories were opted in at start."
+        } else {
+            "Repositories opted in at start (${repositories.size}):\n${repositories.sorted().joinToString("\n")}"
+        },
+    )
+
 data class AppLogEntry(
     val id: Long,
     val timestamp: String,
@@ -76,3 +86,5 @@ class AutoStopped(
 class AutoInterrupted(
     message: String,
 ) : IllegalStateException(message)
+
+class AutoSettingsLocked : IllegalStateException("Auto settings cannot be changed while an Auto process is running")

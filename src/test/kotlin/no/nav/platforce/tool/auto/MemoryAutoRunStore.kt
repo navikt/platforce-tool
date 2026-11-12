@@ -3,7 +3,9 @@ package no.nav.platforce.tool.auto
 import java.time.Instant
 import java.util.UUID
 
-class MemoryAutoRunStore : AutoRunStore {
+class MemoryAutoRunStore(
+    private val optedIn: () -> Set<String> = { emptySet() },
+) : AutoRunStore {
     private var current: AutoRun? = null
     private val logs = mutableListOf<AppLogEntry>()
     var healthy = true
@@ -12,7 +14,7 @@ class MemoryAutoRunStore : AutoRunStore {
     override fun tryStart(username: String): AutoRun? {
         if (current?.status == AutoRunStatus.RUNNING) return null
         current = AutoRun(UUID.randomUUID().toString(), username, AutoRunStatus.RUNNING, Instant.now().toString())
-        append(AutoReport("Auto process started"), "INFO")
+        append(autoStartedReport(optedIn()), "INFO")
         return current
     }
 

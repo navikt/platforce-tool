@@ -34,7 +34,10 @@ function createAutoToggle(repository) {
 function updateAutoToggle(button) {
     const repository = button.dataset.repository;
     button.setAttribute("aria-checked", String(autoRepositories.has(repository)));
-    button.disabled = !autoRepositoriesLoaded || autoRepositoriesSaving.has(repository);
+    const running = autoProcessRun?.status === "RUNNING";
+    button.disabled = !autoRepositoriesLoaded || !autoProcessStatusLoaded || running || autoRepositoriesSaving.has(repository);
+    button.title = running ? "Auto settings are locked while the process is running"
+        : !autoProcessStatusLoaded ? "Waiting for confirmed Auto process status" : "Global opt-in shared by all users";
 }
 
 function updateAutoToggles() {
@@ -84,7 +87,7 @@ async function loadAutoRepositories() {
 }
 
 async function saveAutoRepository(repository) {
-    if (!autoRepositoriesLoaded || autoRepositoriesSaving.has(repository)) return;
+    if (!autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessRun?.status === "RUNNING" || autoRepositoriesSaving.has(repository)) return;
     const enabled = !autoRepositories.has(repository);
     autoRepositoriesSaving.add(repository);
     autoReadGeneration++;
@@ -98,7 +101,14 @@ async function saveAutoRepository(repository) {
             body: JSON.stringify({ repository, enabled })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        if (!response.ok) {
+            if (response.status === 409) {
+                autoProcessStatusLoaded = false;
+                updateAutoToggles();
+                await loadAutoProcess();
+            }
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
         if (data.repository !== repository || data.enabled !== enabled) throw new Error("Invalid Auto setting response");
         autoReadGeneration++;
         if (enabled) autoRepositories.add(repository);
@@ -116,6 +126,7 @@ async function saveAutoRepository(repository) {
 let autoProcessTimer = null;
 let autoProcessLoading = false;
 let autoProcessRun = null;
+let autoProcessStatusLoaded = false;
 let autoLogsLoaded = false;
 let autoNextBefore = null;
 let autoRenderedStep = null;
@@ -125,8 +136,88 @@ const autoLogNodes = new Map();
 function autoLogTimestamp(timestamp) {
     const time = document.createElement("time");
     time.dateTime = timestamp;
-    time.textContent = new Date(timestamp).toLocaleString();
+    time.textContent = formatDeploymentTimestamp(timestamp);
     return time;
+}
+
+function autoUserPill(username) {
+    const pill = document.createElement("span");
+    pill.className = "auto-log-pill auto-log-user";
+    pill.textContent = "user";
+    pill.title = username;
+    return pill;
+}
+
+function autoLogText(node, text) {
+    const scans = /\b(?:dependency scan|dependencies scan|scan dependencies|plugin scan|scan plugins|BOM scan|scan BOMs)\b/gi;
+    let offset = 0;
+    for (const match of text.matchAll(scans)) {
+        const before = document.createElement("span");
+        before.textContent = text.slice(offset, match.index);
+        const pill = document.createElement("span");
+        const kind = /dependenc/i.test(match[0]) ? "dependency" : /plugin/i.test(match[0]) ? "plugin" : "platform-bom";
+        pill.className = `auto-log-pill auto-scan-pill ${kind}-pill`;
+        pill.textContent = match[0];
+        node.append(before, pill);
+        offset = match.index + match[0].length;
+    }
+    if (!offset) {
+        node.textContent = text;
+    } else {
+        const after = document.createElement("span");
+        after.textContent = text.slice(offset);
+        node.appendChild(after);
+    }
+}
+
+function autoLogPresentation(entry) {
+    let { message, details } = entry;
+    if (message === `Saved Target Versions as ${entry.username}`) message = "Saved Target Versions";
+    if (message === `Skipped: repository is ignored by ${entry.username}`) message = "Skipped: repository is ignored by this user";
+    if (entry.level === "INFO") {
+        const dependency = details?.match(/^(\d+ targets checked), including transitive dependencies and configured overrides\.$/);
+        if (message === "Dependency scan finished: no unresolved target vulnerabilities" && dependency) {
+            message = `Dependency scan finished: ${dependency[1]}; no unresolved target vulnerabilities`;
+            details = null;
+        }
+        const bom = details?.match(/^(\d+ saved BOMs checked for coverage)\. This is coverage analysis, not a full managed-catalog vulnerability audit\.$/);
+        if (message === "BOM scan finished" && bom) {
+            message = `BOM scan finished: ${bom[1]}`;
+            details = null;
+        }
+        if (/^Plugin scan finished: \d+ plugins checked$/.test(message) &&
+            details === "Published plugin metadata and transitive build-time dependencies checked without applying plugins.") {
+            details = null;
+        }
+    }
+    return { message, details };
+}
+
+function autoLogReport(text) {
+    const report = document.createElement("div");
+    report.className = "auto-log-report";
+    const users = text.startsWith("Users in database:\n");
+    text.split("\n").forEach((line, index) => {
+        const row = document.createElement("div");
+        if (users && index > 0 && line) {
+            row.appendChild(autoUserPill(line));
+        } else {
+            const action = line.match(/^(UPDATE|AHEAD|ADD|REMOVE|OK|VULNERABLE|UNRESOLVED|UNSUPPORTED)\b/);
+            if (action) {
+                const pill = document.createElement("span");
+                const status = action[1] === "VULNERABLE" ? "target-status-vulnerable" : `status-${action[1].toLowerCase()}`;
+                pill.className = `status-pill ${status}`;
+                pill.textContent = action[1];
+                const rest = document.createElement("span");
+                rest.textContent = line.slice(action[0].length);
+                row.append(pill, rest);
+            } else {
+                autoLogText(row, line);
+            }
+        }
+        report.appendChild(row);
+    });
+    return report;
 }
 
 function autoLogNode(entry) {
@@ -135,11 +226,20 @@ function autoLogNode(entry) {
     const header = document.createElement("div");
     header.className = "auto-log-meta";
     header.appendChild(autoLogTimestamp(entry.timestamp));
-    const context = document.createElement("span");
-    context.textContent = [entry.username, entry.repository, entry.step].filter(Boolean).join(" / ");
-    header.appendChild(context);
+    header.appendChild(autoUserPill(entry.username));
+    if (entry.repository) {
+        const repository = document.createElement("span");
+        repository.textContent = entry.repository;
+        header.appendChild(repository);
+    }
+    if (entry.step && entry.level !== "INFO") {
+        const step = document.createElement("span");
+        autoLogText(step, entry.step);
+        header.appendChild(step);
+    }
+    const presentation = autoLogPresentation(entry);
     const message = document.createElement("p");
-    message.textContent = entry.message;
+    autoLogText(message, presentation.message);
     article.append(header, message);
     if (entry.url) {
         const url = new URL(entry.url);
@@ -148,18 +248,26 @@ function autoLogNode(entry) {
         }
         const link = document.createElement("a");
         link.href = url.href;
-        link.textContent = entry.url;
+        const [, owner, repository, , number] = url.pathname.split("/");
+        link.className = "pr-button auto-pr-link";
+        link.textContent = `${repository} #${number}`;
+        link.setAttribute("aria-label", `${owner}/${repository} #${number} (opens in a new tab)`);
         link.target = "_blank";
         link.rel = "noopener noreferrer";
+        const icon = document.createElement("img");
+        icon.src = "/internal/gui/icons/external-link.svg";
+        icon.alt = "";
+        icon.width = 18;
+        icon.height = 18;
+        icon.setAttribute("aria-hidden", "true");
+        link.appendChild(icon);
         article.appendChild(link);
     }
-    if (entry.details) {
+    if (presentation.details) {
         const details = document.createElement("details");
         const summary = document.createElement("summary");
-        summary.textContent = "Report";
-        const report = document.createElement("pre");
-        report.textContent = entry.details;
-        details.append(summary, report);
+        summary.textContent = entry.message === "Auto process started" ? "Opted-in repositories" : "Report";
+        details.append(summary, autoLogReport(presentation.details));
         article.appendChild(details);
     }
     return article;
@@ -171,10 +279,12 @@ function renderAutoProcess() {
     tab.classList.toggle("auto-running", running);
     tab.setAttribute("aria-label", running ? "Auto: process running" : "Auto");
     const status = document.getElementById("autoProcessStatus");
-    const statusText = autoProcessRun
-        ? `${autoProcessRun.status} / ${autoProcessRun.username}`
-        : "No Auto runs yet.";
-    if (status.textContent !== statusText) status.textContent = statusText;
+    const statusKey = JSON.stringify([autoProcessRun?.id, autoProcessRun?.status, autoProcessRun?.username]);
+    if (status.dataset.stateKey !== statusKey) {
+        status.textContent = autoProcessRun ? autoProcessRun.status : "No Auto runs yet.";
+        if (autoProcessRun) status.appendChild(autoUserPill(autoProcessRun.username));
+        status.dataset.stateKey = statusKey;
+    }
     const current = document.getElementById("autoCurrentStep");
     current.hidden = !running;
     const stepKey = running ? JSON.stringify([autoProcessRun.id, autoProcessRun.step, autoProcessRun.repository, autoProcessRun.stepStartedAt]) : null;
@@ -185,7 +295,7 @@ function renderAutoProcess() {
             spinner.className = "spinner";
             spinner.setAttribute("aria-hidden", "true");
             const step = document.createElement("span");
-            step.textContent = [autoProcessRun.step || "Starting Auto process", autoProcessRun.repository].filter(Boolean).join(" / ");
+            autoLogText(step, [autoProcessRun.step || "Starting Auto process", autoProcessRun.repository].filter(Boolean).join(" / "));
             current.append(spinner, step, autoLogTimestamp(autoProcessRun.stepStartedAt || autoProcessRun.startedAt));
         }
         autoRenderedStep = stepKey;
@@ -244,13 +354,16 @@ async function loadAutoProcess(before = null) {
             mergeAutoLogs(snapshot.logs);
         }
         autoLogsLoaded = true;
+        autoProcessStatusLoaded = true;
         renderAutoProcess();
         document.getElementById("autoProcessError").textContent = "";
     } catch (failure) {
+        autoProcessStatusLoaded = false;
         console.error("Could not load Auto process", failure);
         document.getElementById("autoProcessError").textContent =
             `Could not load Auto process: ${failure.message}. Displayed status and logs may be stale; retry with Refresh.`;
     } finally {
+        updateAutoToggles();
         autoProcessLoading = false;
         older.disabled = false;
     }

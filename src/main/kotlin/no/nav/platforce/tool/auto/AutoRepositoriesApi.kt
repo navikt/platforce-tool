@@ -39,7 +39,7 @@ internal fun parseAutoRepositorySetting(body: String): AutoRepositorySetting {
 fun autoRepositoriesRoutes(
     installedRepositories: () -> List<String>,
     read: () -> Set<String> = PostgresDatabase::getAutoRepositories,
-    save: (String, Boolean) -> Unit = PostgresDatabase::saveAutoRepository,
+    save: (String, Boolean) -> Unit = DatabaseAutoRunStore()::saveRepositorySetting,
     authenticate: (Request) -> Unit = {
         it.userContext()
         Unit
@@ -76,6 +76,8 @@ fun autoRepositoriesRoutes(
                 save(setting.repository, setting.enabled)
                 json(setting)
             }
+        } catch (failure: AutoSettingsLocked) {
+            json(mapOf("error" to failure.message), Status.CONFLICT)
         } catch (failure: SQLException) {
             KotlinLogging.logger { }.error(failure) { "Could not access Auto repository settings" }
             json(mapOf("error" to "Could not access Auto repository settings"), Status.SERVICE_UNAVAILABLE)

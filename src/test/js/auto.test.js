@@ -5,15 +5,18 @@ const test = require("node:test");
 const vm = require("node:vm");
 const { html } = require("./gui-scripts");
 
-function app(fetch) {
+function app(fetch, confirmedIdle = true) {
     const elements = new Map();
     const created = [];
     const timers = new Map();
     let timerId = 0;
     function element(tagName = "div") {
         const classes = new Set();
+        let text = "";
         const node = {
-            tagName, children: [], dataset: {}, attributes: {}, listeners: {}, textContent: "", style: { display: "none" },
+            tagName, children: [], dataset: {}, attributes: {}, listeners: {}, style: { display: "none" },
+            get textContent() { return text + this.children.map(child => child.textContent).join(""); },
+            set textContent(value) { text = String(value); this.children = []; },
             classList: {
                 toggle(name, active) { if (active) classes.add(name); else classes.delete(name); },
                 contains: name => classes.has(name)
@@ -27,7 +30,7 @@ function app(fetch) {
                 const index = reference === null ? this.children.length : this.children.indexOf(reference);
                 this.children.splice(index, 0, child);
             },
-            replaceChildren(...children) { this.children = children; },
+            replaceChildren(...children) { text = ""; this.children = children; },
             setAttribute(key, value) { this.attributes[key] = value; },
             addEventListener(event, listener) { this.listeners[event] = listener; }
         };
@@ -51,9 +54,10 @@ function app(fetch) {
         clearTimeout: id => timers.delete(id),
         fetch
     });
-    for (const file of ["api", "auto"]) {
+    for (const file of ["api", "deployments", "auto"]) {
         vm.runInContext(readFileSync(resolve(__dirname, `../../main/resources/gui/js/${file}.js`), "utf8"), context);
     }
+    if (confirmedIdle) vm.runInContext("autoProcessStatusLoaded = true", context);
     return { context, get, created, timers, value: expression => vm.runInContext(expression, context) };
 }
 
@@ -209,6 +213,81 @@ test("scanner only attaches Auto switches to repositories the GitHub App can acc
     }
 });
 
+test("Auto locks every switch until status is confirmed and throughout a run, then unlocks for every terminal outcome", async () => {
+    const backend = server(["example/repo"]);
+    let snapshot = processSnapshot("RUNNING");
+    let offline = false;
+    const ui = app(async (url, options) => {
+        if (url !== "/internal/api/auto/status") return backend.fetch(url, options);
+        if (offline) throw new Error("Offline");
+        return { ok: true, json: async () => snapshot };
+    }, false);
+    await ui.context.loadAutoRepositories();
+    const scanner = ui.context.createAutoToggle("example/repo");
+    assert.equal(scanner.disabled, true);
+    assert.equal(ui.get("autoRepositories").children[0].children[1].disabled, true);
+    await ui.context.saveAutoRepository("example/repo");
+    assert.equal(backend.calls.length, 1);
+    await ui.context.loadAutoProcess();
+    assert.equal(scanner.disabled, true);
+    assert.match(scanner.title, /locked/);
+    await scanner.listeners.click({ stopPropagation() {} });
+    assert.equal(backend.calls.length, 1);
+    const newlyRendered = ui.context.createAutoToggle("example/other");
+    assert.equal(newlyRendered.disabled, true);
+    for (const status of ["COMPLETED", "STOPPED", "FAILED", "INTERRUPTED"]) {
+        snapshot = processSnapshot(status);
+        await ui.context.loadAutoProcess();
+        assert.equal(scanner.disabled, false);
+        assert.equal(newlyRendered.disabled, false);
+        assert.equal(ui.get("autoRepositories").children[0].children[1].disabled, false);
+    }
+    offline = true;
+    await ui.context.loadAutoProcess();
+    assert.equal(scanner.disabled, true);
+    assert.equal(newlyRendered.disabled, true);
+    offline = false;
+    await ui.context.loadAutoProcess();
+    assert.equal(scanner.disabled, false);
+});
+
+test("a run started in another session rejects a stale toggle and immediately locks switches without changing opt-ins", async () => {
+    const backend = server(["example/repo"]);
+    const ui = app(async (url, options) => {
+        if (url === "/internal/api/auto/status") return { ok: true, json: async () => processSnapshot("RUNNING") };
+        if (options.method === "POST") return {
+            ok: false, status: 409, json: async () => ({ error: "Auto settings cannot be changed while an Auto process is running" })
+        };
+        return backend.fetch(url, options);
+    });
+    await ui.context.loadAutoRepositories();
+    const toggle = ui.context.createAutoToggle("example/repo");
+    await ui.context.saveAutoRepository("example/repo");
+    assert.equal(toggle.attributes["aria-checked"], "true");
+    assert.equal(toggle.disabled, true);
+    assert.match(ui.get("autoError").textContent, /cannot be changed/);
+    assert.equal(ui.get("autoRepositories").children[0].children[1].disabled, true);
+});
+
+test("Auto process started exposes a preserved expandable snapshot of the opted-in repositories", async () => {
+    const snapshot = processSnapshot("RUNNING", [
+        logEntry(1, {
+            step: null, message: "Auto process started",
+            details: "Repositories opted in at start (2):\nexample/first\nexample/second"
+        })
+    ]);
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+    await ui.context.loadAutoProcess();
+    const details = ui.get("autoProcessLogs").children[0].children.find(node => node.tagName === "details");
+    assert.equal(details.children[0].textContent, "Opted-in repositories");
+    assert.match(details.children[1].textContent, /example\/first.*example\/second/);
+    details.open = true;
+    snapshot.run.status = "COMPLETED";
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("autoProcessLogs").children[0].children.find(node => node.tagName === "details"), details);
+    assert.equal(details.open, true);
+});
+
 function logEntry(id, overrides = {}) {
     return {
         id, timestamp: "2026-11-12T13:00:00Z", runId: "run-1", username: "service-user",
@@ -245,6 +324,9 @@ test("Auto process renders running step and red tab, timestamped expandable repo
     assert.equal(entries.length, 2);
     const link = entries[0].children.find(node => node.tagName === "a");
     assert.equal(link.href, "https://github.com/example/repo/pull/42");
+    assert.equal(link.textContent, "repo #42");
+    assert.equal(link.className, "pr-button auto-pr-link");
+    assert.equal(link.children[0].src, "/internal/gui/icons/external-link.svg");
     assert.equal(link.rel, "noopener noreferrer");
     const details = entries[1].children.find(node => node.tagName === "details");
     assert.match(details.children[1].textContent, /example:library 1.0 -> 1.2/);
@@ -258,6 +340,73 @@ test("Auto process renders running step and red tab, timestamped expandable repo
     assert.equal(ui.get("autoCurrentStep").hidden, true);
     assert.match(ui.get("autoProcessStatus").textContent, /COMPLETED/);
     assert.equal(ui.get("autoProcessLogs").children.length, 2);
+});
+
+test("Auto scan pills and compact successful reports also apply to persisted legacy logs", async () => {
+    const snapshot = processSnapshot("COMPLETED", [
+        logEntry(1, {
+            message: "Dependency scan finished: no unresolved target vulnerabilities",
+            details: "12 targets checked, including transitive dependencies and configured overrides."
+        }),
+        logEntry(2, {
+            message: "BOM scan finished",
+            details: "2 saved BOMs checked for coverage. This is coverage analysis, not a full managed-catalog vulnerability audit."
+        }),
+        logEntry(3, {
+            message: "Plugin scan finished: 4 plugins checked",
+            details: "Published plugin metadata and transitive build-time dependencies checked without applying plugins."
+        })
+    ]);
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+    await ui.context.loadAutoProcess();
+    const entries = ui.get("autoProcessLogs").children;
+    for (const [index, kind] of ["plugin", "platform-bom", "dependency"].entries()) {
+        assert.equal(entries[index].children.some(node => node.tagName === "details"), false);
+        assert.match(entries[index].children[1].children[1].className, new RegExp(`${kind}-pill`));
+    }
+    assert.equal(entries[0].children[1].textContent, "Plugin scan finished: 4 plugins checked");
+    assert.equal(entries[1].children[1].textContent, "BOM scan finished: 2 saved BOMs checked for coverage");
+    assert.equal(entries[2].children[1].textContent, "Dependency scan finished: 12 targets checked; no unresolved target vulnerabilities");
+    assert.match(entries[0].children[0].children[0].textContent, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    assert.equal(entries[0].children[0].children[0].textContent,
+        ui.context.formatDeploymentTimestamp(snapshot.logs[0].timestamp));
+});
+
+test("Auto users only appear in pill tooltips and actionable findings retain styled expandable reports", async () => {
+    const snapshot = processSnapshot("RUNNING", [
+        logEntry(1, { message: "Saved Target Versions as service-user", details: "Users in database:\nservice-user\nother-user" }),
+        logEntry(2, {
+            message: "Pull request created",
+            details: "UPDATE example:library: 1.0 -> 1.2\nAHEAD example:other: 3.0 -> 2.0\nADD example:new: null -> 1.0\nREMOVE example:unused: 1.0 -> 1.0"
+        }),
+        logEntry(3, {
+            message: "Dependency scan finished: 12 targets checked; no unresolved target vulnerabilities",
+            details: "REMOVE example:unused:1.0: redundant transient override."
+        }),
+        logEntry(4, { level: "WARN", message: "Auto stopped: plugin vulnerabilities or incomplete checks; work is unfinished", details: "VULNERABLE <img src=x>: TEST-123" })
+    ]);
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("autoProcessStatus").textContent, "RUNNINGuser");
+    assert.equal(ui.get("autoProcessStatus").children[0].title, "service-user");
+    assert.match(ui.get("autoCurrentStep").children[1].children[1].className, /plugin-pill/);
+    const entries = ui.get("autoProcessLogs").children;
+    entries.forEach(entry => {
+        assert.equal(entry.children[0].children[1].textContent, "user");
+        assert.equal(entry.children[0].children[1].title, "service-user");
+        assert.doesNotMatch(entry.textContent, /service-user|other-user/);
+    });
+    const rows = entries[2].children.find(node => node.tagName === "details").children[1].children;
+    for (const [index, action] of ["UPDATE", "AHEAD", "ADD", "REMOVE"].entries()) {
+        assert.equal(rows[index].children[0].textContent, action);
+        assert.equal(rows[index].children[0].className, `status-pill status-${action.toLowerCase()}`);
+    }
+    const users = entries[3].children.find(node => node.tagName === "details").children[1].children;
+    assert.equal(users[1].children[0].title, "service-user");
+    assert.equal(users[2].children[0].title, "other-user");
+    assert.equal(entries[1].children.find(node => node.tagName === "details").children[1].children[0].children[0].textContent, "REMOVE");
+    assert.match(entries[0].textContent, /VULNERABLE <img src=x>: TEST-123/);
+    assert.equal(ui.created.some(node => node.tagName === "img"), false);
 });
 
 test("Auto polling speeds up while running and visible, slows when hidden or finished, and does not overlap reads", async () => {

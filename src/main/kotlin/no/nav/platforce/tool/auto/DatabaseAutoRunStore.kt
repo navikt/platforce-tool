@@ -47,7 +47,7 @@ class DatabaseAutoRunStore(
                     it[leaseUntil] = started.plusSeconds(60)
                 }
                 val run = run(id)
-                append(run, AutoReport("Auto process started"), "INFO")
+                append(run, autoStartedReport(PostgresDatabase.getAutoRepositories()), "INFO")
                 run
             }
         }
@@ -61,6 +61,16 @@ class DatabaseAutoRunStore(
                 true
             }
         }
+
+    fun saveRepositorySetting(
+        repository: String,
+        enabled: Boolean,
+    ) {
+        locked {
+            if (lock()[AutoRunLockTable.runId] != null) throw AutoSettingsLocked()
+            PostgresDatabase.saveAutoRepository(repository, enabled)
+        }
+    }
 
     override fun startStep(
         runId: String,

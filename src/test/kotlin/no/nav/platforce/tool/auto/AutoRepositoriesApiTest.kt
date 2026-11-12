@@ -63,6 +63,38 @@ class AutoRepositoriesApiTest {
     }
 
     @Test
+    fun `running Auto rejects opting in and out for every user but permits reads and later changes`() {
+        val persisted = mutableSetOf("example/repo")
+        var running = true
+        val handler =
+            routes(
+                *autoRepositoriesRoutes(
+                    installedRepositories = { listOf("example/repo", "example/other") },
+                    read = { persisted.toSet() },
+                    save = { repository, enabled ->
+                        if (running) throw AutoSettingsLocked()
+                        if (enabled) persisted.add(repository) else persisted.remove(repository)
+                        Unit
+                    },
+                    authenticate = {},
+                ).toTypedArray(),
+            ).withUserCacheControl()
+        listOf("alice", "bob").forEach { user ->
+            listOf("example/repo" to false, "example/other" to true).forEach { (repository, enabled) ->
+                val response = handler(request(Method.POST, user).body("""{"repository":"$repository","enabled":$enabled}"""))
+                assertEquals(Status.CONFLICT, response.status)
+                assertEquals("no-store", response.header("Cache-Control"))
+                assertTrue(response.bodyString().contains("cannot be changed"))
+                assertEquals(setOf("example/repo"), persisted)
+            }
+        }
+        assertEquals(Status.OK, handler(request(Method.GET)).status)
+        running = false
+        assertEquals(Status.OK, handler(request(Method.POST).body("""{"repository":"example/repo","enabled":false}""")).status)
+        assertTrue(persisted.isEmpty())
+    }
+
+    @Test
     fun `malformed payloads never reach persistence`() {
         val handler =
             routes(
