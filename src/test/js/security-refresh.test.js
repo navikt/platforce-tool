@@ -360,8 +360,10 @@ test("platform BOM draft uses its own targets map and is included in saves", asy
 test("repository renders BOM-only untracked entries and tracked BOMs as a distinct type", () => {
     const app = gui();
     const card = {
-        querySelector: selector => selector === ".repo-header" ? { addEventListener() {} } : null
+        querySelector: selector => selector === ".repo-header" ? { addEventListener() {} }
+            : selector === ".repo-actions" ? { prepend() {} } : null
     };
+    app.context.createAutoToggle = () => ({});
     app.context.document.createElement = () => card;
     const scan = {
         findings: [],

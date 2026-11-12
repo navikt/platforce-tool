@@ -40,6 +40,9 @@ document
 
             const selected =
                 tab.dataset.tab;
+            document.getElementById("autoTab").style.display =
+                selected === "auto" ? "block" : "none";
+            if (selected === "auto") loadAutoRepositories();
             document.getElementById("deploymentsTab").style.display =
                 selected === "deployments" ? "block" : "none";
             if (selected === "deployments") loadDeployments();
@@ -69,6 +72,9 @@ document
 
 document.getElementById("refreshDeployments")
     .addEventListener("click", () => loadDeployments(true));
+
+document.getElementById("refreshAutoRepositories")
+    .addEventListener("click", () => loadAutoRepositories());
 
 document.getElementById("markDeploymentsForRefresh")
     .addEventListener("click", () => saveDeploymentRefreshMarker(false));
@@ -127,6 +133,7 @@ async function init() {
     selectedTeam = await loadSelectedTeam();
 
     await initTargets();
+    await loadAutoRepositories();
     await loadData();
 
     await loadCachedTargetSecurity();

@@ -8,7 +8,7 @@ const { html, scripts, loadGuiScripts } = require("./gui-scripts");
 function browser(fetch) {
     const elements = new Map();
     const documentListeners = [];
-    const tabs = ["scanner", "targets", "ignored", "deployments"].map(tab => ({
+    const tabs = ["scanner", "targets", "ignored", "auto", "deployments"].map(tab => ({
         dataset: { tab },
         classList: { add() {}, remove() {} },
         listeners: {},
@@ -19,6 +19,7 @@ function browser(fetch) {
             elements.set(id, {
                 style: {},
                 listeners: {},
+                replaceChildren() {},
                 addEventListener(event, listener) {
                     assert.equal(this.listeners[event], undefined, `Duplicate listener on ${id}`);
                     this.listeners[event] = listener;
@@ -48,6 +49,7 @@ test("HTML loads every frontend feature file once, with shared definitions first
         "js/state.js",
         "js/shared.js",
         "js/api.js",
+        "js/auto.js",
         "js/scanner.js",
         "js/targets.js",
         "js/target-upgrades.js",
@@ -101,15 +103,20 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
     ]);
 
     let deploymentLoads = 0;
+    let autoLoads = 0;
     app.context.loadDeployments = () => deploymentLoads++;
+    app.context.loadAutoRepositories = () => autoLoads++;
     for (const tab of app.tabs) {
         tab.listeners.click();
-        for (const name of ["scanner", "targets", "ignored", "deployments"]) {
+        for (const name of ["scanner", "targets", "ignored", "auto", "deployments"]) {
             assert.equal(app.element(`${name}Tab`).style.display,
                 name === tab.dataset.tab ? "block" : "none");
         }
     }
     assert.equal(deploymentLoads, 1);
+    assert.equal(autoLoads, 1);
+    app.element("refreshAutoRepositories").listeners.click();
+    assert.equal(autoLoads, 2);
     app.element("refreshDeployments").listeners.click();
     assert.equal(deploymentLoads, 2);
 });
@@ -120,6 +127,7 @@ test("bootstrap preserves startup order, selected team, cached security and unca
     const data = {
         "/internal/selectedTeam": { selectedTeam: "saved-team" },
         "/internal/api/target-versions": { dependencies: { "example:library": "1.0" } },
+        "/internal/api/auto-repositories": { repositories: [] },
         "/internal/repos/view": [],
         "/internal/api/dependency-scan": [],
         "/internal/api/repository-notes": { "example/repo": "saved note" },

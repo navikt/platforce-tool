@@ -11,6 +11,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.insertIgnore
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -97,6 +98,32 @@ object PostgresDatabase {
     fun createDeploymentRefreshMarkerTable() {
         transaction(database) {
             SchemaUtils.create(DeploymentRefreshMarkerTable)
+        }
+    }
+
+    fun createAutoRepositoriesTable() {
+        transaction(database) {
+            SchemaUtils.create(AutoRepositoriesTable)
+        }
+    }
+
+    fun getAutoRepositories(): Set<String> =
+        transaction(database) {
+            AutoRepositoriesTable.selectAll().map { it[AutoRepositoriesTable.repository] }.toSet()
+        }
+
+    fun saveAutoRepository(
+        repository: String,
+        enabled: Boolean,
+    ) {
+        transaction(database) {
+            if (enabled) {
+                AutoRepositoriesTable.insertIgnore {
+                    it[AutoRepositoriesTable.repository] = repository
+                }
+            } else {
+                AutoRepositoriesTable.deleteWhere { AutoRepositoriesTable.repository eq repository }
+            }
         }
     }
 

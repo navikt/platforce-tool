@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
+import no.nav.platforce.tool.auto.autoRepositoriesRoutes
 import no.nav.platforce.tool.ignore.parseIgnoredDependencies
 import no.nav.platforce.tool.nais.RebuildWorkflow
 import no.nav.platforce.tool.nais.RunningApplication
@@ -65,6 +66,7 @@ class LocalFrontendApi(
     private var pluginSecurityReadyAt: Long? = null
     private val upgradeScans = mutableMapOf<String, Long>()
     private var deploymentRefreshAfter: Instant? = null
+    private val autoRepositories = mutableSetOf<String>()
 
     private fun pluginSecurity(): PluginSecuritySnapshot {
         val status =
@@ -168,6 +170,14 @@ class LocalFrontendApi(
 
     private val api =
         routes(
+            *autoRepositoriesRoutes(
+                read = { autoRepositories.toSet() },
+                save = { repository, enabled ->
+                    if (enabled) autoRepositories.add(repository) else autoRepositories.remove(repository)
+                    Unit
+                },
+                authenticate = {},
+            ).toTypedArray(),
             "/" bind Method.GET to { Response(Status.FOUND).header("Location", "/internal/gui") },
             "/internal/api/deployments/refresh-marker" bind Method.GET to { deploymentRefreshMarkerResponse(deploymentRefreshAfter) },
             "/internal/api/deployments/refresh-marker" bind Method.POST to {

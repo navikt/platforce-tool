@@ -458,6 +458,8 @@ function renderRepo(repoView, scanMap, container) {
 
 
 
+    el.querySelector(".repo-actions").prepend(createAutoToggle(repo));
+
     // interactions unchanged
     const noteIcon = el.querySelector(".note-icon");
 

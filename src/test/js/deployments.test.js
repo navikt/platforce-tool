@@ -371,8 +371,9 @@ test("saved marker classifies timestamps strictly and survives refresh and a new
     }
 });
 
-test("mark, advance and clear update the server-backed marker across teams without refreshing deployments", async () => {
+test("mark, advance and clear update the server-backed marker without confirmation or refreshing deployments", async () => {
     const { context, get } = app();
+    context.confirm = () => { throw new Error("Marker actions must not request confirmation"); };
     let saved = null;
     let now = "2026-11-09T13:00:00Z";
     let deploymentRequests = 0;
@@ -399,10 +400,6 @@ test("mark, advance and clear update the server-backed marker across teams witho
     now = "2026-11-10T13:00:00Z";
     await context.saveDeploymentRefreshMarker(false);
     assert.equal(saved, now);
-    context.confirm = () => false;
-    await context.saveDeploymentRefreshMarker(true);
-    assert.equal(saved, now);
-    context.confirm = () => true;
     await context.saveDeploymentRefreshMarker(true);
     assert.equal(saved, null);
     assert.equal(get("clearDeploymentRefreshMarker").disabled, true);

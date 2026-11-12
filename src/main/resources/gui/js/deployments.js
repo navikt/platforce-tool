@@ -124,9 +124,6 @@ function renderDeploymentRefreshMarker() {
 
 async function saveDeploymentRefreshMarker(clear) {
     if (deploymentsLoading || deploymentMarkerSaving) return;
-    if (deploymentRefreshMarker && !confirm(clear
-        ? "Clear your rebuild marker for all teams?"
-        : "Replace your rebuild marker with the current time for all teams?")) return;
     deploymentMarkerSaving = true;
     const error = document.getElementById("deploymentRefreshError");
     error.textContent = "";

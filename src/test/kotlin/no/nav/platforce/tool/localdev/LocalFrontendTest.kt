@@ -175,7 +175,7 @@ class LocalFrontendTest {
             assertEquals(200, page.statusCode())
             assertTrue(page.body().contains("id=\"container\""))
             val scripts = Regex("""<script\s+src="([^"]+)"""").findAll(page.body()).map { it.groupValues[1] }.toList()
-            assertEquals(11, scripts.size)
+            assertEquals(12, scripts.size)
             scripts.forEach { asset ->
                 assertEquals(200, get(asset).statusCode(), asset)
             }

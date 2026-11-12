@@ -26,7 +26,21 @@
         Ignored
     </div>
     <span class="tab-divider" aria-hidden="true"></span>
+    <button class="tab" data-tab="auto" type="button">Auto</button>
     <button class="tab" data-tab="deployments" type="button">Deployments</button>
+</div>
+
+<div id="autoTab" style="display:none">
+    <div class="repo auto-card">
+        <div class="auto-heading">
+            <h2>Auto repositories</h2>
+            <button id="refreshAutoRepositories" type="button">Refresh</button>
+        </div>
+        <p class="auto-description">Global opt-ins shared by all users. Automated dependency updates are not active yet.</p>
+        <p id="autoStatus" role="status" aria-live="polite"></p>
+        <p id="autoError" role="alert"></p>
+        <div id="autoRepositories"></div>
+    </div>
 </div>
 
 <div id="deploymentsTab" style="display:none">
@@ -62,6 +76,7 @@
 
     <div id="teamTabs" class="team-tabs"></div>
 
+    <p id="scannerAutoError" role="alert"></p>
     <div id="container"></div>
 </div>
 
@@ -209,6 +224,7 @@
 <script src="/internal/gui/js/state.js"></script>
 <script src="/internal/gui/js/shared.js"></script>
 <script src="/internal/gui/js/api.js"></script>
+<script src="/internal/gui/js/auto.js"></script>
 <script src="/internal/gui/js/scanner.js"></script>
 <script src="/internal/gui/js/targets.js"></script>
 <script src="/internal/gui/js/target-upgrades.js"></script>

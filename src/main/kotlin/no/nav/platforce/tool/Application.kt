@@ -1,6 +1,7 @@
 package no.nav.platforce.tool
 
 import mu.KotlinLogging
+import no.nav.platforce.tool.auto.autoRepositoriesRoutes
 import no.nav.platforce.tool.config.env
 import no.nav.platforce.tool.config.env_NAIS_CLUSTER_NAME
 import no.nav.platforce.tool.config.secret_PLATFORCE_TOOLING_APP_ID
@@ -59,6 +60,7 @@ class Application {
     init {
         PostgresDatabase.createIgnoredDependenciesTable()
         PostgresDatabase.createDeploymentRefreshMarkerTable()
+        PostgresDatabase.createAutoRepositoriesTable()
     }
 
     private val log = KotlinLogging.logger { }
@@ -145,6 +147,7 @@ class Application {
                 upgradeSecurityScanner,
             ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
+            *autoRepositoriesRoutes().toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
             *deploymentsRoutes(naisClient, githubClient).toTypedArray(),
             *deploymentRefreshRoutes().toTypedArray(),
