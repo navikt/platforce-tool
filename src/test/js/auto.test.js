@@ -329,6 +329,100 @@ function processSnapshot(status = "RUNNING", logs = []) {
     };
 }
 
+test("Start Auto is a red button at the bottom of the Auto tab and waits for confirmed idle status", async () => {
+    const autoTab = html.slice(html.indexOf('<div id="autoTab"'), html.indexOf('<div id="deploymentsTab"'));
+    assert.match(autoTab, /<button id="startAuto" class="btn-danger" type="button" disabled>Start Auto<\/button>/);
+    assert.ok(autoTab.indexOf('id="startAuto"') > autoTab.indexOf('id="loadOlderAutoLogs"'));
+    let snapshot = { run: null, runs: [], logs: [], nextBefore: null };
+    let calls = 0;
+    const ui = app(async () => {
+        calls++;
+        return { ok: true, json: async () => snapshot };
+    }, false);
+    ui.context.updateStartAutoButton();
+    assert.equal(ui.get("startAuto").disabled, true);
+    await ui.context.startAuto();
+    assert.equal(calls, 0);
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("startAuto").disabled, false);
+    snapshot = processSnapshot();
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("startAuto").disabled, true);
+    await ui.context.startAuto();
+    assert.equal(calls, 2);
+    for (const status of ["COMPLETED", "STOPPED", "FAILED", "INTERRUPTED"]) {
+        snapshot = processSnapshot(status);
+        await ui.context.loadAutoProcess();
+        assert.equal(ui.get("startAuto").disabled, false);
+    }
+});
+
+test("Start Auto calls the existing trigger once, locks controls while pending and refreshes the running process", async () => {
+    let finishTrigger;
+    const calls = [];
+    const ui = app(async (url, options) => {
+        calls.push([url, options]);
+        if (url === "/internal/triggerAuto") return new Promise(resolve => { finishTrigger = resolve; });
+        assert.equal(url, "/internal/api/auto/status");
+        return { ok: true, json: async () => processSnapshot() };
+    });
+    ui.value('autoRepositoriesLoaded = true');
+    const toggle = ui.context.createAutoToggle("example/repo");
+    const pending = ui.context.startAuto();
+    assert.equal(ui.get("startAuto").disabled, true);
+    assert.equal(ui.get("startAuto").textContent, "Starting Auto...");
+    assert.equal(toggle.disabled, true);
+    await ui.context.startAuto();
+    await ui.context.loadAutoProcess();
+    await ui.context.saveAutoRepository("example/repo");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], "/internal/triggerAuto");
+    assert.equal(calls[0][1].method, "GET");
+    assert.equal(calls[0][1].cache, "no-store");
+    finishTrigger({ ok: true, text: async () => "process started" });
+    await pending;
+    assert.equal(calls.length, 2);
+    assert.equal(ui.get("autoStartStatus").textContent, "Auto process started.");
+    assert.equal(ui.get("autoStartError").textContent, "");
+    assert.equal(ui.get("autoProcessStatus").textContent, "RUNNING");
+    assert.equal(ui.get("startAuto").textContent, "Start Auto");
+    assert.equal(ui.get("startAuto").disabled, true);
+    assert.equal(toggle.disabled, true);
+});
+
+test("Start Auto reports conflicts, server and network failures without claiming success and reconciles status", async () => {
+    for (const failure of [
+        { ok: false, status: 409, text: async () => "Auto process is already ongoing" },
+        { ok: false, status: 503, text: async () => '{"error":"Could not access Auto process"}' },
+        { ok: true, text: async () => "<html>Sign in</html>" },
+        new Error("Network unavailable")
+    ]) {
+        const ui = app(async url => {
+            if (url === "/internal/triggerAuto") {
+                if (failure instanceof Error) throw failure;
+                return failure;
+            }
+            return { ok: true, json: async () => processSnapshot() };
+        });
+        await ui.context.startAuto();
+        assert.equal(ui.get("autoStartStatus").textContent, "");
+        assert.match(ui.get("autoStartError").textContent, /Could not start Auto process:/);
+        assert.equal(ui.get("autoProcessStatus").textContent, "RUNNING");
+        assert.equal(ui.get("startAuto").disabled, true);
+    }
+});
+
+test("Start Auto remains disabled when status refresh fails after a successful trigger", async () => {
+    const ui = app(async url => {
+        if (url === "/internal/triggerAuto") return { ok: true, text: async () => "process started" };
+        throw new Error("Status unavailable");
+    });
+    await ui.context.startAuto();
+    assert.equal(ui.get("autoStartStatus").textContent, "Auto process started.");
+    assert.match(ui.get("autoProcessError").textContent, /Status unavailable/);
+    assert.equal(ui.get("startAuto").disabled, true);
+});
+
 const olderRunId = "11111111-1111-4111-8111-111111111111";
 const latestRunId = "22222222-2222-4222-8222-222222222222";
 
@@ -513,6 +607,28 @@ test("Auto process renders running step and red tab, timestamped expandable repo
     assert.equal(ui.get("autoCurrentStep").hidden, true);
     assert.match(ui.get("autoProcessStatus").textContent, /COMPLETED/);
     assert.equal(logEntries(ui).length, 2);
+});
+
+test("Auto hides repository entries without created PRs in persisted history but keeps errors and run reports", async () => {
+    const snapshot = processSnapshot("COMPLETED", [
+        logEntry(1, { message: "Auto process started" }),
+        logEntry(2, { repository: "example/current", message: "No changes required; Create PR is disabled" }),
+        logEntry(3, { repository: "example/ignored", message: "Skipped: repository is ignored by service-user" }),
+        logEntry(4, { repository: "example/removed", message: "Skipped: Auto opt-in or GitHub App access was removed" }),
+        logEntry(5, { repository: "example/updated", message: "Pull request created", url: "https://github.com/example/updated/pull/42" }),
+        logEntry(6, { repository: "example/failed", level: "WARN", message: "Repository scan failed" }),
+        logEntry(7, {
+            repository: "example/updated", level: "WARN",
+            message: "Pull request created, but superseded PR cleanup is unfinished",
+            url: "https://github.com/example/updated/pull/43"
+        }),
+        logEntry(8, { message: "Auto process finished normally" })
+    ]);
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+    await ui.context.loadAutoProcess();
+    assert.deepEqual(logEntries(ui).map(node => Number(node.dataset.logId)), [8, 7, 6, 5, 1]);
+    await ui.context.loadAutoProcess();
+    assert.deepEqual(logEntries(ui).map(node => Number(node.dataset.logId)), [8, 7, 6, 5, 1]);
 });
 
 test("Auto scan pills and compact successful reports also apply to persisted legacy logs", async () => {

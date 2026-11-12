@@ -94,7 +94,8 @@ class DatabaseAutoRunStore(
     ) {
         locked {
             requireOwner(runId)
-            append(run(runId), report, "INFO")
+            val run = run(runId)
+            if (run.repository == null || report.url != null) append(run, report, "INFO")
             clearStep(runId)
         }
     }

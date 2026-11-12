@@ -79,6 +79,9 @@ document.getElementById("refreshAutoRepositories")
 document.getElementById("loadOlderAutoLogs")
     .addEventListener("click", () => loadAutoProcess(autoNextBefore));
 
+document.getElementById("startAuto")
+    .addEventListener("click", startAuto);
+
 document.getElementById("markDeploymentsForRefresh")
     .addEventListener("click", () => saveDeploymentRefreshMarker(false));
 

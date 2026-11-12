@@ -35,13 +35,14 @@ function updateAutoToggle(button) {
     const repository = button.dataset.repository;
     button.setAttribute("aria-checked", String(autoRepositories.has(repository)));
     const running = autoProcessRun?.status === "RUNNING";
-    button.disabled = !autoRepositoriesLoaded || !autoProcessStatusLoaded || running || autoRepositoriesSaving.has(repository);
+    button.disabled = !autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || running || autoRepositoriesSaving.has(repository);
     button.title = running ? "Auto settings are locked while the process is running"
         : !autoProcessStatusLoaded ? "Waiting for confirmed Auto process status" : "Global opt-in shared by all users";
 }
 
 function updateAutoToggles() {
     document.querySelectorAll(".auto-toggle").forEach(updateAutoToggle);
+    updateStartAutoButton();
 }
 
 function renderAutoRepositories() {
@@ -87,7 +88,7 @@ async function loadAutoRepositories() {
 }
 
 async function saveAutoRepository(repository) {
-    if (!autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessRun?.status === "RUNNING" || autoRepositoriesSaving.has(repository)) return;
+    if (!autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || autoProcessRun?.status === "RUNNING" || autoRepositoriesSaving.has(repository)) return;
     const enabled = !autoRepositories.has(repository);
     autoRepositoriesSaving.add(repository);
     autoReadGeneration++;
@@ -125,6 +126,7 @@ async function saveAutoRepository(repository) {
 
 let autoProcessTimer = null;
 let autoProcessLoading = false;
+let autoProcessStarting = false;
 let autoProcessRun = null;
 let autoProcessStatusLoaded = false;
 let autoLogsLoaded = false;
@@ -136,6 +138,39 @@ const autoLogNodes = new Map();
 const autoRuns = new Map();
 const autoRunNodes = new Map();
 const autoRunDeleting = new Set();
+
+function updateStartAutoButton() {
+    const button = document.getElementById("startAuto");
+    button.disabled = !autoProcessStatusLoaded || autoProcessLoading || autoProcessStarting ||
+        autoProcessRun?.status === "RUNNING" || autoRepositoriesSaving.size > 0 || autoRunDeleting.size > 0;
+    button.textContent = autoProcessStarting ? "Starting Auto..." : "Start Auto";
+}
+
+async function startAuto() {
+    if (!autoProcessStatusLoaded || autoProcessLoading || autoProcessStarting ||
+        autoProcessRun?.status === "RUNNING" || autoRepositoriesSaving.size || autoRunDeleting.size) return;
+    autoProcessStarting = true;
+    updateStartAutoButton();
+    updateAutoToggles();
+    document.getElementById("autoStartStatus").textContent = "";
+    document.getElementById("autoStartError").textContent = "";
+    try {
+        const response = await fetch("/internal/triggerAuto", { method: "GET", cache: "no-store" });
+        const message = await response.text();
+        if (!response.ok) throw new Error(response.status === 409 ? message : `HTTP ${response.status}`);
+        if (message !== "process started") throw new Error("Unexpected Auto trigger response");
+        document.getElementById("autoStartStatus").textContent = "Auto process started.";
+    } catch (failure) {
+        console.error("Could not start Auto process", failure);
+        document.getElementById("autoStartError").textContent =
+            `Could not start Auto process: ${failure.message}. Check the refreshed process status before retrying.`;
+    } finally {
+        autoProcessStatusLoaded = false;
+        autoProcessStarting = false;
+        await loadAutoProcess();
+        updateStartAutoButton();
+    }
+}
 
 function autoLogTimestamp(timestamp) {
     const time = document.createElement("time");
@@ -325,8 +360,9 @@ function createAutoRunGroup(run) {
 function updateAutoRunButtons() {
     autoRunNodes.forEach((group, id) => {
         group.remove.hidden = id === autoProcessRun?.id || autoRuns.get(id)?.status === "RUNNING";
-        group.remove.disabled = autoProcessLoading || !autoProcessStatusLoaded || autoRunDeleting.size > 0;
+        group.remove.disabled = autoProcessLoading || autoProcessStarting || !autoProcessStatusLoaded || autoRunDeleting.size > 0;
     });
+    updateStartAutoButton();
 }
 
 function renderAutoRunGroups(current) {
@@ -379,7 +415,7 @@ function renderAutoRunGroups(current) {
         [...group.body.children].forEach(node => {
             if (node.dataset.logId !== undefined && !autoLogEntries.has(Number(node.dataset.logId))) node.remove();
         });
-        grouped.get(id).forEach((entry, logIndex) => {
+        grouped.get(id).filter(entry => entry.level !== "INFO" || !entry.repository || entry.url).forEach((entry, logIndex) => {
             const node = autoLogNodes.get(entry.id);
             const existing = group.body.children[logIndex] || null;
             if (existing !== node) group.body.insertBefore(node, existing);
@@ -399,7 +435,7 @@ function renderAutoRunGroups(current) {
 }
 
 async function deleteAutoRun(id) {
-    if (autoProcessLoading || !autoProcessStatusLoaded || autoRunDeleting.size ||
+    if (autoProcessLoading || autoProcessStarting || !autoProcessStatusLoaded || autoRunDeleting.size ||
         id === autoProcessRun?.id || autoRuns.get(id)?.status === "RUNNING") return;
     autoRunDeleting.add(id);
     updateAutoRunButtons();
@@ -500,7 +536,7 @@ function mergeAutoLogs(logs) {
 }
 
 async function loadAutoProcess(before = null, reset = false) {
-    if (autoProcessLoading || autoRunDeleting.size) return;
+    if (autoProcessLoading || autoProcessStarting || autoRunDeleting.size) return;
     autoProcessLoading = true;
     updateAutoRunButtons();
     const older = document.getElementById("loadOlderAutoLogs");

@@ -40,7 +40,7 @@ class MemoryAutoRunStore(
         report: AutoReport,
     ) {
         requireOwner(runId)
-        append(report, "INFO")
+        if (current!!.repository == null || report.url != null) append(report, "INFO")
         current = current!!.copy(step = null, repository = null, stepStartedAt = null)
     }
 

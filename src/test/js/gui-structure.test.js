@@ -89,6 +89,7 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
     assert.equal(app.documentListeners.length, 3);
     assert.equal(app.element("saveTargets").listeners.click, app.context.saveTargets);
     assert.equal(app.element("scanTargets").listeners.click, app.context.scanTargetSecurity);
+    assert.equal(app.element("startAuto").listeners.click, app.context.startAuto);
     assert.equal(app.element("refreshBtn").listeners.click, app.context.refresh);
     assert.equal(typeof app.element("saveIgnored").listeners.click, "function");
 

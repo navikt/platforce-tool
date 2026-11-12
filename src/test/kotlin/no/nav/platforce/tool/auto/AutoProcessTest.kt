@@ -38,6 +38,7 @@ class AutoProcessTest {
         var users = listOf("alice", "bob", "service-user")
         var onDependencies: () -> Unit = {}
         var onRefresh: () -> Unit = {}
+        var onPullRequest: () -> Unit = {}
 
         private fun record(step: String) {
             calls += step
@@ -126,6 +127,7 @@ class AutoProcessTest {
             checkActive: () -> Unit,
         ): AutoReport {
             record("pr:$repository")
+            onPullRequest()
             return if (repository.endsWith(
                     "current",
                 )
@@ -187,6 +189,8 @@ class AutoProcessTest {
         assertEquals("2.0", operations.stored.plugins["example.plugin"])
         assertEquals("example/updated", logs.single { it.url != null }.repository)
         assertEquals("https://github.com/example/updated/pull/42", logs.single { it.url != null }.url)
+        assertEquals(listOf("example/updated"), logs.mapNotNull { it.repository })
+        assertEquals("2 opted-in repositories checked; 1 pull requests created.", logs.last().details)
         assertEquals("Repository inventories refreshed", logs.single { it.step == "Refresh Dependency Scanner" }.message)
         assertNotNull(logs.last().details)
         assertNotNull(service.start("alice"))
@@ -223,6 +227,47 @@ class AutoProcessTest {
         assertTrue(operations.calls.contains("plugins"))
         assertTrue(operations.calls.indexOf("refresh") < operations.calls.indexOf("pr:example/current"))
         assertEquals(AutoRunStatus.COMPLETED, service.snapshot().run?.status)
+    }
+
+    @Test
+    fun `skipped repository reports clear the active step without adding a log entry`() {
+        val store = MemoryAutoRunStore()
+        val run = checkNotNull(store.tryStart("alice"))
+        listOf(
+            "No changes required; Create PR is disabled",
+            "Skipped: repository is ignored by alice",
+            "Skipped: Auto opt-in or GitHub App access was removed",
+        ).forEach { message ->
+            store.startStep(run.id, "Check repository and create PR", "example/current")
+            store.report(run.id, AutoReport(message))
+            assertEquals(1, store.snapshot().logs.size)
+            assertNull(store.snapshot().run?.step)
+            assertNull(store.snapshot().run?.repository)
+            assertNull(store.snapshot().run?.stepStartedAt)
+        }
+    }
+
+    @Test
+    fun `repository failures and created PRs with unfinished cleanup remain in the log`() {
+        listOf(
+            AutoReport("Auto stopped: repository could not be scanned; work is unfinished", "example/updated"),
+            AutoReport(
+                "Pull request created, but superseded PR cleanup is unfinished",
+                "Cleanup failed",
+                "https://github.com/example/updated/pull/42",
+            ),
+        ).forEach { report ->
+            val operations = Operations().apply { onPullRequest = { throw AutoStopped(report) } }
+            val executor = QueuedExecutor()
+            val service = AutoProcessService(MemoryAutoRunStore(), AutoWorkflow(operations), executor)
+            service.start("alice")
+            executor.runNext()
+            val snapshot = service.snapshot()
+            assertEquals(AutoRunStatus.STOPPED, snapshot.run?.status)
+            assertEquals("example/current", snapshot.logs.last().repository)
+            assertEquals(report.message, snapshot.logs.last().message)
+            assertEquals(report.url, snapshot.logs.last().url)
+        }
     }
 
     @Test
