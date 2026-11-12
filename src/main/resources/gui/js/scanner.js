@@ -203,17 +203,19 @@ function renderRepo(repoView, scanMap, container) {
                     Refresh
                 </button>
 
+                <span class="pr-create-action${prPrerequisite ? ` pr-create-action--locked pr-create-action--${normalSecurityReady ? "bom" : "scan"}` : ""}"
+                    ${prPrerequisite ? `role="group" aria-label="Create PR unavailable: ${prPrerequisite}"` : ""}>
                 <span class="pr-prerequisite-slot">
                     ${prPrerequisite ? `<span class="pr-prerequisite-icon" role="img" tabindex="0"
                         aria-label="${prPrerequisite}" title="${prPrerequisite}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <circle cx="12" cy="12" r="9"/>
-                            ${normalSecurityReady
-                                ? `<path d="M12 6v4l3 1"/>
-                                   <text x="12" y="17" text-anchor="middle" fill="currentColor" stroke="none"
-                                       font-family="sans-serif" font-size="6.5" font-weight="700">BOM</text>`
-                                : `<path d="M12 7v5l3 2"/>`}
+                        <svg width="22" height="26" viewBox="0 0 24 28" fill="none"
+                            stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            <rect class="pr-lock-body" x="3" y="10" width="18" height="15" rx="3"/>
+                            <path class="pr-lock-highlight" d="M6 12h12" stroke-linecap="round"/>
+                            <text class="pr-lock-label" x="12" y="20" text-anchor="middle"
+                                stroke="none" font-family="sans-serif" font-size="5" font-weight="700"
+                                letter-spacing=".3">${normalSecurityReady ? "BOM" : "SCAN"}</text>
                         </svg>
                     </span>` : ""}
                 </span>
@@ -230,6 +232,7 @@ function renderRepo(repoView, scanMap, container) {
                            </button>`
                     : `<button class="pr-button create-pr-button disabled" disabled>Create PR</button>`
             }
+                </span>
             `
     }
 
@@ -458,7 +461,7 @@ function renderRepo(repoView, scanMap, container) {
 
 
 
-    el.querySelector(".repo-actions").prepend(createAutoToggle(repo));
+    if (!isMissing) el.querySelector(".repo-actions").prepend(createAutoToggle(repo));
 
     // interactions unchanged
     const noteIcon = el.querySelector(".note-icon");

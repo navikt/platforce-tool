@@ -163,7 +163,7 @@ test("pending writes disable all switches for that repository, reject duplicates
     assert.equal(ui.get("autoRepositories").children.length, 1);
 });
 
-test("scanner attaches an Auto switch to scanned, unscanned and inaccessible repository cards", () => {
+test("scanner only attaches Auto switches to repositories the GitHub App can access", () => {
     const ui = app(server().fetch);
     vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/scanner.js"), "utf8"), ui.context);
     Object.assign(ui.context, {
@@ -182,7 +182,13 @@ test("scanner attaches an Auto switch to scanned, unscanned and inaccessible rep
             return realCreateElement(...args);
         };
         ui.context.renderRepo({ name: "example/repo", state }, {}, { appendChild() {} });
-        assert.equal(actions.children[0].className, "auto-toggle");
-        assert.equal(actions.children[0].dataset.repository, "example/repo");
+        if (state === "NOT_IN_GITHUB") {
+            assert.equal(actions.children.length, 0);
+            assert.match(card.innerHTML, /Grant App Access/);
+            assert.doesNotMatch(card.innerHTML, /pr-create-action/);
+        } else {
+            assert.equal(actions.children[0].className, "auto-toggle");
+            assert.equal(actions.children[0].dataset.repository, "example/repo");
+        }
     }
 });

@@ -564,18 +564,74 @@ button:hover {
     flex-shrink: 0;
 }
 
+.pr-create-action {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 26px;
+    flex-shrink: 0;
+}
+
+.pr-create-action .create-pr-button {
+    margin-right: 0;
+}
+
+.pr-create-action--scan {
+    --pr-lock-accent: #8b9b8e;
+    --pr-lock-label: #56735d;
+}
+
+.pr-create-action--bom {
+    --pr-lock-accent: #a397af;
+    --pr-lock-label: #7a658c;
+}
+
 .pr-prerequisite-slot {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 18px;
-    flex: 0 0 18px;
+    width: 34px;
+    flex: 0 0 34px;
+    position: relative;
+}
+
+.pr-create-action--locked .pr-prerequisite-slot::after {
+    content: "";
+    position: absolute;
+    left: 20px;
+    right: 0;
+    height: 1px;
+    background: var(--pr-lock-accent);
 }
 
 .pr-prerequisite-icon {
     display: inline-flex;
-    color: #946200;
+    color: #8a8e93;
     cursor: help;
+}
+
+.pr-prerequisite-icon:focus-visible {
+    outline: 2px solid #8a8e93;
+    outline-offset: 3px;
+    border-radius: 3px;
+}
+
+.pr-lock-body {
+    fill: #e5e7e9;
+}
+
+.pr-lock-highlight {
+    stroke: #f7f8f9;
+}
+
+.pr-lock-label {
+    fill: var(--pr-lock-label);
+}
+
+.pr-create-action--locked .create-pr-button:disabled {
+    opacity: 1;
+    color: #898e94;
+    background: linear-gradient(#f7f8f9, #eeeff1);
+    border-color: #d3d6da;
+    border-left: 3px solid var(--pr-lock-accent);
 }
 
 .btn-primary {

@@ -147,7 +147,7 @@ class Application {
                 upgradeSecurityScanner,
             ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
-            *autoRepositoriesRoutes().toTypedArray(),
+            *autoRepositoriesRoutes(githubClient::listRepositories).toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
             *deploymentsRoutes(naisClient, githubClient).toTypedArray(),
             *deploymentRefreshRoutes().toTypedArray(),

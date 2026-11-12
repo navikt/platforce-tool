@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.IOException
 import java.sql.SQLException
 import java.util.Base64
 
@@ -32,6 +33,7 @@ class AutoRepositoriesApiTest {
         fun handler() =
             routes(
                 *autoRepositoriesRoutes(
+                    installedRepositories = { listOf("Example/Repo", "example/other") },
                     read = { persisted.toSet() },
                     save = { repository, enabled ->
                         if (enabled) persisted.add(repository) else persisted.remove(repository)
@@ -65,6 +67,7 @@ class AutoRepositoriesApiTest {
         val handler =
             routes(
                 *autoRepositoriesRoutes(
+                    installedRepositories = { error("Malformed payloads must be rejected before checking access") },
                     read = { emptySet() },
                     save = { _, _ -> error("Invalid settings must not be saved") },
                     authenticate = {
@@ -99,6 +102,7 @@ class AutoRepositoriesApiTest {
         val handler =
             routes(
                 *autoRepositoriesRoutes(
+                    installedRepositories = { listOf("example/repo") },
                     read = { throw SQLException("Synthetic database failure") },
                     save = { _, _ -> throw SQLException("Synthetic database failure") },
                     authenticate = {
@@ -120,12 +124,72 @@ class AutoRepositoriesApiTest {
         val handler =
             routes(
                 *autoRepositoriesRoutes(
+                    installedRepositories = { error("Must not check access without authentication") },
                     read = { error("Must not read without authentication") },
                     save = { _, _ -> error("Must not write without authentication") },
                 ).toTypedArray(),
             )
         listOf(Method.GET, Method.POST).forEach { method ->
             assertThrows(RuntimeException::class.java) { handler(Request(method, path)) }
+        }
+    }
+
+    @Test
+    fun `Auto only lists accessible repositories and refuses changes after app access is revoked`() {
+        val persisted = mutableSetOf("example/repo", "example/other")
+        var installed = listOf("Example/Repo")
+        val handler =
+            routes(
+                *autoRepositoriesRoutes(
+                    installedRepositories = { installed },
+                    read = { persisted.toSet() },
+                    save = { _, _ -> error("Inaccessible repository settings must not be changed") },
+                    authenticate = {},
+                ).toTypedArray(),
+            ).withUserCacheControl()
+
+        assertEquals("""{"repositories":["example/repo"]}""", handler(request(Method.GET)).bodyString())
+        listOf(true, false).forEach { enabled ->
+            val response = handler(request(Method.POST).body("""{"repository":"example/other","enabled":$enabled}"""))
+            assertEquals(Status.FORBIDDEN, response.status)
+            assertEquals("no-store", response.header("Cache-Control"))
+            assertTrue(
+                JsonParser
+                    .parseString(response.bodyString())
+                    .asJsonObject["error"]
+                    .asString
+                    .contains("access"),
+            )
+        }
+        installed = emptyList()
+        assertEquals("""{"repositories":[]}""", handler(request(Method.GET)).bodyString())
+        assertEquals(Status.FORBIDDEN, handler(request(Method.POST).body("""{"repository":"example/repo","enabled":true}""")).status)
+        assertEquals(setOf("example/repo", "example/other"), persisted)
+    }
+
+    @Test
+    fun `GitHub access lookup failures are explicit and never change persisted settings`() {
+        listOf(IOException("Offline"), IllegalStateException("GitHub unavailable")).forEach { failure ->
+            val handler =
+                routes(
+                    *autoRepositoriesRoutes(
+                        installedRepositories = { throw failure },
+                        read = { error("Must not read settings without verifying access") },
+                        save = { _, _ -> error("Must not save settings without verifying access") },
+                        authenticate = {},
+                    ).toTypedArray(),
+                )
+            listOf(Method.GET, Method.POST).forEach { method ->
+                val response = handler(request(method).body("""{"repository":"example/repo","enabled":true}"""))
+                assertEquals(Status.BAD_GATEWAY, response.status)
+                assertTrue(
+                    JsonParser
+                        .parseString(response.bodyString())
+                        .asJsonObject["error"]
+                        .asString
+                        .contains("verify"),
+                )
+            }
         }
     }
 }

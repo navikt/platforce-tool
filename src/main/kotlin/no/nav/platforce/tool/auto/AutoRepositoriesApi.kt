@@ -11,6 +11,7 @@ import org.http4k.core.Request
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.routing.bind
+import java.io.IOException
 import java.sql.SQLException
 import java.util.Locale
 
@@ -36,6 +37,7 @@ internal fun parseAutoRepositorySetting(body: String): AutoRepositorySetting {
 }
 
 fun autoRepositoriesRoutes(
+    installedRepositories: () -> List<String>,
     read: () -> Set<String> = PostgresDatabase::getAutoRepositories,
     save: (String, Boolean) -> Unit = PostgresDatabase::saveAutoRepository,
     authenticate: (Request) -> Unit = {
@@ -43,7 +45,7 @@ fun autoRepositoriesRoutes(
         Unit
     },
 ) = listOf(Method.GET, Method.POST).map { method ->
-    "/internal/api/auto-repositories" bind method to { request ->
+    "/internal/api/auto-repositories" bind method to handler@{ request ->
         authenticate(request)
 
         fun json(
@@ -51,21 +53,45 @@ fun autoRepositoriesRoutes(
             status: Status = Status.OK,
         ) = Response(status).header("Content-Type", "application/json").body(Gson().toJson(value))
 
-        try {
-            if (method == Method.GET) {
-                json(mapOf("repositories" to read().sorted()))
+        val setting =
+            if (method == Method.POST) {
+                try {
+                    parseAutoRepositorySetting(request.bodyString())
+                } catch (failure: JsonParseException) {
+                    return@handler json(mapOf("error" to "Invalid JSON"), Status.BAD_REQUEST)
+                } catch (failure: IllegalArgumentException) {
+                    return@handler json(mapOf("error" to failure.message), Status.BAD_REQUEST)
+                }
             } else {
-                val setting = parseAutoRepositorySetting(request.bodyString())
+                null
+            }
+
+        try {
+            val accessible = installedRepositories().map { it.lowercase(Locale.ROOT) }.toSet()
+            if (setting == null) {
+                json(mapOf("repositories" to read().filter { it in accessible }.sorted()))
+            } else if (setting.repository !in accessible) {
+                json(mapOf("error" to "GitHub App does not have access to this repository"), Status.FORBIDDEN)
+            } else {
                 save(setting.repository, setting.enabled)
                 json(setting)
             }
-        } catch (failure: JsonParseException) {
-            json(mapOf("error" to "Invalid JSON"), Status.BAD_REQUEST)
-        } catch (failure: IllegalArgumentException) {
-            json(mapOf("error" to failure.message), Status.BAD_REQUEST)
         } catch (failure: SQLException) {
             KotlinLogging.logger { }.error(failure) { "Could not access Auto repository settings" }
             json(mapOf("error" to "Could not access Auto repository settings"), Status.SERVICE_UNAVAILABLE)
+        } catch (failure: IOException) {
+            autoRepositoryAccessFailure(failure)
+        } catch (failure: IllegalStateException) {
+            autoRepositoryAccessFailure(failure)
+        } catch (failure: JsonParseException) {
+            autoRepositoryAccessFailure(failure)
         }
     }
+}
+
+private fun autoRepositoryAccessFailure(failure: Exception): Response {
+    KotlinLogging.logger { }.warn(failure) { "Could not verify GitHub App repository access for Auto settings" }
+    return Response(Status.BAD_GATEWAY)
+        .header("Content-Type", "application/json")
+        .body("""{"error":"Could not verify GitHub App repository access. Retry loading Auto settings."}""")
 }

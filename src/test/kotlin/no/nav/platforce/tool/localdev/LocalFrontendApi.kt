@@ -171,6 +171,7 @@ class LocalFrontendApi(
     private val api =
         routes(
             *autoRepositoriesRoutes(
+                installedRepositories = { LocalFrontendFixtures.installed.toList() },
                 read = { autoRepositories.toSet() },
                 save = { repository, enabled ->
                     if (enabled) autoRepositories.add(repository) else autoRepositories.remove(repository)
