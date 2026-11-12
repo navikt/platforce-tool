@@ -8,12 +8,25 @@ const { html } = require("./gui-scripts");
 function app(fetch) {
     const elements = new Map();
     const created = [];
-    function element() {
+    const timers = new Map();
+    let timerId = 0;
+    function element(tagName = "div") {
+        const classes = new Set();
         const node = {
-            children: [], dataset: {}, attributes: {}, listeners: {}, textContent: "",
+            tagName, children: [], dataset: {}, attributes: {}, listeners: {}, textContent: "", style: { display: "none" },
+            classList: {
+                toggle(name, active) { if (active) classes.add(name); else classes.delete(name); },
+                contains: name => classes.has(name)
+            },
             append(...children) { this.children.push(...children); },
             appendChild(child) { this.children.push(child); },
             prepend(child) { this.children.unshift(child); },
+            insertBefore(child, reference) {
+                const current = this.children.indexOf(child);
+                if (current >= 0) this.children.splice(current, 1);
+                const index = reference === null ? this.children.length : this.children.indexOf(reference);
+                this.children.splice(index, 0, child);
+            },
             replaceChildren(...children) { this.children = children; },
             setAttribute(key, value) { this.attributes[key] = value; },
             addEventListener(event, listener) { this.listeners[event] = listener; }
@@ -33,12 +46,15 @@ function app(fetch) {
                 ? created.filter(node => node.className === "auto-toggle") : []
         },
         console: { error() {} },
+        URL,
+        setTimeout: (callback, delay) => { const id = ++timerId; timers.set(id, { callback, delay }); return id; },
+        clearTimeout: id => timers.delete(id),
         fetch
     });
     for (const file of ["api", "auto"]) {
         vm.runInContext(readFileSync(resolve(__dirname, `../../main/resources/gui/js/${file}.js`), "utf8"), context);
     }
-    return { context, get, created, value: expression => vm.runInContext(expression, context) };
+    return { context, get, created, timers, value: expression => vm.runInContext(expression, context) };
 }
 
 function server(initial = []) {
@@ -191,4 +207,142 @@ test("scanner only attaches Auto switches to repositories the GitHub App can acc
             assert.equal(actions.children[0].dataset.repository, "example/repo");
         }
     }
+});
+
+function logEntry(id, overrides = {}) {
+    return {
+        id, timestamp: "2026-11-12T13:00:00Z", runId: "run-1", username: "service-user",
+        level: "INFO", step: "Scan Dependencies", repository: null, message: `Finished step ${id}`,
+        ...overrides
+    };
+}
+
+function processSnapshot(status = "RUNNING", logs = []) {
+    return {
+        run: { id: "run-1", username: "service-user", status, startedAt: "2026-11-12T13:00:00Z",
+            step: "Scan Plugins", repository: null, stepStartedAt: "2026-11-12T13:01:00Z" },
+        logs, nextBefore: null
+    };
+}
+
+test("Auto process renders running step and red tab, timestamped expandable reports and safe PR links", async () => {
+    const snapshot = processSnapshot("RUNNING", [
+        logEntry(1, { details: "example:library 1.0 -> 1.2\nexample:other 2.0 -> 2.1" }),
+        logEntry(2, { repository: "example/repo", message: "Pull request created", url: "https://github.com/example/repo/pull/42" })
+    ]);
+    const ui = app(async (url, options) => {
+        assert.equal(url, "/internal/api/auto/status");
+        assert.equal(options.cache, "no-store");
+        return { ok: true, json: async () => snapshot };
+    });
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), true);
+    assert.equal(ui.get("autoCurrentStep").hidden, false);
+    assert.equal(ui.get("autoCurrentStep").children[0].className, "spinner");
+    assert.equal(ui.get("autoCurrentStep").children[1].textContent, "Scan Plugins");
+    assert.equal(ui.get("autoCurrentStep").children[2].dateTime, snapshot.run.stepStartedAt);
+    const entries = ui.get("autoProcessLogs").children;
+    assert.equal(entries.length, 2);
+    const link = entries[0].children.find(node => node.tagName === "a");
+    assert.equal(link.href, "https://github.com/example/repo/pull/42");
+    assert.equal(link.rel, "noopener noreferrer");
+    const details = entries[1].children.find(node => node.tagName === "details");
+    assert.match(details.children[1].textContent, /example:library 1.0 -> 1.2/);
+    details.open = true;
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("autoProcessLogs").children[1], entries[1]);
+    assert.equal(details.open, true);
+    snapshot.run.status = "COMPLETED";
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), false);
+    assert.equal(ui.get("autoCurrentStep").hidden, true);
+    assert.match(ui.get("autoProcessStatus").textContent, /COMPLETED/);
+    assert.equal(ui.get("autoProcessLogs").children.length, 2);
+});
+
+test("Auto polling speeds up while running and visible, slows when hidden or finished, and does not overlap reads", async () => {
+    let snapshot = processSnapshot();
+    let calls = 0;
+    const ui = app(async () => { calls++; return { ok: true, json: async () => snapshot }; });
+    ui.get("autoTab").style.display = "block";
+    ui.context.startAutoProcessPolling();
+    await new Promise(resolve => setImmediate(resolve));
+    const runTimer = async () => {
+        const [id, timer] = ui.timers.entries().next().value;
+        ui.timers.delete(id);
+        await timer.callback();
+    };
+    assert.equal(ui.timers.values().next().value.delay, 2000);
+    ui.get("autoTab").style.display = "none";
+    await runTimer();
+    assert.equal(ui.timers.values().next().value.delay, 10000);
+    snapshot = processSnapshot("STOPPED");
+    ui.get("autoTab").style.display = "block";
+    await runTimer();
+    assert.equal(ui.timers.values().next().value.delay, 10000);
+    assert.equal(ui.get("autoCurrentStep").hidden, true);
+    let finish;
+    ui.context.fetch = () => { calls++; return new Promise(resolve => { finish = resolve; }); };
+    const before = calls;
+    const pending = ui.context.loadAutoProcess();
+    await ui.context.loadAutoProcess();
+    assert.equal(calls, before + 1);
+    finish({ ok: true, json: async () => snapshot });
+    await pending;
+});
+
+test("Auto logs paginate without duplicates and fill a gap when more than one page arrives between polls", async () => {
+    let phase = 0;
+    const requests = [];
+    const ui = app(async url => {
+        requests.push(url);
+        const snapshot = processSnapshot();
+        if (phase === 0) {
+            snapshot.logs = [logEntry(1), logEntry(2)];
+        } else if (url.endsWith("before=7")) {
+            snapshot.logs = [logEntry(3), logEntry(4), logEntry(5), logEntry(6)];
+            snapshot.nextBefore = 3;
+        } else if (url.endsWith("before=3")) {
+            snapshot.logs = [logEntry(1), logEntry(2)];
+        } else {
+            snapshot.logs = [logEntry(7), logEntry(8)];
+            snapshot.nextBefore = 7;
+        }
+        return { ok: true, json: async () => snapshot };
+    });
+    await ui.context.loadAutoProcess();
+    phase = 1;
+    await ui.context.loadAutoProcess();
+    assert.deepEqual(requests.slice(1), ["/internal/api/auto/status", "/internal/api/auto/status?before=7", "/internal/api/auto/status?before=3"]);
+    assert.equal(ui.get("autoProcessLogs").children.length, 8);
+    assert.equal(ui.get("autoProcessLogs").children[0].children[1].textContent, "Finished step 8");
+    assert.equal(ui.get("autoProcessLogs").children[7].children[1].textContent, "Finished step 1");
+    const other = app(async url => ({
+        ok: true, json: async () => ({ ...processSnapshot("COMPLETED"), logs: url.includes("before") ? [logEntry(1)] : [logEntry(2)], nextBefore: url.includes("before") ? null : 2 })
+    }));
+    await other.context.loadAutoProcess();
+    assert.equal(other.get("loadOlderAutoLogs").hidden, false);
+    await other.context.loadAutoProcess(2);
+    assert.equal(other.get("autoProcessLogs").children.length, 2);
+    assert.equal(other.get("loadOlderAutoLogs").hidden, true);
+});
+
+test("Auto process failures retain confirmed logs and running status with an explicit stale-data warning", async () => {
+    const ui = app(async () => ({ ok: true, json: async () => processSnapshot("RUNNING", [logEntry(1)]) }));
+    await ui.context.loadAutoProcess();
+    ui.context.fetch = async () => ({ ok: false, json: async () => ({ error: "Database unavailable" }) });
+    await ui.context.loadAutoProcess();
+    assert.match(ui.get("autoProcessError").textContent, /Database unavailable.*stale/);
+    assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), true);
+    assert.equal(ui.get("autoProcessLogs").children.length, 1);
+    ui.context.fetch = async () => ({ ok: true, json: async () => processSnapshot("INTERRUPTED", [logEntry(2, { level: "WARN", message: "<script>unsafe</script>" })]) });
+    await ui.context.loadAutoProcess();
+    assert.equal(ui.get("autoProcessError").textContent, "");
+    assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), false);
+    assert.match(ui.get("autoProcessLogs").children[0].className, /auto-log-warning/);
+    assert.equal(ui.get("autoProcessLogs").children[0].children[1].textContent, "<script>unsafe</script>");
+    ui.context.fetch = async () => ({ ok: true, json: async () => processSnapshot("COMPLETED", [logEntry(3, { url: "javascript:alert(1)" })]) });
+    await ui.context.loadAutoProcess();
+    assert.match(ui.get("autoProcessError").textContent, /Invalid pull request link/);
+    assert.equal(ui.get("autoProcessLogs").children.length, 2);
 });

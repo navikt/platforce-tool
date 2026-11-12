@@ -208,12 +208,13 @@ function renderRepo(repoView, scanMap, container) {
                 <span class="pr-prerequisite-slot">
                     ${prPrerequisite ? `<span class="pr-prerequisite-icon" role="img" tabindex="0"
                         aria-label="${prPrerequisite}" title="${prPrerequisite}">
-                        <svg width="22" height="26" viewBox="0 0 24 28" fill="none"
+                        <svg width="26" height="30" viewBox="0 0 24 28" fill="none"
                             stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                             <rect class="pr-lock-body" x="3" y="10" width="18" height="15" rx="3"/>
                             <path class="pr-lock-highlight" d="M6 12h12" stroke-linecap="round"/>
                             <text class="pr-lock-label" x="12" y="20" text-anchor="middle"
+                                transform="translate(0 -6) scale(1 1.3)"
                                 stroke="none" font-family="sans-serif" font-size="5" font-weight="700"
                                 letter-spacing=".3">${normalSecurityReady ? "BOM" : "SCAN"}</text>
                         </svg>

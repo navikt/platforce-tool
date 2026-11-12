@@ -26,7 +26,7 @@
         Ignored
     </div>
     <span class="tab-divider" aria-hidden="true"></span>
-    <button class="tab" data-tab="auto" type="button">Auto</button>
+    <button id="autoTabButton" class="tab" data-tab="auto" type="button">Auto</button>
     <button class="tab" data-tab="deployments" type="button">Deployments</button>
 </div>
 
@@ -36,10 +36,20 @@
             <h2>Auto repositories</h2>
             <button id="refreshAutoRepositories" type="button">Refresh</button>
         </div>
-        <p class="auto-description">Global opt-ins shared by all users. Automated dependency updates are not active yet.</p>
+        <p class="auto-description">Global opt-ins shared by all users. Auto uses the authenticated caller's Target Versions.</p>
         <p id="autoStatus" role="status" aria-live="polite"></p>
         <p id="autoError" role="alert"></p>
         <div id="autoRepositories"></div>
+    </div>
+    <div class="repo auto-card">
+        <div class="auto-heading">
+            <h2>Auto process log</h2>
+            <span id="autoProcessStatus" role="status" aria-live="polite">Process status not loaded.</span>
+        </div>
+        <p id="autoProcessError" role="alert"></p>
+        <div id="autoCurrentStep" role="status" aria-live="polite" hidden></div>
+        <div id="autoProcessLogs"></div>
+        <button id="loadOlderAutoLogs" type="button" hidden>Load older logs</button>
     </div>
 </div>
 

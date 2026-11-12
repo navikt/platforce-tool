@@ -18,6 +18,7 @@ class DependencyPullRequestService(
         repo: String,
         username: String,
         targetState: TargetVersionsState,
+        beforeWrite: () -> Unit = {},
     ): String {
         val fullRepo = "$owner/$repo"
         dependencyScanViewService.requirePullRequestReady(username, targetState, fullRepo)
@@ -59,6 +60,7 @@ class DependencyPullRequestService(
                 baseBranch,
             )
 
+        beforeWrite()
         githubClient.createBranch(
             owner,
             repo,
@@ -84,6 +86,7 @@ class DependencyPullRequestService(
                         branchName,
                     )
 
+                beforeWrite()
                 githubClient.updateFile(
                     owner,
                     repo,
@@ -109,6 +112,7 @@ class DependencyPullRequestService(
                     branchName,
                 )
 
+            beforeWrite()
             githubClient.updateFile(
                 owner,
                 repo,
@@ -120,6 +124,7 @@ class DependencyPullRequestService(
             )
         }
 
+        beforeWrite()
         return githubClient.createPullRequest(
             owner,
             repo,

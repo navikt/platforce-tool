@@ -3,6 +3,9 @@ package no.nav.platforce.tool.targets
 import no.nav.platforce.tool.db.PostgresDatabase
 import no.nav.platforce.tool.db.TargetVersion
 import no.nav.platforce.tool.db.TargetVersionType
+import no.nav.platforce.tool.db.TargetVersionsTable
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.Instant
 
@@ -49,8 +52,25 @@ class TargetVersionsStore(
         return if (includeIgnored) state else state.withoutIgnoredDependencies()
     }
 
-    fun update(state: TargetVersionsState) {
-        val normalized = state.snapshot().preservingIgnoredDependencies(get(includeIgnored = true))
+    fun update(
+        state: TargetVersionsState,
+        expected: TargetVersionsState? = null,
+    ) {
+        transaction(PostgresDatabase.database) {
+            TargetVersionsTable
+                .selectAll()
+                .where { TargetVersionsTable.userId eq userId }
+                .forUpdate()
+                .toList()
+            val stored = get(includeIgnored = true)
+            check(
+                expected == null || fingerprint(stored) == fingerprint(expected),
+            ) { "Saved Target Versions changed during Auto processing" }
+            saveNormalized(state.snapshot().preservingIgnoredDependencies(stored))
+        }
+    }
+
+    private fun saveNormalized(normalized: TargetVersionsState) {
         val now = Instant.now()
 
         val versions =

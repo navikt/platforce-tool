@@ -1,6 +1,11 @@
 package no.nav.platforce.tool
 
 import mu.KotlinLogging
+import no.nav.platforce.tool.auto.AutoProcessService
+import no.nav.platforce.tool.auto.AutoWorkflow
+import no.nav.platforce.tool.auto.DatabaseAutoRunStore
+import no.nav.platforce.tool.auto.DefaultAutoOperations
+import no.nav.platforce.tool.auto.autoProcessRoutes
 import no.nav.platforce.tool.auto.autoRepositoriesRoutes
 import no.nav.platforce.tool.config.env
 import no.nav.platforce.tool.config.env_NAIS_CLUSTER_NAME
@@ -37,6 +42,7 @@ import no.nav.platforce.tool.security.TargetSecurityService
 import no.nav.platforce.tool.security.pluginSecurityRoutes
 import no.nav.platforce.tool.security.targetSecurityRoutes
 import no.nav.platforce.tool.targets.AvailableVersionsService
+import no.nav.platforce.tool.targets.TargetVersionsUpdater
 import no.nav.platforce.tool.targets.UpgradeSecurityScanner
 import no.nav.platforce.tool.targets.availableVersionsRoutes
 import no.nav.platforce.tool.targets.targetVersionsRoutes
@@ -61,6 +67,7 @@ class Application {
         PostgresDatabase.createIgnoredDependenciesTable()
         PostgresDatabase.createDeploymentRefreshMarkerTable()
         PostgresDatabase.createAutoRepositoriesTable()
+        PostgresDatabase.createAutoProcessTables()
     }
 
     private val log = KotlinLogging.logger { }
@@ -123,6 +130,30 @@ class Application {
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanViewService)
 
+    private val autoProcess =
+        AutoProcessService(
+            DatabaseAutoRunStore(),
+            AutoWorkflow(
+                DefaultAutoOperations(
+                    availableVersionsService,
+                    TargetVersionsUpdater(
+                        gradleTargetResolutionScanner,
+                        targetSecurityScanner,
+                        pluginSecurityScanner,
+                        upgradeSecurityScanner,
+                    ),
+                    targetSecurityScanner,
+                    gradleTargetResolutionScanner,
+                    pluginSecurityScanner,
+                    githubClient,
+                    dependencyScanner,
+                    dependencyScanCache,
+                    dependencyScanViewService,
+                    pullRequestService,
+                ),
+            ),
+        )
+
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))
 
     private val naisClient = NaisConsoleClient(httpClient)
@@ -148,6 +179,7 @@ class Application {
             ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
             *autoRepositoriesRoutes(githubClient::listRepositories).toTypedArray(),
+            *autoProcessRoutes(autoProcess).toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),
             *deploymentsRoutes(naisClient, githubClient).toTypedArray(),
             *deploymentRefreshRoutes().toTypedArray(),

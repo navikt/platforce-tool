@@ -42,7 +42,7 @@ document
                 tab.dataset.tab;
             document.getElementById("autoTab").style.display =
                 selected === "auto" ? "block" : "none";
-            if (selected === "auto") loadAutoRepositories();
+            if (selected === "auto") refreshAutoTab();
             document.getElementById("deploymentsTab").style.display =
                 selected === "deployments" ? "block" : "none";
             if (selected === "deployments") loadDeployments();
@@ -74,7 +74,10 @@ document.getElementById("refreshDeployments")
     .addEventListener("click", () => loadDeployments(true));
 
 document.getElementById("refreshAutoRepositories")
-    .addEventListener("click", () => loadAutoRepositories());
+    .addEventListener("click", refreshAutoTab);
+
+document.getElementById("loadOlderAutoLogs")
+    .addEventListener("click", () => loadAutoProcess(autoNextBefore));
 
 document.getElementById("markDeploymentsForRefresh")
     .addEventListener("click", () => saveDeploymentRefreshMarker(false));
@@ -131,6 +134,7 @@ document.addEventListener("click", event => {
 
 async function init() {
     selectedTeam = await loadSelectedTeam();
+    startAutoProcessPolling();
 
     await initTargets();
     await loadAutoRepositories();

@@ -22,6 +22,7 @@ class UserResponseCacheControlTest {
             "/internal/api/target-resolution/security",
             "/internal/repos/view",
             "/internal/selectedTeam",
+            "/internal/triggerAuto",
         ).forEach { path ->
             val response = app(Request(Method.GET, path))
             assertEquals("no-store", response.header("Cache-Control"))

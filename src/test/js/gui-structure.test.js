@@ -20,6 +20,8 @@ function browser(fetch) {
                 style: {},
                 listeners: {},
                 replaceChildren() {},
+                classList: { toggle() {} },
+                setAttribute() {},
                 addEventListener(event, listener) {
                     assert.equal(this.listeners[event], undefined, `Duplicate listener on ${id}`);
                     this.listeners[event] = listener;
@@ -37,7 +39,9 @@ function browser(fetch) {
         console: { log() {}, warn() {}, error() {} },
         fetch,
         setInterval: () => 1,
-        clearInterval() {}
+        clearInterval() {},
+        setTimeout: () => 1,
+        clearTimeout() {}
     });
     // Classic script globals and inline handlers share the browser's window object.
     context.window = context;
@@ -126,6 +130,7 @@ test("bootstrap preserves startup order, selected team, cached security and unca
     const security = { targets: [{ key: "example:library", targetVersion: "1.0" }] };
     const data = {
         "/internal/selectedTeam": { selectedTeam: "saved-team" },
+        "/internal/api/auto/status": { run: null, logs: [] },
         "/internal/api/target-versions": { dependencies: { "example:library": "1.0" } },
         "/internal/api/auto-repositories": { repositories: [] },
         "/internal/repos/view": [],

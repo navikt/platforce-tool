@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
+import no.nav.platforce.tool.auto.AutoProcessSnapshot
 import no.nav.platforce.tool.auto.autoRepositoriesRoutes
 import no.nav.platforce.tool.ignore.parseIgnoredDependencies
 import no.nav.platforce.tool.nais.RebuildWorkflow
@@ -170,6 +171,10 @@ class LocalFrontendApi(
 
     private val api =
         routes(
+            "/internal/api/auto/status" bind Method.GET to { json(AutoProcessSnapshot(null, emptyList(), null)) },
+            "/internal/triggerAuto" bind Method.GET to {
+                json(mapOf("error" to "Auto execution is not available in the synthetic local frontend"), Status.NOT_IMPLEMENTED)
+            },
             *autoRepositoriesRoutes(
                 installedRepositories = { LocalFrontendFixtures.installed.toList() },
                 read = { autoRepositories.toSet() },

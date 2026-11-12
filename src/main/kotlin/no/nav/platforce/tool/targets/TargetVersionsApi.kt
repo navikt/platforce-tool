@@ -27,12 +27,7 @@ fun targetVersionsRoutes(
         val body = request.bodyString()
         val parsed = Gson().fromJson(body, TargetVersionsState::class.java).snapshot()
 
-        context.targetVersionsStore.update(parsed)
-
-        securityScanner.invalidate(context.username)
-        resolutionScanner.invalidate(context.username)
-        pluginSecurityScanner?.invalidate(context.username)
-        upgradeSecurityScanner?.invalidate(context.username)
+        TargetVersionsUpdater(resolutionScanner, securityScanner, pluginSecurityScanner, upgradeSecurityScanner).save(context, parsed)
 
         Response(Status.OK).body("updated")
     },

@@ -107,6 +107,37 @@ object PostgresDatabase {
         }
     }
 
+    fun createAutoProcessTables() {
+        transaction(database) {
+            SchemaUtils.create(AutoRunsTable, AutoRunLockTable, AppLogsTable)
+            AutoRunLockTable.insertIgnore { it[id] = 1 }
+        }
+    }
+
+    fun getUniqueUsers(): List<String> =
+        transaction(database) {
+            (
+                TargetVersionsTable.select(TargetVersionsTable.userId).withDistinct().map { it[TargetVersionsTable.userId] } +
+                    RepositoryNotesTable.select(RepositoryNotesTable.userId).withDistinct().map { it[RepositoryNotesTable.userId] } +
+                    IgnoredRepositoriesTable
+                        .select(
+                            IgnoredRepositoriesTable.userId,
+                        ).withDistinct()
+                        .map { it[IgnoredRepositoriesTable.userId] } +
+                    IgnoredDependenciesTable
+                        .select(
+                            IgnoredDependenciesTable.userId,
+                        ).withDistinct()
+                        .map { it[IgnoredDependenciesTable.userId] } +
+                    DeploymentRefreshMarkerTable
+                        .select(
+                            DeploymentRefreshMarkerTable.userId,
+                        ).withDistinct()
+                        .map { it[DeploymentRefreshMarkerTable.userId] } +
+                    AutoRunsTable.select(AutoRunsTable.username).withDistinct().map { it[AutoRunsTable.username] }
+            ).distinct().sorted()
+        }
+
     fun getAutoRepositories(): Set<String> =
         transaction(database) {
             AutoRepositoriesTable.selectAll().map { it[AutoRepositoriesTable.repository] }.toSet()

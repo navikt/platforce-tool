@@ -81,6 +81,83 @@ body {
     padding: 12px 16px;
 }
 
+.tabs .tab.auto-running {
+    color: #b32626;
+}
+
+#autoProcessStatus,
+.auto-log-meta {
+    color: #607080;
+    font-size: 12px;
+}
+
+#autoProcessError {
+    color: #a32626;
+    font-size: 13px;
+}
+
+#autoProcessError:empty {
+    display: none;
+}
+
+#autoCurrentStep {
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+    font-size: 13px;
+}
+
+#autoCurrentStep:not([hidden]) {
+    display: flex;
+}
+
+#autoCurrentStep .spinner {
+    border-color: #d3d6da;
+    border-top-color: #607080;
+}
+
+#autoCurrentStep time {
+    margin-left: auto;
+    color: #607080;
+    font-size: 12px;
+}
+
+.auto-log-entry {
+    border-top: 1px solid #e8edf2;
+    padding: 10px 0;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.auto-log-entry p {
+    margin: 6px 0;
+}
+
+.auto-log-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+}
+
+.auto-log-warning > p {
+    color: #a32626;
+}
+
+.auto-log-entry summary {
+    cursor: pointer;
+    color: #607080;
+    margin-top: 6px;
+}
+
+.auto-log-entry pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: inherit;
+    background: #f5f6f7;
+    padding: 10px;
+    border-radius: 6px;
+}
+
 .auto-heading,
 .auto-repository-row {
     display: flex;
@@ -596,7 +673,7 @@ button:hover {
 .pr-create-action--locked .pr-prerequisite-slot::after {
     content: "";
     position: absolute;
-    left: 20px;
+    left: 23px;
     right: 0;
     height: 1px;
     background: var(--pr-lock-accent);

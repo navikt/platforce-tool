@@ -380,6 +380,8 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
     assert.match(card.innerHTML, /pr-create-action--locked pr-create-action--scan/);
     assert.match(card.innerHTML, /role="group" aria-label="Create PR unavailable: Run security scan first"/);
     assert.match(card.innerHTML, /class="pr-lock-body"/);
+    assert.match(card.innerHTML, /<svg width="26" height="30" viewBox="0 0 24 28"/);
+    assert.match(card.innerHTML, /transform="translate\(0 -6\) scale\(1 1\.3\)"/);
     assert.match(card.innerHTML, />SCAN<\/text>/);
     assert.doesNotMatch(card.innerHTML, /<circle cx="12" cy="12" r="9"/);
     assert.doesNotMatch(card.innerHTML, />BOM<\/text>/);
@@ -389,6 +391,8 @@ test("repository renders BOM-only untracked entries and tracked BOMs as a distin
     assert.match(card.innerHTML, /disabled>Create PR/);
     assert.match(card.innerHTML, /aria-label="Run BOM scan first"/);
     assert.match(card.innerHTML, /pr-create-action--locked pr-create-action--bom/);
+    assert.match(card.innerHTML, /<svg width="26" height="30" viewBox="0 0 24 28"/);
+    assert.match(card.innerHTML, /transform="translate\(0 -6\) scale\(1 1\.3\)"/);
     assert.match(card.innerHTML, />BOM<\/text>/);
     assert.doesNotMatch(card.innerHTML, />SCAN<\/text>/);
     app.value("bomSecurityReady = true");

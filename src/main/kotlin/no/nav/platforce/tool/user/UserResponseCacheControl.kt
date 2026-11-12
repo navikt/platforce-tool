@@ -6,7 +6,9 @@ fun HttpHandler.withUserCacheControl(): HttpHandler =
     { request ->
         val response = this(request)
         val path = request.uri.path
-        if (path.startsWith("/internal/api/") || path == "/internal/repos/view" || path == "/internal/selectedTeam") {
+        if (path.startsWith("/internal/api/") || path == "/internal/repos/view" || path == "/internal/selectedTeam" ||
+            path == "/internal/triggerAuto"
+        ) {
             response.header("Cache-Control", "no-store")
         } else {
             response
