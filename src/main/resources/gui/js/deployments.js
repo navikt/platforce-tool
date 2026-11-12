@@ -12,7 +12,7 @@ function renderDeploymentRebuildAll() {
     const slot = document.getElementById("deploymentRebuildAll");
     slot.replaceChildren();
     if (deploymentsLoading || !deploymentData ||
-        deploymentData.applications.some(app => app.repository && app.workloadType !== "JOB" &&
+        deploymentData.applications.some(app => app.repository &&
             !Object.hasOwn(deploymentData.rebuildWorkflows || {}, app.repository)) ||
         !deploymentRebuildCommands.size) return;
     const commands = [...deploymentRebuildCommands.entries()]
@@ -35,7 +35,6 @@ function deploymentLoadingStatus(text) {
 async function loadDeploymentWorkflows(data, generation) {
     data.rebuildWorkflows ||= {};
     const pending = [...new Set(data.applications
-        .filter(app => app.workloadType !== "JOB")
         .map(app => app.repository).filter(Boolean))]
         .filter(repository => !Object.hasOwn(data.rebuildWorkflows, repository));
     if (!pending.length) return;
@@ -338,6 +337,20 @@ function appendDeploymentRebuildActions(heading, repository) {
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.setAttribute("aria-label", `Rebuild ${repository.repository} (opens in a new tab)`);
+        const hasJobs = repository.teams.some(team =>
+            team.applications.some(app => app.workloadType === "JOB"));
+        if (hasJobs) {
+            link.setAttribute("aria-label", `Rebuild ${repository.repository} and deploy its jobs (opens in new tabs)`);
+            link.onclick = event => {
+                event.preventDefault();
+                window.open(link.href, "_blank", "noopener,noreferrer");
+                window.open(
+                    `https://github.com/${repository.repository.split("/").map(encodeURIComponent).join("/")}/actions/workflows/deploy-job.yml`,
+                    "_blank",
+                    "noopener,noreferrer"
+                );
+            };
+        }
         const icon = document.createElement("img");
         icon.src = "/internal/gui/icons/external-link.svg";
         icon.alt = "";
@@ -348,8 +361,12 @@ function appendDeploymentRebuildActions(heading, repository) {
         actions.appendChild(link);
         try {
             const targets = workflow.monorepo ? deploymentRebuildTargets(repository, workflow.namespace === true, workflow.fixedApp === true) : null;
-            const command = `gh workflow run rebuild.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}` +
+            const rebuildCommand = `gh workflow run rebuild.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}` +
                 (targets ? ` -f targets=${deploymentShellQuote(targets)}` : "");
+            const jobCommand = hasJobs
+                ? `gh workflow run deploy-job.yml --repo ${deploymentShellQuote(repository.repository)} --ref ${deploymentShellQuote(workflow.branch)}`
+                : null;
+            const command = [rebuildCommand, jobCommand].filter(Boolean).join("\n");
             actions.appendChild(deploymentCopyButton("gh", command, feedback, repository.repository));
             deploymentRebuildCommands.set(repository.repository, command);
             if (targets) actions.appendChild(deploymentCopyButton("targets", targets, feedback, repository.repository));
@@ -429,8 +446,7 @@ function renderDeployments() {
             heading.textContent = "Repository unknown";
         }
         heading.title = "Repository from successful deployment history or application activity; not verified as the image build source.";
-        if (repository.repository && repository.teams.some(team =>
-            team.applications.some(app => app.workloadType !== "JOB"))) {
+        if (repository.repository) {
             appendDeploymentRebuildActions(heading, repository);
         }
         card.appendChild(heading);

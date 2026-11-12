@@ -176,7 +176,7 @@ test("renders repository-associated jobs with a job pill and excludes them from 
         json: async () => ({
             teams: ["team-a"],
             applications: [
-                application("team-a", "nightly", "prod-gcp"),
+                application("team-a", "daily", "prod-gcp"),
                 { ...application("team-a", "nightly", "prod-gcp"), workloadType: "JOB" }
             ],
             rebuildWorkflows: {
@@ -194,11 +194,47 @@ test("renders repository-associated jobs with a job pill and excludes them from 
     const applicationRow = rows.find(row => row.children[0].children.length === 0);
     assert.equal(job.children[0].textContent, "nightly");
     assert.equal(job.children[0].children[0].textContent, "job");
-    assert.equal(applicationRow.children[0].textContent, "nightly");
+    assert.equal(applicationRow.children[0].textContent, "daily");
     assert.match(job.children[0].children[0].className, /deployment-job-pill/);
     const actions = get("deploymentsContainer").children[0].children[0].children[1];
     await actions.children[2].onclick();
-    assert.equal(copied, "nightly:prod-gcp");
+    assert.equal(copied, "daily:prod-gcp");
+});
+
+test("repositories with jobs open both workflow pages and copy both dispatch commands", async () => {
+    const { context, get } = app();
+    context.fetch = withMarker(async () => ({
+        ok: true,
+        json: async () => ({
+            teams: ["team-a"],
+            applications: [
+                application("team-a", "orders", "prod-gcp"),
+                { ...application("team-a", "nightly", "prod-gcp"), workloadType: "JOB" }
+            ],
+            rebuildWorkflows: {
+                "example/mono": { monorepo: true, branch: "main", exists: true }
+            }
+        })
+    }));
+    const opened = [];
+    context.window.open = (...args) => opened.push(args);
+    let copied;
+    context.navigator.clipboard.writeText = async text => { copied = text; };
+    await context.loadDeployments();
+    const actions = get("deploymentsContainer").children[0].children[0].children[1];
+    actions.children[0].onclick({ preventDefault() {} });
+    assert.deepEqual(opened, [
+        ["https://github.com/example/mono/actions/workflows/rebuild.yml", "_blank", "noopener,noreferrer"],
+        ["https://github.com/example/mono/actions/workflows/deploy-job.yml", "_blank", "noopener,noreferrer"]
+    ]);
+    await actions.children[1].onclick();
+    const rebuild = "gh workflow run rebuild.yml --repo 'example/mono' --ref 'main' -f targets='orders:prod-gcp'";
+    const job = "gh workflow run deploy-job.yml --repo 'example/mono' --ref 'main'";
+    assert.equal(copied, `${rebuild}\n${job}`);
+    await get("deploymentRebuildAll").children[0].onclick();
+    assert.equal(copied, `${rebuild}\n${job}`);
+    await actions.children[2].onclick();
+    assert.equal(copied, "orders:prod-gcp");
 });
 
 test("loads lazily once, renders all teams and concise merged rows, refreshes explicitly", async () => {
