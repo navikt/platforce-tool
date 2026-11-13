@@ -37,9 +37,11 @@
             <button id="refreshAutoRepositories" type="button">Refresh</button>
         </div>
         <p class="auto-description">Global opt-ins shared by all users. Auto uses the authenticated caller's Target Versions.</p>
-        <p id="autoStatus" role="status" aria-live="polite"></p>
         <p id="autoError" role="alert"></p>
-        <div id="autoRepositories"></div>
+        <details id="autoRepositoriesDetails">
+            <summary class="auto-repositories-summary"><span id="autoStatus" role="status" aria-live="polite"></span></summary>
+            <div id="autoRepositories"></div>
+        </details>
     </div>
     <div class="repo auto-card">
         <div class="auto-heading">

@@ -108,6 +108,25 @@ test("Auto tab precedes Deployments and renders a sorted compact global list ind
     assert.equal(second.get("autoRepositories").children.length, 2);
 });
 
+test("Auto repository count expands a natively collapsed list and refreshes preserve the expansion state", async () => {
+    assert.match(html, /<details id="autoRepositoriesDetails">\s*<summary[^>]*><span id="autoStatus"[^>]*><\/span><\/summary>\s*<div id="autoRepositories"><\/div>\s*<\/details>/);
+    const backend = server(["example/a-repo", "example/b-repo"]);
+    const ui = app(backend.fetch);
+    await ui.context.loadAutoRepositories();
+    assert.equal(ui.get("autoStatus").textContent, "2 repositories opted in.");
+    const details = ui.get("autoRepositoriesDetails");
+    details.open = true;
+    await ui.context.loadAutoRepositories();
+    assert.equal(details.open, true);
+    await ui.context.saveAutoRepository("example/a-repo");
+    assert.equal(ui.get("autoStatus").textContent, "1 repositories opted in.");
+    assert.equal(ui.get("autoRepositories").children.length, 1);
+    assert.equal(details.open, true);
+    details.open = false;
+    await ui.context.loadAutoRepositories();
+    assert.equal(details.open, false);
+});
+
 test("switches are accessible, default off and disabled until loaded, and save immediately across views and sessions", async () => {
     const backend = server();
     const first = app(backend.fetch);

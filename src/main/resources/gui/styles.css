@@ -275,6 +275,11 @@ body {
     font-size: 13px;
 }
 
+.auto-repositories-summary {
+    cursor: pointer;
+    color: #607080;
+}
+
 #autoError,
 #scannerAutoError {
     color: #a32626;
