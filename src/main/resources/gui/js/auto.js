@@ -152,14 +152,12 @@ async function startAuto() {
     autoProcessStarting = true;
     updateStartAutoButton();
     updateAutoToggles();
-    document.getElementById("autoStartStatus").textContent = "";
     document.getElementById("autoStartError").textContent = "";
     try {
         const response = await fetch("/internal/triggerAuto", { method: "GET", cache: "no-store" });
         const message = await response.text();
         if (!response.ok) throw new Error(response.status === 409 ? message : `HTTP ${response.status}`);
         if (message !== "process started") throw new Error("Unexpected Auto trigger response");
-        document.getElementById("autoStartStatus").textContent = "Auto process started.";
     } catch (failure) {
         console.error("Could not start Auto process", failure);
         document.getElementById("autoStartError").textContent =

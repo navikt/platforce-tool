@@ -741,7 +741,7 @@ button:hover {
 
 .pr-create-action {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     margin-right: 26px;
     flex-shrink: 0;
 }
@@ -750,19 +750,9 @@ button:hover {
     margin-right: 0;
 }
 
-.pr-create-action--scan {
-    --pr-lock-accent: #8b9b8e;
-    --pr-lock-label: #56735d;
-}
-
-.pr-create-action--bom {
-    --pr-lock-accent: #a397af;
-    --pr-lock-label: #7a658c;
-}
-
 .pr-prerequisite-slot {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-end;
     width: 34px;
     flex: 0 0 34px;
     position: relative;
@@ -773,8 +763,9 @@ button:hover {
     position: absolute;
     left: 23px;
     right: 0;
+    bottom: 12px;
     height: 1px;
-    background: var(--pr-lock-accent);
+    background: #d3d6da;
 }
 
 .pr-prerequisite-icon {
@@ -793,12 +784,12 @@ button:hover {
     fill: #e5e7e9;
 }
 
-.pr-lock-highlight {
-    stroke: #f7f8f9;
+.pr-lock-label {
+    fill: #6b7076;
 }
 
-.pr-lock-label {
-    fill: var(--pr-lock-label);
+.pr-lock-search {
+    stroke: #6b7076;
 }
 
 .pr-create-action--locked .create-pr-button:disabled {
@@ -806,7 +797,6 @@ button:hover {
     color: #898e94;
     background: linear-gradient(#f7f8f9, #eeeff1);
     border-color: #d3d6da;
-    border-left: 1px solid var(--pr-lock-accent);
 }
 
 .btn-primary {
@@ -995,7 +985,7 @@ button:hover {
 
 .repo-actions {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 10px;
 }
 

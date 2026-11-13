@@ -332,6 +332,7 @@ function processSnapshot(status = "RUNNING", logs = []) {
 test("Start Auto is a red button at the bottom of the Auto tab and waits for confirmed idle status", async () => {
     const autoTab = html.slice(html.indexOf('<div id="autoTab"'), html.indexOf('<div id="deploymentsTab"'));
     assert.match(autoTab, /<button id="startAuto" class="btn-danger" type="button" disabled>Start Auto<\/button>/);
+    assert.doesNotMatch(autoTab, /autoStartStatus/);
     assert.ok(autoTab.indexOf('id="startAuto"') > autoTab.indexOf('id="loadOlderAutoLogs"'));
     let snapshot = { run: null, runs: [], logs: [], nextBefore: null };
     let calls = 0;
@@ -382,7 +383,6 @@ test("Start Auto calls the existing trigger once, locks controls while pending a
     finishTrigger({ ok: true, text: async () => "process started" });
     await pending;
     assert.equal(calls.length, 2);
-    assert.equal(ui.get("autoStartStatus").textContent, "Auto process started.");
     assert.equal(ui.get("autoStartError").textContent, "");
     assert.equal(ui.get("autoProcessStatus").textContent, "RUNNING");
     assert.equal(ui.get("startAuto").textContent, "Start Auto");
@@ -405,7 +405,6 @@ test("Start Auto reports conflicts, server and network failures without claiming
             return { ok: true, json: async () => processSnapshot() };
         });
         await ui.context.startAuto();
-        assert.equal(ui.get("autoStartStatus").textContent, "");
         assert.match(ui.get("autoStartError").textContent, /Could not start Auto process:/);
         assert.equal(ui.get("autoProcessStatus").textContent, "RUNNING");
         assert.equal(ui.get("startAuto").disabled, true);
@@ -418,7 +417,6 @@ test("Start Auto remains disabled when status refresh fails after a successful t
         throw new Error("Status unavailable");
     });
     await ui.context.startAuto();
-    assert.equal(ui.get("autoStartStatus").textContent, "Auto process started.");
     assert.match(ui.get("autoProcessError").textContent, /Status unavailable/);
     assert.equal(ui.get("startAuto").disabled, true);
 });
