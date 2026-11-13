@@ -41,16 +41,16 @@ dependencies {
     implementation "io.github.microutils:kotlin-logging:3.0.5"
     implementation "ch.qos.logback:logback-classic:1.6.6"
     implementation "net.logstash.logback:logstash-logback-encoder:9.0"
-    implementation "tools.jackson.core:jackson-databind:3.2.4" // Transitive to net.logstash.logback:logstash-logback-encoder
+    implementation "tools.jackson.core:jackson-databind:3.3.0" // Transitive to net.logstash.logback:logstash-logback-encoder
 
     implementation "io.prometheus:simpleclient_common:0.9.0"
     implementation "io.prometheus:simpleclient_hotspot:0.9.0"
 
     implementation "com.auth0:java-jwt:4.6.2"
 
-    implementation "com.fasterxml.jackson.core:jackson-databind:2.22.4" // Transitive to com.auth0:java-jwt:4.6.0
-    implementation "org.bouncycastle:bcpkix-jdk18on:1.86"
-    implementation "org.bouncycastle:bcprov-jdk18on:1.86"
+    implementation "com.fasterxml.jackson.core:jackson-databind:2.23.0" // Transitive to com.auth0:java-jwt:4.6.0
+    implementation "org.bouncycastle:bcpkix-jdk18on:1.87"
+    implementation "org.bouncycastle:bcprov-jdk18on:1.87"
 
     implementation "org.postgresql:postgresql:42.7.14"
 
@@ -130,3 +130,10 @@ kotlin {
 //        println "Dependency graph written to ${output}"
 //    }
 //}
+
+tasks.named('shadowJar') {
+    mergeServiceFiles()
+    filesMatching(['META-INF/services/**', 'META-INF/*.kotlin_module']) {
+        duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.INCLUDE
+    }
+}
