@@ -34,6 +34,7 @@ class AutoProcessTest {
                 ignoredDependencies = setOf("example:ignored"),
             )
         var upgrade = true
+        var createPr = true
         var fail: String? = null
         var users = listOf("alice", "bob", "service-user")
         var onDependencies: () -> Unit = {}
@@ -128,16 +129,77 @@ class AutoProcessTest {
         ): AutoReport {
             record("pr:$repository")
             onPullRequest()
-            return if (repository.endsWith(
-                    "current",
-                )
-            ) {
+            return if (!createPr || repository.endsWith("current")) {
                 AutoReport(
                     "No changes required",
                 )
             } else {
                 AutoReport("Pull request created", "Updated library", "https://github.com/$repository/pull/42")
             }
+        }
+    }
+
+    @Test
+    fun `only completed runs with PRs and stops with confirmed vulnerabilities notify after persistence`() {
+        val cases =
+            listOf(
+                Operations() to AutoRunNotification(pullRequests = listOf("https://github.com/example/updated/pull/42")),
+                Operations().apply { createPr = false } to null,
+                Operations().apply {
+                    onDependencies = { throw AutoStopped(AutoReport("Vulnerabilities found"), vulnerabilitiesFound = true) }
+                } to AutoRunNotification(vulnerabilitiesFound = true),
+                Operations().apply { fail = "dependencies" } to null,
+                Operations().apply { onDependencies = { throw AutoInterrupted("Interrupted") } } to null,
+                Operations().apply { onDependencies = { throw IOException("Failed") } } to null,
+                Operations().apply {
+                    onPullRequest =
+                        { throw AutoStopped(AutoReport("PR cleanup failed", url = "https://github.com/example/repo/pull/9")) }
+                } to
+                    null,
+            )
+        cases.forEach { (operations, expected) ->
+            val store = MemoryAutoRunStore()
+            val executor = QueuedExecutor()
+            val notifications = mutableListOf<AutoRunNotification>()
+            val service =
+                AutoProcessService(store, AutoWorkflow(operations), executor, notify = {
+                    assertTrue(store.snapshot().run?.status in setOf(AutoRunStatus.COMPLETED, AutoRunStatus.STOPPED))
+                    notifications += it
+                })
+            service.start("alice")
+            executor.runNext()
+            assertEquals(listOfNotNull(expected), notifications)
+        }
+    }
+
+    @Test
+    fun `notification failure cannot change or duplicate the persisted run outcome`() {
+        listOf(false, true).forEach { vulnerable ->
+            val operations =
+                Operations().apply {
+                    if (vulnerable) {
+                        onDependencies = { throw AutoStopped(AutoReport("Vulnerabilities found"), vulnerabilitiesFound = true) }
+                    }
+                }
+            val store = MemoryAutoRunStore()
+            val executor = QueuedExecutor()
+            var notifications = 0
+            val service =
+                AutoProcessService(store, AutoWorkflow(operations), executor, notify = {
+                    notifications++
+                    throw IOException("Webhook unavailable")
+                })
+            service.start("alice")
+            executor.runNext()
+            assertEquals(1, notifications)
+            assertEquals(if (vulnerable) AutoRunStatus.STOPPED else AutoRunStatus.COMPLETED, service.snapshot().run?.status)
+            assertEquals(
+                1,
+                service.snapshot().logs.count {
+                    it.message ==
+                        if (vulnerable) "Vulnerabilities found" else "Auto process finished normally"
+                },
+            )
         }
     }
 

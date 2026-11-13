@@ -15,6 +15,7 @@ class AutoProcessService(
     private val executor: ExecutorService = scanExecutor("auto-process"),
     private val heartbeatExecutor: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "auto-heartbeat").apply { isDaemon = true } },
+    private val notify: (AutoRunNotification) -> Unit = {},
 ) {
     private val log = KotlinLogging.logger { }
 
@@ -35,6 +36,7 @@ class AutoProcessService(
 
     private fun execute(run: AutoRun) {
         val healthy = AtomicBoolean(true)
+        val pullRequests = linkedSetOf<String>()
         var heartbeat: java.util.concurrent.ScheduledFuture<*>? = null
         try {
             heartbeat =
@@ -64,11 +66,13 @@ class AutoProcessService(
                         val report = action()
                         checkActive()
                         store.report(run.id, report)
+                        report.url?.let { pullRequests += it }
                     }
                 }
             val report = workflow.run(run.username, progress)
             progress.checkActive()
             store.finish(run.id, AutoRunStatus.COMPLETED, report)
+            if (pullRequests.isNotEmpty()) notifySafely(run, AutoRunNotification(pullRequests = pullRequests.toList()))
         } catch (failure: Exception) {
             if (failure is InterruptedException) Thread.currentThread().interrupt()
             val status =
@@ -91,6 +95,9 @@ class AutoProcessService(
                         )
                     },
                 )
+                if (failure is AutoStopped && failure.vulnerabilitiesFound) {
+                    notifySafely(run, AutoRunNotification(vulnerabilitiesFound = true))
+                }
             } catch (persistenceFailure: Exception) {
                 log.error(
                     persistenceFailure,
@@ -98,6 +105,20 @@ class AutoProcessService(
             }
         } finally {
             heartbeat?.cancel(false)
+        }
+    }
+
+    private fun notifySafely(
+        run: AutoRun,
+        notification: AutoRunNotification,
+    ) {
+        try {
+            notify(notification)
+        } catch (failure: Exception) {
+            if (failure is InterruptedException) Thread.currentThread().interrupt()
+            log.error {
+                "Could not deliver Slack report for Auto run ${run.id} (${failure.javaClass.simpleName}); run outcome is unchanged"
+            }
         }
     }
 }

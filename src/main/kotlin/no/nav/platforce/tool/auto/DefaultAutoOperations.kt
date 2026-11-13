@@ -162,6 +162,7 @@ class DefaultAutoOperations(
                             } + removals
                     ).joinToString("\n").ifBlank { "Security results do not cover every saved dependency target." },
                 ),
+                vulnerabilitiesFound = vulnerable.isNotEmpty(),
             )
         }
         return AutoReport(
@@ -193,6 +194,8 @@ class DefaultAutoOperations(
                                 bom.vulnerableDependencies.flatMap { it.vulnerabilities }.joinToString { it.id }
                         }.ifBlank { "BOM scan results do not cover every saved BOM target." },
                 ),
+                vulnerabilitiesFound =
+                    result.platformBoms.any { it.status == TargetSecurityStatus.VULNERABLE || it.vulnerableDependencies.isNotEmpty() },
             )
         }
         return AutoReport(
@@ -222,6 +225,7 @@ class DefaultAutoOperations(
                             }}"
                         }.ifBlank { "Security results do not cover every saved plugin target." },
                 ),
+                vulnerabilitiesFound = issues.any { it.status == PluginSecurityStatus.VULNERABLE },
             )
         }
         return AutoReport(

@@ -5,6 +5,7 @@ import no.nav.platforce.tool.auto.AutoProcessService
 import no.nav.platforce.tool.auto.AutoWorkflow
 import no.nav.platforce.tool.auto.DatabaseAutoRunStore
 import no.nav.platforce.tool.auto.DefaultAutoOperations
+import no.nav.platforce.tool.auto.SlackAutoReporter
 import no.nav.platforce.tool.auto.autoProcessRoutes
 import no.nav.platforce.tool.auto.autoRepositoriesRoutes
 import no.nav.platforce.tool.config.env
@@ -130,6 +131,23 @@ class Application {
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanViewService)
 
+    private val autoReporter =
+        System
+            .getenv("WEBHOOK_REPORTS")
+            ?.let { webhook ->
+                SlackAutoReporter(
+                    httpClient,
+                    webhook,
+                    when {
+                        local -> "http://localhost:8080/internal/gui/"
+                        cluster.startsWith("dev-") -> "https://platforce-tool.intern.dev.nav.no/internal/gui/"
+                        else -> "https://platforce-tool.intern.nav.no/internal/gui/"
+                    },
+                )
+            }.also {
+                if (it == null) log.warn { "WEBHOOK_REPORTS is not configured; Auto Slack reports are disabled" }
+            }
+
     private val autoProcess =
         AutoProcessService(
             DatabaseAutoRunStore(),
@@ -152,6 +170,7 @@ class Application {
                     pullRequestService,
                 ),
             ),
+            notify = { autoReporter?.report(it) },
         )
 
     fun apiServer(port: Int): Http4kServer = api().asServer(Netty(port))

@@ -358,14 +358,23 @@ class DefaultAutoOperationsTest {
     @Test
     fun `real security results stop vulnerable dependencies unresolved metadata and vulnerable plugins`() {
         val vulnerable = Fixture().apply { vulnerableName = "library" }
-        assertThrows(AutoStopped::class.java) { vulnerable.operations.scanDependencies("alice", vulnerable.state, vulnerable::tick) }
+        assertTrue(
+            assertThrows(AutoStopped::class.java) {
+                vulnerable.operations.scanDependencies("alice", vulnerable.state, vulnerable::tick)
+            }.vulnerabilitiesFound,
+        )
         val unresolved = Fixture().apply { unresolved = true }
-        assertThrows(AutoStopped::class.java) { unresolved.operations.scanDependencies("alice", unresolved.state, unresolved::tick) }
+        assertFalse(
+            assertThrows(AutoStopped::class.java) {
+                unresolved.operations.scanDependencies("alice", unresolved.state, unresolved::tick)
+            }.vulnerabilitiesFound,
+        )
         val plugin = Fixture().apply { vulnerableName = "plugin-impl" }
         plugin.operations.scanDependencies("alice", plugin.state, plugin::tick)
         plugin.operations.scanBoms("alice", plugin.state, plugin::tick)
         val stopped = assertThrows(AutoStopped::class.java) { plugin.operations.scanPlugins("alice", plugin.state, plugin::tick) }
         assertTrue(stopped.report.details!!.contains("VULNERABLE"))
+        assertTrue(stopped.vulnerabilitiesFound)
     }
 
     @Test
@@ -381,7 +390,11 @@ class DefaultAutoOperationsTest {
     fun `missing BOM evidence stops automation explicitly`() {
         val fixture = Fixture().apply { missingBom = true }
         fixture.operations.scanDependencies("alice", fixture.state, fixture::tick)
-        assertThrows(AutoStopped::class.java) { fixture.operations.scanBoms("alice", fixture.state, fixture::tick) }
+        assertFalse(
+            assertThrows(AutoStopped::class.java) {
+                fixture.operations.scanBoms("alice", fixture.state, fixture::tick)
+            }.vulnerabilitiesFound,
+        )
     }
 
     @Test

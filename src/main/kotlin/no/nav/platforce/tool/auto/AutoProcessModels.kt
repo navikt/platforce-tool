@@ -90,6 +90,7 @@ interface AutoRunStore {
 
 class AutoStopped(
     val report: AutoReport,
+    val vulnerabilitiesFound: Boolean = false,
 ) : IllegalStateException(report.message)
 
 class AutoInterrupted(
