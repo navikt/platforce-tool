@@ -62,10 +62,7 @@ class SlackAutoReporter(
             if (index > 0) Thread.sleep(1000)
             val pageTitle = title + if (pages.size > 1) " (${index + 1}/${pages.size})" else ""
             val blocks =
-                listOf(
-                    mapOf("type" to "header", "text" to plain(pageTitle)),
-                    section(summary),
-                ) + page.map { mapOf("type" to "actions", "elements" to it) } +
+                page.map { mapOf("type" to "actions", "elements" to it) } +
                     mapOf(
                         "type" to "actions",
                         "elements" to listOf(button(if (warning) "Review vulnerabilities" else "Open Platforce Tool", guiUrl, "open_gui")),
@@ -92,8 +89,6 @@ class SlackAutoReporter(
     }
 
     private fun plain(text: String) = mapOf("type" to "plain_text", "text" to text, "emoji" to true)
-
-    private fun section(text: String) = mapOf("type" to "section", "text" to mapOf("type" to "mrkdwn", "text" to text))
 
     private fun button(
         label: String,

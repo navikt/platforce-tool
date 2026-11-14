@@ -50,13 +50,10 @@ class SlackAutoReporterTest {
                     val attachment = payload.getAsJsonArray("attachments").single().asJsonObject
                     assertEquals("#d99a00", attachment["color"].asString)
                     val blocks = attachment.getAsJsonArray("blocks")
-                    assertEquals(3, blocks.size())
-                    assertEquals("plain_text", blocks[0].asJsonObject["text"].asJsonObject["type"].asString)
-                    assertEquals(
-                        ":warning: Auto paused: vulnerabilities found",
-                        blocks[0].asJsonObject["text"].asJsonObject["text"].asString,
-                    )
-                    val buttons = blocks[2].asJsonObject.getAsJsonArray("elements")
+                    assertEquals(1, blocks.size())
+                    assertTrue(payload["text"].asString.startsWith(":warning: Auto paused: vulnerabilities found."))
+                    assertTrue(blocks.all { it.asJsonObject["type"].asString == "actions" })
+                    val buttons = blocks[0].asJsonObject.getAsJsonArray("elements")
                     assertEquals(1, buttons.size())
                     val button = buttons[0].asJsonObject
                     assertEquals("button", button["type"].asString)
@@ -86,12 +83,16 @@ class SlackAutoReporterTest {
                     val attachment = payload.getAsJsonArray("attachments").single().asJsonObject
                     assertEquals("#2e7d32", attachment["color"].asString)
                     val blocks = attachment.getAsJsonArray("blocks")
-                    assertEquals(4, blocks.size())
-                    val buttons = blocks[2].asJsonObject.getAsJsonArray("elements")
+                    assertEquals(2, blocks.size())
+                    assertTrue(payload["text"].asString.startsWith(":white_check_mark: Auto PRs ready for review."))
+                    assertTrue(blocks.all { it.asJsonObject["type"].asString == "actions" })
+                    assertFalse(attachment.toString().contains("Auto PRs ready for review"))
+                    assertFalse(attachment.toString().contains("Review the changes"))
+                    val buttons = blocks[0].asJsonObject.getAsJsonArray("elements")
                     assertEquals(1, buttons.size())
                     assertEquals("library #42", buttons[0].asJsonObject["text"].asJsonObject["text"].asString)
                     assertEquals(url, buttons[0].asJsonObject["url"].asString)
-                    val guiButton = blocks[3].asJsonObject.getAsJsonArray("elements")[0].asJsonObject
+                    val guiButton = blocks[1].asJsonObject.getAsJsonArray("elements")[0].asJsonObject
                     assertEquals("Open Platforce Tool", guiButton["text"].asJsonObject["text"].asString)
                     assertEquals(gui, guiButton["url"].asString)
                     assertTrue(payload["text"].asString.contains("1 pull request is ready"))
@@ -121,7 +122,7 @@ class SlackAutoReporterTest {
                                 .getAsJsonArray("blocks")
                         assertTrue(blocks.size() <= 50)
                         val actionIds = mutableSetOf<String>()
-                        blocks.drop(2).dropLast(1).forEach { block ->
+                        blocks.toList().dropLast(1).forEach { block ->
                             assertEquals("actions", block.asJsonObject["type"].asString)
                             val buttons = block.asJsonObject.getAsJsonArray("elements")
                             assertTrue(buttons.size() in 1..25)
@@ -147,11 +148,7 @@ class SlackAutoReporterTest {
                         assertFalse(payload["text"].asString.contains("Showing 5"))
                         if (count > 1175) {
                             assertTrue(
-                                blocks[0]
-                                    .asJsonObject["text"]
-                                    .asJsonObject["text"]
-                                    .asString
-                                    .endsWith("($messages/${(count + 1174) / 1175})"),
+                                payload["text"].asString.contains("Auto PRs ready for review ($messages/${(count + 1174) / 1175})."),
                             )
                         }
                         200 to "ok"
