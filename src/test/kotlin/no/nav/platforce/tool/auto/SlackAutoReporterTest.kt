@@ -41,7 +41,7 @@ class SlackAutoReporterTest {
             }.build()
 
     @Test
-    fun `vulnerability warning contains a concise call to action and GUI link without interactive elements`() {
+    fun `vulnerability warning contains a concise call to action and GUI button`() {
         var calls = 0
         val reporter =
             SlackAutoReporter(
@@ -56,9 +56,13 @@ class SlackAutoReporterTest {
                         ":warning: Auto paused: vulnerabilities found",
                         blocks[0].asJsonObject["text"].asJsonObject["text"].asString,
                     )
-                    assertEquals("<$gui|Review vulnerabilities>", blocks[2].asJsonObject["text"].asJsonObject["text"].asString)
-                    assertFalse(payload.toString().contains("\"type\":\"button\""))
-                    assertFalse(payload.toString().contains("action_id"))
+                    val buttons = blocks[2].asJsonObject.getAsJsonArray("elements")
+                    assertEquals(1, buttons.size())
+                    val button = buttons[0].asJsonObject
+                    assertEquals("button", button["type"].asString)
+                    assertEquals("Review vulnerabilities", button["text"].asJsonObject["text"].asString)
+                    assertEquals(gui, button["url"].asString)
+                    assertEquals("open_gui", button["action_id"].asString)
                     assertFalse(payload["unfurl_links"].asBoolean)
                     assertFalse(payload.has("username"))
                     assertFalse(payload.has("icon_url"))
@@ -74,7 +78,7 @@ class SlackAutoReporterTest {
     }
 
     @Test
-    fun `completed report presents PR URLs as regular links with counts and no interaction callbacks`() {
+    fun `completed report presents PR URLs as buttons with counts and a GUI button`() {
         val url = "https://github.com/example/library/pull/42"
         val reporter =
             SlackAutoReporter(
@@ -83,10 +87,13 @@ class SlackAutoReporterTest {
                     assertEquals("#2e7d32", attachment["color"].asString)
                     val blocks = attachment.getAsJsonArray("blocks")
                     assertEquals(4, blocks.size())
-                    assertEquals("<$url|library #42>", blocks[2].asJsonObject["text"].asJsonObject["text"].asString)
-                    assertEquals("<$gui|Open Platforce Tool>", blocks[3].asJsonObject["text"].asJsonObject["text"].asString)
-                    assertFalse(payload.toString().contains("\"type\":\"button\""))
-                    assertFalse(payload.toString().contains("action_id"))
+                    val buttons = blocks[2].asJsonObject.getAsJsonArray("elements")
+                    assertEquals(1, buttons.size())
+                    assertEquals("library #42", buttons[0].asJsonObject["text"].asJsonObject["text"].asString)
+                    assertEquals(url, buttons[0].asJsonObject["url"].asString)
+                    val guiButton = blocks[3].asJsonObject.getAsJsonArray("elements")[0].asJsonObject
+                    assertEquals("Open Platforce Tool", guiButton["text"].asJsonObject["text"].asString)
+                    assertEquals(gui, guiButton["url"].asString)
                     assertTrue(payload["text"].asString.contains("1 pull request is ready"))
                     200 to "ok"
                 },
@@ -97,8 +104,8 @@ class SlackAutoReporterTest {
     }
 
     @Test
-    fun `every PR gets a regular link within Slack message limits including boundary sizes`() {
-        listOf(5, 6, 47, 48, 100).forEach { count ->
+    fun `every PR gets a button within Slack action and message limits including boundary sizes`() {
+        listOf(5, 6, 25, 26, 100, 1175, 1176).forEach { count ->
             val urls = (1..count).map { "https://github.com/example/${"a".repeat(90)}/pull/$it" }
             val reported = mutableListOf<String>()
             var messages = 0
@@ -113,32 +120,38 @@ class SlackAutoReporterTest {
                                 .asJsonObject
                                 .getAsJsonArray("blocks")
                         assertTrue(blocks.size() <= 50)
+                        val actionIds = mutableSetOf<String>()
                         blocks.drop(2).dropLast(1).forEach { block ->
-                            assertEquals("section", block.asJsonObject["type"].asString)
-                            val text = block.asJsonObject["text"].asJsonObject
-                            assertEquals("mrkdwn", text["type"].asString)
-                            assertTrue(text["text"].asString.length <= 3000)
-                            reported += text["text"].asString.substringAfter("<").substringBefore("|")
+                            assertEquals("actions", block.asJsonObject["type"].asString)
+                            val buttons = block.asJsonObject.getAsJsonArray("elements")
+                            assertTrue(buttons.size() in 1..25)
+                            buttons.forEach { element ->
+                                val button = element.asJsonObject
+                                assertEquals("button", button["type"].asString)
+                                assertEquals("plain_text", button["text"].asJsonObject["type"].asString)
+                                assertTrue(button["text"].asJsonObject["text"].asString.length <= 75)
+                                assertTrue(actionIds.add(button["action_id"].asString))
+                                reported += button["url"].asString
+                            }
                         }
                         assertEquals(
-                            "<$gui|Open Platforce Tool>",
+                            gui,
                             blocks
                                 .last()
-                                .asJsonObject["text"]
-                                .asJsonObject["text"]
+                                .asJsonObject
+                                .getAsJsonArray("elements")[0]
+                                .asJsonObject["url"]
                                 .asString,
                         )
-                        assertFalse(payload.toString().contains("\"type\":\"button\""))
-                        assertFalse(payload.toString().contains("action_id"))
                         assertTrue(payload["text"].asString.contains("$count pull requests are ready"))
                         assertFalse(payload["text"].asString.contains("Showing 5"))
-                        if (count > 47) {
+                        if (count > 1175) {
                             assertTrue(
                                 blocks[0]
                                     .asJsonObject["text"]
                                     .asJsonObject["text"]
                                     .asString
-                                    .endsWith("($messages/${(count + 46) / 47})"),
+                                    .endsWith("($messages/${(count + 1174) / 1175})"),
                             )
                         }
                         200 to "ok"
@@ -148,7 +161,7 @@ class SlackAutoReporterTest {
                 )
             reporter.report(AutoRunNotification(pullRequests = urls))
             assertEquals(urls, reported)
-            assertEquals((count + 46) / 47, messages)
+            assertEquals((count + 1174) / 1175, messages)
         }
     }
 

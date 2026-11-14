@@ -45,19 +45,19 @@ class SlackAutoReporter(
                 "${urls.size} ${if (urls.size == 1) "pull request is" else "pull requests are"} ready. " +
                     "Review the changes and merge when checks pass."
             }
-        val links =
+        val buttons =
             if (warning) {
                 emptyList()
             } else {
-                urls.map { url ->
+                urls.mapIndexed { index, url ->
                     val match =
                         checkNotNull(Regex("^https://github\\.com/([\\w.-]+)/([\\w.-]+)/pull/(\\d+)$").matchEntire(url)) {
                             "Auto report contains an invalid GitHub PR URL"
                         }
-                    "<$url|${match.groupValues[2]} #${match.groupValues[3]}>"
+                    button("${match.groupValues[2].take(50)} #${match.groupValues[3]}", url, "pr_$index")
                 }
             }
-        val pages = links.chunked(47).ifEmpty { listOf(emptyList()) }
+        val pages = buttons.chunked(25).chunked(47).ifEmpty { listOf(emptyList()) }
         pages.forEachIndexed { index, page ->
             if (index > 0) Thread.sleep(1000)
             val pageTitle = title + if (pages.size > 1) " (${index + 1}/${pages.size})" else ""
@@ -65,8 +65,11 @@ class SlackAutoReporter(
                 listOf(
                     mapOf("type" to "header", "text" to plain(pageTitle)),
                     section(summary),
-                ) + page.map(::section) +
-                    section("<$guiUrl|${if (warning) "Review vulnerabilities" else "Open Platforce Tool"}>")
+                ) + page.map { mapOf("type" to "actions", "elements" to it) } +
+                    mapOf(
+                        "type" to "actions",
+                        "elements" to listOf(button(if (warning) "Review vulnerabilities" else "Open Platforce Tool", guiUrl, "open_gui")),
+                    )
             val payload =
                 mapOf(
                     "text" to "$pageTitle. $summary <$guiUrl|Open Platforce Tool>",
@@ -91,4 +94,10 @@ class SlackAutoReporter(
     private fun plain(text: String) = mapOf("type" to "plain_text", "text" to text, "emoji" to true)
 
     private fun section(text: String) = mapOf("type" to "section", "text" to mapOf("type" to "mrkdwn", "text" to text))
+
+    private fun button(
+        label: String,
+        url: String,
+        action: String,
+    ) = mapOf("type" to "button", "text" to plain(label.take(75)), "url" to url, "action_id" to action)
 }
