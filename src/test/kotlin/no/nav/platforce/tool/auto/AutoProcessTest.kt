@@ -34,6 +34,8 @@ class AutoProcessTest {
                 ignoredDependencies = setOf("example:ignored"),
             )
         var upgrade = true
+        var upgradeReleaseDate: String? = "2024-01-01T00:00:00Z"
+        var upgradeYoung = false
         var createPr = true
         var fail: String? = null
         var users = listOf("alice", "bob", "service-user")
@@ -64,7 +66,14 @@ class AutoProcessTest {
             return AvailableVersions(
                 key,
                 current,
-                if (upgrade) listOf(AvailableVersion("1.2", false, false), AvailableVersion("2.0", false, true)) else emptyList(),
+                if (upgrade) {
+                    listOf(
+                        AvailableVersion("1.2", false, false, releaseDate = upgradeReleaseDate, young = upgradeYoung),
+                        AvailableVersion("2.0", false, true, releaseDate = upgradeReleaseDate),
+                    )
+                } else {
+                    emptyList()
+                },
             )
         }
 
@@ -292,6 +301,31 @@ class AutoProcessTest {
     }
 
     @Test
+    fun `auto skips young and undated releases and warns when missing dates change its selection`() {
+        listOf(false, true).forEach { unknown ->
+            val operations =
+                Operations().apply {
+                    upgradeYoung = !unknown
+                    if (unknown) upgradeReleaseDate = null
+                }
+            val executor = QueuedExecutor()
+            val service = AutoProcessService(MemoryAutoRunStore(), AutoWorkflow(operations), executor)
+            service.start("alice")
+            executor.runNext()
+            assertFalse(operations.calls.any { it.startsWith("save:") })
+            assertEquals("1.0", operations.stored.dependencies["example:library"])
+            assertEquals(AutoRunStatus.COMPLETED, service.snapshot().run?.status)
+            val report = service.snapshot().logs.single { it.step == "Draft latest stable non-major versions" }
+            if (unknown) {
+                assertTrue(report.message.contains("release-date warnings"))
+                assertTrue(report.details!!.contains("Warning: example:library 1.2 skipped because its release date is unknown."))
+            } else {
+                assertNull(report.details)
+            }
+        }
+    }
+
+    @Test
     fun `skipped repository reports clear the active step without adding a log entry`() {
         val store = MemoryAutoRunStore()
         val run = checkNotNull(store.tryStart("alice"))
@@ -514,7 +548,9 @@ class AutoProcessTest {
             version: String,
             prerelease: Boolean = false,
             major: Boolean = false,
-        ) = AvailableVersion(version, prerelease, major)
+            releaseDate: String? = "2024-01-01T00:00:00Z",
+            young: Boolean = false,
+        ) = AvailableVersion(version, prerelease, major, releaseDate = releaseDate, young = young)
         val versions =
             AvailableVersions(
                 "example:library",
@@ -523,11 +559,14 @@ class AutoProcessTest {
                     candidate("1.8"),
                     candidate("2.0", major = true),
                     candidate("1.9-RC1", prerelease = true),
+                    candidate("1.10", young = true),
+                    candidate("1.9", releaseDate = null),
                     candidate("1.3"),
                     candidate("1.1"),
                 ),
             )
         assertEquals("1.8", latestStableNonMajor(versions))
+        assertEquals("1.9", latestStableNonMajor(versions, requireReleaseDate = false))
         assertNull(latestStableNonMajor(versions.copy(currentVersion = "latest.release")))
         assertNull(latestStableNonMajor(versions.copy(versions = listOf(candidate("2.0", major = true)))))
     }

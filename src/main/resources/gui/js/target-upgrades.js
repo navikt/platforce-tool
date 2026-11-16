@@ -44,9 +44,14 @@ async function upgradeAllDependencies() {
             try {
                 const result = await fetchAvailableUpgrades(target.key, target.version);
                 const major = target.version.match(/^\d+/)?.[0].replace(/^0+(?=\d)/, "");
-                const candidate = result.versions.find(version =>
-                    !version.prerelease && !version.majorUpgrade && major !== undefined &&
+                const eligible = result.versions.filter(version =>
+                    !version.prerelease && !version.majorUpgrade && !version.young && major !== undefined &&
                     version.version.match(/^\d+/)?.[0].replace(/^0+(?=\d)/, "") === major);
+                const candidate = eligible.find(version => version.releaseDate);
+                const otherwiseEligible = eligible[0];
+                if (otherwiseEligible && !otherwiseEligible.releaseDate) {
+                    errors.push(`${target.key} ${otherwiseEligible.version}: skipped because its release date is unknown.`);
+                }
                 if (candidate) upgrades.push({ ...target, next: candidate.version });
             } catch (error) {
                 console.error("Bulk dependency upgrade lookup failed", error);
@@ -73,7 +78,7 @@ async function upgradeAllDependencies() {
         if (changes.length) renderTargetTables();
         const summary = changes.length
             ? `Drafted upgrades:\n${changes.join("\n")}`
-            : errors.length ? "No upgrades drafted." : "No non-major updates available.";
+            : errors.length ? "No upgrades drafted." : "No stable non-major updates at least one week old available.";
         showTargetSaveMessage(
             summary + (errors.length ? `\nLookup issues:\n${errors.join("\n")}` : ""),
             errors.length === 0,
@@ -100,6 +105,9 @@ function renderAvailableUpgrades(panel, result, type, selectVersion, currentVers
         button.className = "target-upgrade-version";
         button.textContent = candidate.version;
         button.setAttribute("aria-label", `Draft ${result.key} version ${candidate.version}`);
+        if (!candidate.releaseDate) {
+            button.title = candidate.releaseDateError || "Release date unknown; excluded from automatic upgrades";
+        }
         button.onclick = () => selectVersion(type.toUpperCase(), result.key, candidate.version);
         item.appendChild(button);
         const security = document.createElement("span");
@@ -110,6 +118,13 @@ function renderAvailableUpgrades(panel, result, type, selectVersion, currentVers
             const badge = document.createElement("span");
             badge.className = "target-version-pill";
             badge.textContent = "Major upgrade";
+            item.appendChild(badge);
+        }
+        if (candidate.young) {
+            const badge = document.createElement("span");
+            badge.className = "target-version-pill";
+            badge.textContent = "young";
+            badge.title = `Released ${candidate.releaseDate.slice(0, 10)}; less than one week old; excluded from automatic upgrades`;
             item.appendChild(badge);
         }
         list.appendChild(item);

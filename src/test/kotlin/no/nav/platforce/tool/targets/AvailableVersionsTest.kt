@@ -14,6 +14,11 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Collections
+import java.util.concurrent.TimeUnit
 
 class AvailableVersionsTest {
     @Test
@@ -40,20 +45,118 @@ class AvailableVersionsTest {
     private fun metadata(vararg versions: String) =
         "<metadata><versioning><versions>${versions.joinToString("") { "<version>$it</version>" }}</versions></versioning></metadata>"
 
-    private fun client(reply: (String) -> Pair<Int, String>) =
-        OkHttpClient
-            .Builder()
-            .addInterceptor { chain ->
-                val (code, body) = reply(chain.request().url.toString())
-                Response
-                    .Builder()
-                    .request(chain.request())
-                    .protocol(Protocol.HTTP_1_1)
-                    .code(code)
-                    .message("Synthetic metadata")
-                    .body(body.toResponseBody("application/xml".toMediaType()))
-                    .build()
-            }.build()
+    private fun client(
+        release: (String) -> Pair<Int, String?> = { 200 to "Mon, 01 Jan 2024 00:00:00 GMT" },
+        reply: (String) -> Pair<Int, String>,
+    ) = OkHttpClient
+        .Builder()
+        .addInterceptor { chain ->
+            val head = chain.request().method == "HEAD"
+            val url = chain.request().url.toString()
+            val (code, body) = if (head) release(url) else reply(url)
+            Response
+                .Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(code)
+                .message("Synthetic metadata")
+                .apply { if (head && body != null) header("Last-Modified", body) }
+                .body((if (head) "" else body.orEmpty()).toResponseBody("application/xml".toMediaType()))
+                .build()
+        }.build()
+
+    @Test
+    fun `release dates distinguish young versions at the exact seven day boundary and age cached results`() {
+        var time = Instant.parse("2026-11-16T12:00:00Z").toEpochMilli()
+        val initial = time
+        val requested = Collections.synchronizedList(mutableListOf<String>())
+        val service =
+            AvailableVersionsService(
+                client(release = { url ->
+                    requested += url
+                    val age =
+                        when {
+                            "/1.1/" in url -> TimeUnit.DAYS.toMillis(7) + 1
+                            "/1.2/" in url -> TimeUnit.DAYS.toMillis(7)
+                            "/1.3/" in url -> TimeUnit.DAYS.toMillis(7) - 1000
+                            else -> -TimeUnit.DAYS.toMillis(1)
+                        }
+                    200 to DateTimeFormatter.RFC_1123_DATE_TIME.format(Instant.ofEpochMilli(initial - age).atZone(ZoneOffset.UTC))
+                }) { 200 to metadata("1.0", "1.1", "1.2", "1.3", "1.4") },
+            ) { time }
+        val versions = service.available("alice", "example:library", "1.0").versions
+        assertEquals(listOf("1.4", "1.3"), versions.filter { it.young }.map { it.version })
+        assertEquals("2026-11-09T12:00:00Z", versions.first { it.version == "1.2" }.releaseDate)
+        assertTrue(versions.all { it.releaseDateError == null })
+        assertTrue(requested.all { it.startsWith("https://repo.maven.apache.org/maven2/example/library/") && it.endsWith(".pom") })
+        time += 1000
+        assertFalse(
+            service
+                .available("alice", "example:library", "1.2")
+                .versions
+                .first { it.version == "1.3" }
+                .young,
+        )
+        assertEquals(4, requested.size, "Changing the draft and aging versions reuse cached release dates")
+        service.available("bob", "example:library", "1.2")
+        assertEquals(6, requested.size, "Release date caches are user scoped")
+        time += TimeUnit.MINUTES.toMillis(5)
+        service.available("alice", "example:library", "1.2")
+        assertEquals(8, requested.size, "Release dates are refreshed after cache expiry")
+    }
+
+    @Test
+    fun `unverifiable release dates remain explicit without hiding available upgrades`() {
+        listOf(200 to null, 200 to "invalid", 404 to null, 503 to null, 302 to null).forEach { response ->
+            val service = AvailableVersionsService(client(release = { response }) { 200 to metadata("1.1") })
+            val version = service.available("alice", "example:library", "1.0").versions.single()
+            assertEquals(null, version.releaseDate)
+            assertFalse(version.young)
+            assertTrue(version.releaseDateError!!.startsWith("Release date unavailable:"))
+        }
+        val service =
+            AvailableVersionsService(
+                client(release = { throw IOException("Timeout") }) { 200 to metadata("1.1") },
+            )
+        assertTrue(
+            service
+                .available("alice", "example:library", "1.0")
+                .versions
+                .single()
+                .releaseDateError!!
+                .contains("Timeout"),
+        )
+    }
+
+    @Test
+    fun `release dates use the repository that supplied metadata including plugin markers and Confluent`() {
+        listOf(
+            Triple(
+                "example.plugin",
+                "plugin",
+                "https://plugins.gradle.org/m2/example/plugin/example.plugin.gradle.plugin/1.1/example.plugin.gradle.plugin-1.1.pom",
+            ),
+            Triple("io.confluent:library", "dependency", "https://packages.confluent.io/maven/io/confluent/library/1.1/library-1.1.pom"),
+        ).forEach { (key, kind, expected) ->
+            val requested = mutableListOf<String>()
+            val service =
+                AvailableVersionsService(
+                    client(release = { url ->
+                        requested += url
+                        200 to "Mon, 01 Jan 2024 00:00:00 GMT"
+                    }) { url -> if ("repo.maven.apache.org" in url) 404 to "" else 200 to metadata("1.1") },
+                )
+            assertEquals(
+                "2024-01-01T00:00:00Z",
+                service
+                    .available("alice", key, "1.0", kind)
+                    .versions
+                    .single()
+                    .releaseDate,
+            )
+            assertEquals(listOf(expected), requested)
+        }
+    }
 
     @Test
     fun `versions use Maven ordering and distinguish prereleases and major upgrades without claiming safety`() {

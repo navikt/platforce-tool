@@ -1,5 +1,11 @@
 package no.nav.platforce.tool.targets
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
+import mu.KotlinLogging
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -8,6 +14,7 @@ import org.w3c.dom.NodeList
 import org.xml.sax.SAXException
 import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
@@ -18,6 +25,9 @@ data class AvailableVersion(
     val version: String,
     val prerelease: Boolean,
     val majorUpgrade: Boolean,
+    val releaseDate: String? = null,
+    val young: Boolean = false,
+    val releaseDateError: String? = null,
 )
 
 data class AvailableVersions(
@@ -37,7 +47,22 @@ class AvailableVersionsService(
 
     private data class CachedVersions(
         val expiresAt: Long,
+        val metadata: VersionMetadata,
+    )
+
+    private data class VersionMetadata(
+        val artifactUrl: HttpUrl,
         val versions: List<String>,
+    )
+
+    private data class ReleaseDate(
+        val timestamp: Long?,
+        val error: String? = null,
+    )
+
+    private data class CachedReleaseDate(
+        val expiresAt: Long,
+        val date: ReleaseDate,
     )
 
     private val client =
@@ -48,6 +73,9 @@ class AvailableVersionsService(
             .followSslRedirects(false)
             .build()
     private val cache = LinkedHashMap<CacheKey, CachedVersions>()
+    private val releaseDates = LinkedHashMap<CacheKey, CachedReleaseDate>()
+    private val dateDispatcher = Dispatchers.IO.limitedParallelism(8)
+    private val log = KotlinLogging.logger {}
     private val repositories = listOf("https://repo.maven.apache.org/maven2", "https://packages.confluent.io/maven")
     private val coordinatePattern = Regex("""[A-Za-z0-9_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*)*:[A-Za-z0-9_][A-Za-z0-9_.-]*""")
     private val versionPattern = Regex("""[A-Za-z0-9][A-Za-z0-9._+-]{0,199}""")
@@ -68,8 +96,8 @@ class AvailableVersionsService(
         }
         val cacheKey = CacheKey(username, "$kind:$coordinate")
         val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now() < it.expiresAt } }
-        val versions =
-            cached?.versions ?: loadVersions(coordinate, kind == "plugin").also { loaded ->
+        val metadata =
+            cached?.metadata ?: loadVersions(coordinate, kind == "plugin").also { loaded ->
                 synchronized(cache) {
                     cache.entries.removeIf { now() >= it.value.expiresAt }
                     cache[cacheKey] = CachedVersions(now() + TimeUnit.MINUTES.toMillis(5), loaded)
@@ -78,20 +106,75 @@ class AvailableVersionsService(
             }
         val current = ComparableVersion(currentVersion)
         val currentMajor = major(currentVersion)
+        val candidates =
+            metadata.versions
+                .filter { ComparableVersion(it) > current }
+                .sortedWith(compareByDescending<String> { ComparableVersion(it) }.thenByDescending { it })
+        val versions =
+            runBlocking {
+                candidates
+                    .map { version ->
+                        async(dateDispatcher) {
+                            val date = releaseDate(username, metadata.artifactUrl, coordinate.substringAfter(':'), version)
+                            AvailableVersion(
+                                version,
+                                prereleasePattern.containsMatchIn(version),
+                                currentMajor != null && major(version) != null && major(version) != currentMajor,
+                                date.timestamp?.let { Instant.ofEpochMilli(it).toString() },
+                                date.timestamp?.let { it > now() - TimeUnit.DAYS.toMillis(7) } ?: false,
+                                date.error,
+                            )
+                        }
+                    }.awaitAll()
+            }
         return AvailableVersions(
             key,
             currentVersion,
-            versions
-                .filter { ComparableVersion(it) > current }
-                .sortedWith(compareByDescending<String> { ComparableVersion(it) }.thenByDescending { it })
-                .map {
-                    AvailableVersion(
-                        it,
-                        prereleasePattern.containsMatchIn(it),
-                        currentMajor != null && major(it) != null && major(it) != currentMajor,
-                    )
-                },
+            versions,
         )
+    }
+
+    private fun releaseDate(
+        username: String,
+        artifactUrl: HttpUrl,
+        artifact: String,
+        version: String,
+    ): ReleaseDate {
+        val url =
+            artifactUrl
+                .newBuilder()
+                .addPathSegment(version)
+                .addPathSegment("$artifact-$version.pom")
+                .build()
+        val key = CacheKey(username, url.toString())
+        synchronized(releaseDates) { releaseDates[key]?.takeIf { now() < it.expiresAt } }?.let { return it.date }
+        val date =
+            try {
+                client
+                    .newCall(
+                        Request
+                            .Builder()
+                            .url(url)
+                            .head()
+                            .build(),
+                    ).execute()
+                    .use { response ->
+                        if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+                        val timestamp =
+                            response.headers.getDate("Last-Modified")?.time
+                                ?: throw IOException("Missing or invalid Last-Modified header")
+                        ReleaseDate(timestamp)
+                    }
+            } catch (failure: IOException) {
+                log.warn(failure) { "Release date lookup failed for $artifact:$version at ${url.host}" }
+                ReleaseDate(null, "Release date unavailable: ${failure.message}")
+            }
+        synchronized(releaseDates) {
+            releaseDates.entries.removeIf { now() >= it.value.expiresAt }
+            releaseDates[key] = CachedReleaseDate(now() + TimeUnit.MINUTES.toMillis(5), date)
+            while (releaseDates.size > 4096) releaseDates.remove(releaseDates.keys.first())
+        }
+        return date
     }
 
     private fun major(version: String): String? =
@@ -104,19 +187,20 @@ class AvailableVersionsService(
     private fun loadVersions(
         key: String,
         plugin: Boolean,
-    ): List<String> {
+    ): VersionMetadata {
         val (group, artifact) = key.split(':')
         val sources = if (plugin) listOf("https://plugins.gradle.org/m2") else repositories
         for (repository in sources) {
             val url = repository.toHttpUrl().newBuilder()
             group.split('.').forEach(url::addPathSegment)
-            url.addPathSegment(artifact).addPathSegment("maven-metadata.xml")
+            val artifactUrl = url.addPathSegment(artifact).build()
+            url.addPathSegment("maven-metadata.xml")
             client.newCall(Request.Builder().url(url.build()).build()).execute().use { response ->
                 if (response.code == 404) return@use
                 if (!response.isSuccessful) throw IOException("Version lookup failed at ${url.build().host}: HTTP ${response.code}")
                 val bytes = response.body.byteStream().readNBytes(2 * 1024 * 1024 + 1)
                 if (bytes.size > 2 * 1024 * 1024) throw IOException("Version metadata is too large")
-                return parseVersions(bytes)
+                return VersionMetadata(artifactUrl, parseVersions(bytes))
             }
         }
         throw IOException("No published Maven metadata found for $key in ${if (plugin) "Plugin Portal" else "Maven Central or Confluent"}")

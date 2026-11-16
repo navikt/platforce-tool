@@ -49,8 +49,8 @@ const result = {
     key: "example:library", currentVersion: "1.0",
     versions: [
         { version: "2.1-RC1", prerelease: true, majorUpgrade: true },
-        { version: "2.0", prerelease: false, majorUpgrade: true },
-        { version: "1.1", prerelease: false, majorUpgrade: false }
+        { version: "2.0", prerelease: false, majorUpgrade: true, releaseDate: "2026-11-15T12:00:00Z", young: true },
+        { version: "1.1", prerelease: false, majorUpgrade: false, releaseDate: "2024-01-01T00:00:00Z", young: false }
     ]
 };
 
@@ -82,7 +82,10 @@ test("upgrade button works without scan data, fetches only on open and drafts de
         assert.deepEqual(list.children.map(item => item.children[0].textContent), ["2.0", "1.1"]);
         assert.equal(list.children[0].children[2].textContent, "Major upgrade");
         assert.equal(list.children[0].children[2].className, "target-version-pill");
-        assert.equal(list.children[1].children.length, 2, "Non-major upgrades have no major badge");
+        assert.equal(list.children[0].children[3].textContent, "young");
+        assert.match(list.children[0].children[3].title, /Released 2026-11-15; less than one week old/);
+        assert.equal(list.children[0].children.length, 4, "Young major upgrades show only their version and badges");
+        assert.equal(list.children[1].children.length, 2, "Mature non-major upgrades have no badges or publication date");
         list.children[0].children[0].onclick();
         assert.deepEqual(ui.drafts, [[type.toUpperCase(), "example:library", "2.0"]]);
         assert.equal(calls, 1, "Selecting a draft does not save or scan");
@@ -131,6 +134,27 @@ test("prerelease-only results show the empty state rather than offering unstable
     ui.context.renderAvailableUpgrades(panel, { ...result, versions: [result.versions[0]] }, "dependency", () => {});
     assert.equal(panel.children[1].children.length, 0);
     assert.match(panel.children[2].textContent, /No newer stable versions/);
+});
+
+test("unknown release dates are explicit and young or undated versions remain manually selectable", () => {
+    const ui = app();
+    const panel = element();
+    const selected = [];
+    ui.context.renderAvailableUpgrades(panel, {
+        ...result,
+        versions: [
+            result.versions[1],
+            { version: "1.2", releaseDateError: "Release date unavailable: HTTP 503" }
+        ]
+    }, "platform_bom", (...args) => selected.push(args));
+    const items = panel.children[1].children;
+    assert.equal(items[1].children.length, 2, "Unknown dates are not shown inline");
+    assert.equal(items[1].children[0].title, "Release date unavailable: HTTP 503");
+    items.forEach(item => item.children[0].onclick());
+    assert.deepEqual(selected, [
+        ["PLATFORM_BOM", "example:library", "2.0"],
+        ["PLATFORM_BOM", "example:library", "1.2"]
+    ]);
 });
 
 test("repository usage reuses the security details box and shows GitHub icons instead of bullets", () => {
@@ -186,14 +210,15 @@ function bulkApp(dependencies) {
     return { ...ui, button, rows, messages, renders: () => renders };
 }
 
-test("Upgrade all drafts only the latest stable same-major dependency upgrades and reports every change", async () => {
+test("Upgrade all drafts only the latest mature stable same-major dependency upgrades and reports every change", async () => {
     const ui = bulkApp({ "example:first": "1.0", "example:second": "2.0", "example:latest": "3.0" });
     ui.context.fetchAvailableUpgrades = async (key) => ({
         versions: key === "example:latest" ? [] : [
             { version: "9.0", majorUpgrade: true },
             { version: "2.9-RC1", prerelease: true },
-            { version: key === "example:first" ? "1.9" : "2.9", majorUpgrade: false },
-            { version: key === "example:first" ? "1.1" : "2.1", majorUpgrade: false }
+            { version: key === "example:first" ? "1.10" : "2.10", majorUpgrade: false, releaseDate: "2026-11-15T00:00:00Z", young: true },
+            { version: key === "example:first" ? "1.9" : "2.9", majorUpgrade: false, releaseDate: "2024-01-01T00:00:00Z", young: false },
+            { version: key === "example:first" ? "1.1" : "2.1", majorUpgrade: false, releaseDate: "2024-01-01T00:00:00Z", young: false }
         ]
     });
     await ui.context.upgradeAllDependencies();
@@ -208,15 +233,45 @@ test("Upgrade all drafts only the latest stable same-major dependency upgrades a
     assert.equal(ui.button.disabled, false);
 });
 
-test("Upgrade all reports no eligible updates and does not draft major or prerelease-only results", async () => {
+test("Upgrade all reports no eligible updates and does not draft major, prerelease or young results", async () => {
     const ui = bulkApp({ "example:library": "1.0" });
     ui.context.fetchAvailableUpgrades = async () => ({
-        versions: [{ version: "2.0", majorUpgrade: true }, { version: "1.9-RC1", prerelease: true }]
+        versions: [
+            { version: "2.0", majorUpgrade: true, releaseDate: "2024-01-01T00:00:00Z" },
+            { version: "1.9-RC1", prerelease: true, releaseDate: "2024-01-01T00:00:00Z" },
+            { version: "1.9", young: true, releaseDate: "2026-11-15T00:00:00Z" }
+        ]
     });
     await ui.context.upgradeAllDependencies();
     assert.equal(ui.context.targetState.drafted.size, 0);
     assert.equal(ui.renders(), 0);
-    assert.equal(ui.messages[0][0], "No non-major updates available.");
+    assert.equal(ui.messages[0][0], "No stable non-major updates at least one week old available.");
+});
+
+test("Upgrade all skips unknown dates and warns only when they would change the selected version", async () => {
+    for (const mature of [true, false]) {
+        const ui = bulkApp({ "example:library": "1.0" });
+        ui.context.fetchAvailableUpgrades = async () => ({
+            versions: [
+                { version: "1.9", majorUpgrade: false },
+                ...(mature ? [{ version: "1.8", releaseDate: "2024-01-01T00:00:00Z", young: false }] : [])
+            ]
+        });
+        await ui.context.upgradeAllDependencies();
+        assert.equal(ui.context.targetState.dependencies["example:library"], mature ? "1.8" : "1.0");
+        assert.match(ui.messages[0][0], /example:library 1.9: skipped because its release date is unknown/);
+        assert.equal(ui.messages[0][1], false);
+    }
+    const ui = bulkApp({ "example:library": "1.0" });
+    ui.context.fetchAvailableUpgrades = async () => ({
+        versions: [
+            { version: "1.9", releaseDate: "2024-01-01T00:00:00Z", young: false },
+            { version: "1.8" }
+        ]
+    });
+    await ui.context.upgradeAllDependencies();
+    assert.equal(ui.messages[0][1], true);
+    assert.doesNotMatch(ui.messages[0][0], /unknown/);
 });
 
 test("Upgrade all skips ignored dependency coordinates even when typed into a visible row", async () => {
@@ -225,7 +280,7 @@ test("Upgrade all skips ignored dependency coordinates even when typed into a vi
     const lookedUp = [];
     ui.context.fetchAvailableUpgrades = async key => {
         lookedUp.push(key);
-        return { versions: [{ version: "1.1", majorUpgrade: false }] };
+        return { versions: [{ version: "1.1", majorUpgrade: false, releaseDate: "2024-01-01T00:00:00Z", young: false }] };
     };
     await ui.context.upgradeAllDependencies();
     assert.deepEqual(lookedUp, ["example:active"]);
@@ -237,7 +292,7 @@ test("Upgrade all keeps successful drafts while explicitly reporting lookup fail
     const ui = bulkApp({ "example:good": "1.0", "example:bad": "1.0" });
     ui.context.fetchAvailableUpgrades = async key => {
         if (key === "example:bad") throw new Error("Metadata unavailable");
-        return { versions: [{ version: "1.1", majorUpgrade: false }] };
+        return { versions: [{ version: "1.1", majorUpgrade: false, releaseDate: "2024-01-01T00:00:00Z", young: false }] };
     };
     await ui.context.upgradeAllDependencies();
     assert.equal(ui.context.targetState.dependencies["example:good"], "1.1");
@@ -253,7 +308,7 @@ test("Upgrade all does not overwrite edits or saved targets while lookups are ru
             if (change === "save") ui.context.targetScanGeneration++;
             if (change === "edit") ui.rows[0].querySelector(".version").value = "1.5";
             if (change === "remove") ui.rows[0].isConnected = false;
-            return { versions: [{ version: "1.1", majorUpgrade: false }] };
+            return { versions: [{ version: "1.1", majorUpgrade: false, releaseDate: "2024-01-01T00:00:00Z", young: false }] };
         };
         await ui.context.upgradeAllDependencies();
         assert.equal(ui.context.targetState.drafted.size, 0);

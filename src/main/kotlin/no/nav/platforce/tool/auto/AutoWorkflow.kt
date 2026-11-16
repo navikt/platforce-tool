@@ -74,20 +74,32 @@ class AutoWorkflow(
         lateinit var original: TargetVersionsState
         lateinit var state: TargetVersionsState
         val changes = mutableListOf<String>()
+        val warnings = mutableListOf<String>()
         progress.step("Draft latest stable non-major versions") {
             original = operations.targets(username).snapshot()
             state = original.snapshot()
             original.dependencies.toSortedMap().filterKeys { it !in original.ignoredDependencies }.forEach { (key, current) ->
                 progress.checkActive()
-                val next = latestStableNonMajor(operations.available(username, key, current))
+                val available = operations.available(username, key, current)
+                val next = latestStableNonMajor(available)
+                val withoutDateCheck = latestStableNonMajor(available, requireReleaseDate = false)
+                if (withoutDateCheck != null && withoutDateCheck != next) {
+                    warnings += "Warning: $key $withoutDateCheck skipped because its release date is unknown."
+                }
                 if (next != null) {
                     state.dependencies[key] = next
                     changes += "$key: $current -> $next"
                 }
             }
+            val summary =
+                if (changes.isEmpty()) {
+                    "No mature stable non-major dependency upgrades found"
+                } else {
+                    "Drafted ${changes.size} dependency upgrades"
+                }
             AutoReport(
-                if (changes.isEmpty()) "No stable non-major dependency upgrades found" else "Drafted ${changes.size} dependency upgrades",
-                changes.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+                summary + if (warnings.isNotEmpty()) "; ${warnings.size} release-date warnings" else "",
+                (changes + warnings).takeIf { it.isNotEmpty() }?.joinToString("\n"),
             )
         }
         if (changes.isNotEmpty()) {
@@ -117,7 +129,10 @@ class AutoWorkflow(
     }
 }
 
-internal fun latestStableNonMajor(available: AvailableVersions): String? {
+internal fun latestStableNonMajor(
+    available: AvailableVersions,
+    requireReleaseDate: Boolean = true,
+): String? {
     fun major(version: String) =
         Regex("^\\d+")
             .find(version)
@@ -127,7 +142,8 @@ internal fun latestStableNonMajor(available: AvailableVersions): String? {
     val major = major(available.currentVersion) ?: return null
     return available.versions
         .filter {
-            !it.prerelease && !it.majorUpgrade && major(it.version) == major &&
+            !it.prerelease && !it.majorUpgrade && !it.young && (!requireReleaseDate || it.releaseDate != null) &&
+                major(it.version) == major &&
                 ComparableVersion(it.version) > ComparableVersion(available.currentVersion)
         }.maxWithOrNull(compareBy { ComparableVersion(it.version) })
         ?.version

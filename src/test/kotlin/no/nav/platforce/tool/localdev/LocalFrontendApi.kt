@@ -335,7 +335,20 @@ class LocalFrontendApi(
                         listOf(
                             AvailableVersion("${major + 1}.1.0-RC1", prerelease = true, majorUpgrade = true),
                             AvailableVersion("${major + 1}.0.0", prerelease = false, majorUpgrade = true),
-                            AvailableVersion("$major.99.0", prerelease = false, majorUpgrade = false),
+                            AvailableVersion(
+                                "$major.100.0",
+                                prerelease = false,
+                                majorUpgrade = false,
+                                releaseDate = Instant.ofEpochMilli(now()).toString(),
+                                young = true,
+                            ),
+                            AvailableVersion(
+                                "$major.99.0",
+                                prerelease = false,
+                                majorUpgrade = false,
+                                releaseDate =
+                                    Instant.ofEpochMilli(now() - 8 * 86_400_000L).toString(),
+                            ),
                         ).filter { ComparableVersion(it.version) > ComparableVersion(current) },
                     ),
                 )
