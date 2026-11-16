@@ -54,15 +54,21 @@ class MemoryAutoRunStore(
         append(report, if (status == AutoRunStatus.COMPLETED) "INFO" else "WARN")
         current =
             current!!.copy(status = status, finishedAt = Instant.now().toString(), step = null, repository = null, stepStartedAt = null)
+        val obsolete =
+            history.keys
+                .toList()
+                .dropLast(9)
+                .toSet()
+        logs.removeAll { it.runId in obsolete }
+        history.keys.removeAll(obsolete)
     }
 
     @Synchronized
     override fun snapshot(before: Long?): AutoProcessSnapshot {
-        val page = logs.filter { before == null || it.id < before }.takeLast(101)
-        val entries = page.takeLast(100)
+        val entries = logs.filter { before == null || it.id < before }
         val ids = entries.map { it.runId }.toSet() + listOfNotNull(current?.id)
         val runs = (history.values + listOfNotNull(current)).filter { it.id in ids }
-        return AutoProcessSnapshot(current, entries, if (page.size > 100) page[1].id else null, runs)
+        return AutoProcessSnapshot(current, entries, null, runs)
     }
 
     @Synchronized

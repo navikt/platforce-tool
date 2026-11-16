@@ -164,12 +164,6 @@ body {
     padding: 0 14px;
 }
 
-.auto-run-partial {
-    margin: 0 14px 12px;
-    color: #607080;
-    font-size: 12px;
-}
-
 .auto-run .auto-run-delete {
     position: absolute;
     top: 8px;
@@ -181,6 +175,10 @@ body {
 }
 
 .auto-log-entry {
+    display: grid;
+    grid-template-columns: 116px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 4px 10px;
     border-top: 1px solid #e8edf2;
     padding: 10px 0;
     font-size: 13px;
@@ -188,14 +186,20 @@ body {
 }
 
 .auto-log-entry p {
-    margin: 6px 0;
+    margin: 0;
 }
 
 .auto-log-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 14px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.auto-log-entry > .auto-pr-link,
+.auto-log-entry > details {
+    grid-column: 2;
+    justify-self: start;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .auto-log-pill {
@@ -221,6 +225,12 @@ body {
 }
 
 .auto-log-triggered {
+    margin-left: 8px;
+    color: #607080;
+    font-size: 12px;
+}
+
+.auto-log-context {
     margin-left: 8px;
     color: #607080;
     font-size: 12px;

@@ -352,7 +352,8 @@ test("Start Auto is a red button at the bottom of the Auto tab and waits for con
     const autoTab = html.slice(html.indexOf('<div id="autoTab"'), html.indexOf('<div id="deploymentsTab"'));
     assert.match(autoTab, /<button id="startAuto" class="btn-danger" type="button" disabled>Start Auto<\/button>/);
     assert.doesNotMatch(autoTab, /autoStartStatus/);
-    assert.ok(autoTab.indexOf('id="startAuto"') > autoTab.indexOf('id="loadOlderAutoLogs"'));
+    assert.ok(autoTab.indexOf('id="startAuto"') > autoTab.indexOf('id="autoProcessLogs"'));
+    assert.doesNotMatch(autoTab, /loadOlderAutoLogs/);
     let snapshot = { run: null, runs: [], logs: [], nextBefore: null };
     let calls = 0;
     const ui = app(async () => {
@@ -478,6 +479,8 @@ test("Auto groups chronological logs in newest-first run sections with start/end
     assert.match(groups[1].children[1].attributes["aria-label"], /Delete Auto process started/);
     assert.match(groups[1].children[1].innerHTML, /<svg/);
     assert.match(latest.children[0].textContent, /RUNNING.*Started.*In progress/);
+    assert.doesNotMatch(latest.children[0].textContent, /Duration/);
+    assert.match(older.children[0].textContent, /Duration 5m 0s/);
     assert.ok(older.children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.runs[1].startedAt)));
     assert.ok(older.children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.runs[1].finishedAt)));
     assert.deepEqual(latest.children[1].children.filter(node => node.tagName === "article").map(node => Number(node.dataset.logId)), [3, 4]);
@@ -495,6 +498,7 @@ test("Auto groups chronological logs in newest-first run sections with start/end
     assert.equal(older.open, true);
     assert.equal(report.open, true);
     assert.ok(latest.children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.run.finishedAt)));
+    assert.match(latest.children[0].textContent, /Duration 5m 0s/);
     assert.equal(ui.get("autoCurrentStep").hidden, true);
     const next = { ...snapshot.run, id: "33333333-3333-4333-8333-333333333333", status: "RUNNING", finishedAt: null };
     snapshot.run = next;
@@ -505,6 +509,26 @@ test("Auto groups chronological logs in newest-first run sections with start/end
     assert.equal(latest.open, false);
     assert.equal(older.open, true);
     assert.equal(ui.get("autoCurrentStep").parentNode, runGroup(ui, next.id).children[0].children[1]);
+});
+
+test("Auto run duration shows total minutes and seconds for every finished outcome", async () => {
+    for (const [status, finishedAt, expected] of [
+        ["COMPLETED", "2026-11-12T13:00:00.900Z", "0m 0s"],
+        ["STOPPED", "2026-11-12T13:00:59Z", "0m 59s"],
+        ["FAILED", "2026-11-12T13:01:01Z", "1m 1s"],
+        ["INTERRUPTED", "2026-11-12T14:02:03Z", "62m 3s"]
+    ]) {
+        const snapshot = processSnapshot(status);
+        snapshot.run.finishedAt = finishedAt;
+        const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+        await ui.context.loadAutoProcess();
+        const summary = runGroup(ui, snapshot.run.id).children[0].children[0];
+        assert.match(summary.textContent, new RegExp(`Duration ${expected}$`));
+        snapshot.run.finishedAt = null;
+        await ui.context.loadAutoProcess();
+        assert.match(summary.textContent, /End time unavailable/);
+        assert.doesNotMatch(summary.textContent, /Duration/);
+    }
 });
 
 test("Auto run deletion is single-flight, removes only that run after DB confirmation and does not resurrect it on polling", async () => {
@@ -558,34 +582,57 @@ test("Auto preserves history on deletion failures and explicit refresh reconcile
     assert.match(ui.get("autoProcessError").textContent, /Database unavailable/);
     snapshot.logs = snapshot.logs.filter(entry => entry.runId !== olderRunId);
     snapshot.runs = snapshot.runs.filter(run => run.id !== olderRunId);
-    await ui.context.loadAutoProcess(null, true);
+    await ui.context.loadAutoProcess();
     assert.equal(runGroup(ui, olderRunId), undefined);
     assert.equal(logEntries(ui).length, 2);
     assert.equal(ui.get("autoProcessError").textContent, "");
 });
 
-test("Auto merges split run log pages without duplicate groups or losing report expansion", async () => {
+test("Auto loads all run blocks and preserves expansion and log nodes on polling", async () => {
     const snapshot = historySnapshot();
-    const allLogs = snapshot.logs;
-    snapshot.logs = [allLogs[3]];
-    snapshot.nextBefore = 4;
-    const ui = app(async url => ({
-        ok: true, json: async () => url.includes("before=")
-            ? { ...snapshot, logs: allLogs.slice(0, 3), nextBefore: null } : snapshot
-    }));
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
     await ui.context.loadAutoProcess();
     const latest = runGroup(ui, latestRunId);
-    assert.equal(latest.children[0].children[2].hidden, false);
     latest.children[0].open = false;
     const original = logEntries(ui)[0];
-    await ui.context.loadAutoProcess(4);
+    await ui.context.loadAutoProcess();
     assert.equal(ui.get("autoProcessLogs").children.length, 2);
     assert.equal(runGroup(ui, latestRunId), latest);
     assert.equal(latest.children[0].open, false);
-    assert.equal(latest.children[0].children[2].hidden, true);
     assert.equal(logEntries(ui)[0], original);
     assert.deepEqual(latest.children[0].children[1].children.filter(node => node.tagName === "article").map(node => Number(node.dataset.logId)), [3, 4]);
     assert.ok(runGroup(ui, olderRunId).children[0].children[0].textContent.includes(ui.context.formatDeploymentTimestamp(snapshot.runs[1].startedAt)));
+});
+
+test("Auto log rows align timestamp and message with muted repository context and separate PR controls", async () => {
+    const snapshot = processSnapshot("COMPLETED", [
+        logEntry(1, { message: "Auto process started", details: "Repositories opted in at start:\nexample/repo" }),
+        logEntry(2, {
+            repository: "example/repo", message: "Pull request created", details: "Updated dependencies",
+            url: "https://github.com/example/repo/pull/42"
+        }),
+        logEntry(3, { level: "WARN", repository: "example/failed", step: "Create PR", message: "PR failed" })
+    ]);
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+    await ui.context.loadAutoProcess();
+    const [warning, pr, started] = logEntries(ui);
+    for (const entry of [warning, pr, started]) {
+        assert.equal(entry.children[0].className, "auto-log-meta");
+        assert.equal(entry.children[0].children.length, 1);
+        assert.equal(entry.children[0].children[0].tagName, "time");
+        assert.equal(entry.children[1].tagName, "p");
+    }
+    assert.equal(started.children[1].textContent, "Auto process started Triggered by service-user");
+    assert.equal(pr.children[1].textContent, "Pull request created example/repo");
+    assert.equal(pr.children[1].children[0].className, "auto-log-context");
+    assert.deepEqual(pr.children.map(node => node.tagName), ["div", "p", "a", "details"]);
+    assert.equal(warning.children[1].textContent, "PR failed example/failed Create PR");
+    assert.ok(warning.children[1].children.every(node => node.className === "auto-log-context"));
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    assert.match(css, /\.auto-log-entry\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*116px minmax\(0, 1fr\)/);
+    assert.match(css, /\.auto-log-meta\s*\{[^}]*white-space:\s*nowrap;[^}]*font-variant-numeric:\s*tabular-nums/);
+    assert.match(css, /\.auto-log-entry > \.auto-pr-link,\s*\.auto-log-entry > details\s*\{[^}]*grid-column:\s*2/);
+    assert.match(css, /\.auto-log-context\s*\{[^}]*color:\s*#607080/);
 });
 
 test("Auto process renders running step and red tab, timestamped expandable reports and safe PR links", async () => {
@@ -774,40 +821,35 @@ test("Auto polling speeds up while running and visible, slows when hidden or fin
     await pending;
 });
 
-test("Auto logs paginate without duplicates and fill a gap when more than one page arrives between polls", async () => {
+test("Auto loads more than 100 logs in one request and reconciles automatically retained runs on polling", async () => {
     let phase = 0;
     const requests = [];
+    const snapshot = historySnapshot();
+    snapshot.logs.push(...Array.from({ length: 150 }, (_, index) => logEntry(index + 5, { runId: latestRunId })));
     const ui = app(async url => {
         requests.push(url);
-        const snapshot = processSnapshot();
-        if (phase === 0) {
-            snapshot.logs = [logEntry(1), logEntry(2)];
-        } else if (url.endsWith("before=7")) {
-            snapshot.logs = [logEntry(3), logEntry(4), logEntry(5), logEntry(6)];
-            snapshot.nextBefore = 3;
-        } else if (url.endsWith("before=3")) {
-            snapshot.logs = [logEntry(1), logEntry(2)];
-        } else {
-            snapshot.logs = [logEntry(7), logEntry(8)];
-            snapshot.nextBefore = 7;
+        if (phase === 1) {
+            snapshot.logs = snapshot.logs.filter(entry => entry.runId !== olderRunId);
+            snapshot.runs = snapshot.runs.filter(run => run.id !== olderRunId);
         }
         return { ok: true, json: async () => snapshot };
     });
     await ui.context.loadAutoProcess();
+    assert.equal(logEntries(ui).length, 154);
+    assert.equal(ui.get("autoProcessLogs").children.length, 2);
+    const latest = runGroup(ui, latestRunId);
+    latest.children[0].open = false;
+    const original = logEntries(ui)[0];
     phase = 1;
     await ui.context.loadAutoProcess();
-    assert.deepEqual(requests.slice(1), ["/internal/api/auto/status", "/internal/api/auto/status?before=7", "/internal/api/auto/status?before=3"]);
-    assert.equal(logEntries(ui).length, 8);
-    assert.equal(logEntries(ui)[0].children[1].textContent, "Finished step 8");
-    assert.equal(logEntries(ui)[7].children[1].textContent, "Finished step 1");
-    const other = app(async url => ({
-        ok: true, json: async () => ({ ...processSnapshot("COMPLETED"), logs: url.includes("before") ? [logEntry(1)] : [logEntry(2)], nextBefore: url.includes("before") ? null : 2 })
-    }));
-    await other.context.loadAutoProcess();
-    assert.equal(other.get("loadOlderAutoLogs").hidden, false);
-    await other.context.loadAutoProcess(2);
-    assert.equal(logEntries(other).length, 2);
-    assert.equal(other.get("loadOlderAutoLogs").hidden, true);
+    assert.deepEqual(requests, ["/internal/api/auto/status", "/internal/api/auto/status"]);
+    assert.equal(logEntries(ui).length, 152);
+    assert.equal(runGroup(ui, olderRunId), undefined);
+    assert.equal(ui.value(`autoRuns.has("${olderRunId}")`), false);
+    assert.equal(logEntries(ui)[0], original);
+    assert.equal(latest.children[0].open, false);
+    await ui.context.loadAutoProcess();
+    assert.equal(logEntries(ui).length, 152);
 });
 
 test("Auto process failures retain confirmed logs and running status with an explicit stale-data warning", async () => {
@@ -818,12 +860,16 @@ test("Auto process failures retain confirmed logs and running status with an exp
     assert.match(ui.get("autoProcessError").textContent, /Database unavailable.*stale/);
     assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), true);
     assert.equal(logEntries(ui).length, 1);
-    ui.context.fetch = async () => ({ ok: true, json: async () => processSnapshot("INTERRUPTED", [logEntry(2, { level: "WARN", message: "<script>unsafe</script>" })]) });
+    ui.context.fetch = async () => ({
+        ok: true, json: async () => processSnapshot("INTERRUPTED", [
+            logEntry(1), logEntry(2, { level: "WARN", message: "<script>unsafe</script>" })
+        ])
+    });
     await ui.context.loadAutoProcess();
     assert.equal(ui.get("autoProcessError").textContent, "");
     assert.equal(ui.get("autoTabButton").classList.contains("auto-running"), false);
     assert.match(logEntries(ui)[0].className, /auto-log-warning/);
-    assert.equal(logEntries(ui)[0].children[1].textContent, "<script>unsafe</script>");
+    assert.equal(logEntries(ui)[0].children[1].textContent, "<script>unsafe</script> Scan Dependencies");
     ui.context.fetch = async () => ({ ok: true, json: async () => processSnapshot("COMPLETED", [logEntry(3, { url: "javascript:alert(1)" })]) });
     await ui.context.loadAutoProcess();
     assert.match(ui.get("autoProcessError").textContent, /Invalid pull request link/);

@@ -7,6 +7,7 @@ import no.nav.platforce.tool.db.PostgresDatabase
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
@@ -121,13 +122,12 @@ class DatabaseAutoRunStore(
                     .apply {
                         if (before != null) where { AppLogsTable.id less before }
                     }.orderBy(AppLogsTable.id, SortOrder.DESC)
-                    .limit(101)
                     .toList()
-            val page = rows.take(100).map { it.toLog() }
+            val page = rows.map { it.toLog() }
             val runIds = (page.map { it.runId } + listOfNotNull(latest?.id)).toSet()
             val runs =
                 AutoRunsTable.selectAll().where { AutoRunsTable.id inList runIds }.map { it.toRun() }
-            AutoProcessSnapshot(latest, page.reversed(), if (rows.size > 100) page.last().id else null, runs)
+            AutoProcessSnapshot(latest, page.reversed(), null, runs)
         }
 
     override fun deleteRun(runId: String): AutoRunDeletion =
@@ -213,6 +213,17 @@ class DatabaseAutoRunStore(
         AutoRunLockTable.update({ AutoRunLockTable.id eq 1 }) {
             it[runId] = null
             it[leaseUntil] = null
+        }
+        val obsolete =
+            AutoRunsTable
+                .selectAll()
+                .orderBy(AutoRunsTable.startedAt, SortOrder.DESC)
+                .filter { it[AutoRunsTable.id] != run.id && it[AutoRunsTable.status] != AutoRunStatus.RUNNING.name }
+                .drop(9)
+                .map { it[AutoRunsTable.id] }
+        if (obsolete.isNotEmpty()) {
+            AppLogsTable.deleteWhere { AppLogsTable.runId inList obsolete }
+            AutoRunsTable.deleteWhere { AutoRunsTable.id inList obsolete }
         }
     }
 

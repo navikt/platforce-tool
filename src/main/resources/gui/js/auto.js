@@ -129,8 +129,6 @@ let autoProcessLoading = false;
 let autoProcessStarting = false;
 let autoProcessRun = null;
 let autoProcessStatusLoaded = false;
-let autoLogsLoaded = false;
-let autoNextBefore = null;
 let autoRenderedStep = null;
 let autoRenderedLatestRun = null;
 const autoLogEntries = new Map();
@@ -289,16 +287,6 @@ function autoLogNode(entry) {
     const header = document.createElement("div");
     header.className = "auto-log-meta";
     header.appendChild(autoLogTimestamp(entry.timestamp));
-    if (entry.repository) {
-        const repository = document.createElement("span");
-        repository.textContent = entry.repository;
-        header.appendChild(repository);
-    }
-    if (entry.step && entry.level !== "INFO") {
-        const step = document.createElement("span");
-        autoLogText(step, entry.step);
-        header.appendChild(step);
-    }
     const presentation = autoLogPresentation(entry);
     const message = document.createElement("p");
     autoLogText(message, presentation.message);
@@ -307,6 +295,18 @@ function autoLogNode(entry) {
         triggered.className = "auto-log-triggered";
         triggered.textContent = ` Triggered by ${entry.username}`;
         message.appendChild(triggered);
+    }
+    if (entry.repository) {
+        const repository = document.createElement("span");
+        repository.className = "auto-log-context";
+        repository.textContent = ` ${entry.repository}`;
+        message.appendChild(repository);
+    }
+    if (entry.step && entry.level !== "INFO") {
+        const step = document.createElement("span");
+        step.className = "auto-log-context";
+        autoLogText(step, ` ${entry.step}`);
+        message.appendChild(step);
     }
     article.append(header, message);
     if (entry.url) {
@@ -336,11 +336,7 @@ function createAutoRunGroup(run) {
     summary.appendChild(heading);
     const body = document.createElement("div");
     body.className = "auto-run-logs";
-    const partial = document.createElement("p");
-    partial.className = "auto-run-partial";
-    partial.textContent = "Earlier log entries are not loaded. Use Load older logs to see the rest.";
-    partial.hidden = true;
-    details.append(summary, body, partial);
+    details.append(summary, body);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "icon-btn remove auto-run-delete";
@@ -352,7 +348,7 @@ function createAutoRunGroup(run) {
         return deleteAutoRun(run.id);
     });
     section.append(details, remove);
-    return { section, details, heading, body, partial, remove, headerKey: null };
+    return { section, details, heading, body, remove, headerKey: null };
 }
 
 function updateAutoRunButtons() {
@@ -404,12 +400,18 @@ function renderAutoRunGroups(current) {
             finished.textContent = run.finishedAt ? "Finished " : run.status === "RUNNING" ? "In progress" : "End time unavailable";
             if (run.finishedAt) finished.appendChild(autoLogTimestamp(run.finishedAt));
             group.heading.replaceChildren(title, state, started, finished);
+            if (run.finishedAt) {
+                const seconds = Math.floor((Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 1000);
+                const duration = document.createElement("span");
+                duration.className = "auto-run-time";
+                duration.textContent = `Duration ${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+                group.heading.appendChild(duration);
+            }
             group.headerKey = headerKey;
         }
         if (latestChanged && (id === autoProcessRun?.id || id === autoRenderedLatestRun)) {
             group.details.open = id === autoProcessRun?.id;
         }
-        group.partial.hidden = !grouped.get(id).length || grouped.get(id)[0].message === "Auto process started" || autoNextBefore === null;
         [...group.body.children].forEach(node => {
             if (node.dataset.logId !== undefined && !autoLogEntries.has(Number(node.dataset.logId))) node.remove();
         });
@@ -491,11 +493,10 @@ function renderAutoProcess() {
         autoRenderedStep = stepKey;
     }
     renderAutoRunGroups(current);
-    document.getElementById("loadOlderAutoLogs").hidden = autoNextBefore === null;
 }
 
-async function fetchAutoProcess(before = null) {
-    const response = await fetch(`/internal/api/auto/status${before === null ? "" : `?before=${before}`}`, { cache: "no-store" });
+async function fetchAutoProcess() {
+    const response = await fetch("/internal/api/auto/status", { cache: "no-store" });
     const snapshot = await response.json();
     if (!response.ok) throw new Error(snapshot.error || `HTTP ${response.status}`);
     if (!Array.isArray(snapshot.logs) || !Array.isArray(snapshot.runs) ||
@@ -533,35 +534,22 @@ function mergeAutoLogs(logs) {
     });
 }
 
-async function loadAutoProcess(before = null, reset = false) {
+async function loadAutoProcess() {
     if (autoProcessLoading || autoProcessStarting || autoRunDeleting.size) return;
     autoProcessLoading = true;
     updateAutoRunButtons();
-    const older = document.getElementById("loadOlderAutoLogs");
-    older.disabled = true;
     try {
-        const previousNewest = !reset && autoLogEntries.size ? Math.max(...autoLogEntries.keys()) : null;
-        let snapshot = await fetchAutoProcess(before);
+        const snapshot = await fetchAutoProcess();
         mergeAutoSnapshot(snapshot);
-        if (reset) {
-            const ids = new Set(snapshot.logs.map(entry => entry.id));
-            autoLogEntries.forEach((entry, id) => {
-                if (!ids.has(id)) {
-                    autoLogEntries.delete(id);
-                    autoLogNodes.delete(id);
-                }
-            });
-            const runs = new Set(snapshot.runs.map(run => run.id));
-            autoRuns.forEach((run, id) => { if (!runs.has(id)) autoRuns.delete(id); });
-            autoLogsLoaded = false;
-        }
-        if (!autoLogsLoaded || before !== null) autoNextBefore = snapshot.nextBefore ?? null;
-        while (before === null && previousNewest !== null && snapshot.nextBefore != null &&
-            snapshot.logs.length && snapshot.logs[0].id > previousNewest) {
-            snapshot = await fetchAutoProcess(snapshot.nextBefore);
-            mergeAutoSnapshot(snapshot);
-        }
-        autoLogsLoaded = true;
+        const ids = new Set(snapshot.logs.map(entry => entry.id));
+        autoLogEntries.forEach((entry, id) => {
+            if (!ids.has(id)) {
+                autoLogEntries.delete(id);
+                autoLogNodes.delete(id);
+            }
+        });
+        const runs = new Set(snapshot.runs.map(run => run.id));
+        autoRuns.forEach((run, id) => { if (!runs.has(id)) autoRuns.delete(id); });
         autoProcessStatusLoaded = true;
         renderAutoProcess();
         document.getElementById("autoProcessError").textContent = "";
@@ -574,7 +562,6 @@ async function loadAutoProcess(before = null, reset = false) {
         updateAutoToggles();
         autoProcessLoading = false;
         updateAutoRunButtons();
-        older.disabled = false;
     }
 }
 
@@ -590,5 +577,5 @@ function startAutoProcessPolling() {
 
 function refreshAutoTab() {
     loadAutoRepositories();
-    loadAutoProcess(null, true);
+    loadAutoProcess();
 }

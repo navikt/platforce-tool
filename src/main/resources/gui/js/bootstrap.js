@@ -76,9 +76,6 @@ document.getElementById("refreshDeployments")
 document.getElementById("refreshAutoRepositories")
     .addEventListener("click", refreshAutoTab);
 
-document.getElementById("loadOlderAutoLogs")
-    .addEventListener("click", () => loadAutoProcess(autoNextBefore));
-
 document.getElementById("startAuto")
     .addEventListener("click", startAuto);
 

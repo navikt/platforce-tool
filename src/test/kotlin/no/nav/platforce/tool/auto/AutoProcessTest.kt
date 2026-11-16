@@ -463,16 +463,16 @@ class AutoProcessTest {
     }
 
     @Test
-    fun `run metadata spans log pages and only older inactive runs can be deleted globally`() {
+    fun `all logs and run metadata are returned and only older inactive runs can be deleted globally`() {
         val store = MemoryAutoRunStore()
         val previous = checkNotNull(store.tryStart("alice"))
         repeat(150) { store.report(previous.id, AutoReport("Previous report $it")) }
         store.finish(previous.id, AutoRunStatus.COMPLETED, AutoReport("Finished"))
         val latest = checkNotNull(store.tryStart("bob"))
         val snapshot = store.snapshot()
-        assertEquals(100, snapshot.logs.size)
-        assertNotNull(snapshot.nextBefore)
-        assertTrue(snapshot.logs.none { it.runId == previous.id && it.message == "Auto process started" })
+        assertEquals(153, snapshot.logs.size)
+        assertNull(snapshot.nextBefore)
+        assertTrue(snapshot.logs.any { it.runId == previous.id && it.message == "Auto process started" })
         val previousMetadata = snapshot.runs.single { it.id == previous.id }
         assertEquals(previous.startedAt, previousMetadata.startedAt)
         assertNotNull(previousMetadata.finishedAt)
@@ -499,6 +499,37 @@ class AutoProcessTest {
         assertThrows(RuntimeException::class.java) {
             secured(Request(Method.DELETE, "/internal/api/auto/runs/${latest.id}"))
         }
+    }
+
+    @Test
+    fun `finishing any Auto outcome retains ten complete runs and their logs without pruning an active run`() {
+        val store = MemoryAutoRunStore()
+        val ids = mutableListOf<String>()
+        val outcomes = AutoRunStatus.entries.filter { it != AutoRunStatus.RUNNING }
+        repeat(15) { index ->
+            val run = checkNotNull(store.tryStart("alice"))
+            ids += run.id
+            repeat(120) { store.report(run.id, AutoReport("Run $index report $it")) }
+            if (index >= 10) {
+                assertEquals(11, store.snapshot().runs.size)
+                assertEquals(run.id, store.snapshot().run?.id)
+                assertEquals(AutoRunStatus.RUNNING, store.snapshot().run?.status)
+            }
+            store.finish(run.id, outcomes[index % outcomes.size], AutoReport("Finished"))
+            val snapshot = store.snapshot()
+            val expected = ids.takeLast(10).toSet()
+            assertEquals(expected, snapshot.runs.map { it.id }.toSet())
+            assertEquals(expected, snapshot.logs.map { it.runId }.toSet())
+            assertEquals(expected.size * 122, snapshot.logs.size)
+            assertNull(snapshot.nextBefore)
+            expected.forEach { id ->
+                assertEquals(122, snapshot.logs.count { it.runId == id })
+                assertEquals("Auto process started", snapshot.logs.first { it.runId == id }.message)
+                assertEquals("Finished", snapshot.logs.last { it.runId == id }.message)
+            }
+        }
+        assertEquals(AutoRunDeletion.NOT_FOUND, store.deleteRun(ids.first()))
+        assertEquals(AutoRunDeletion.PROTECTED, store.deleteRun(ids.last()))
     }
 
     @Test
