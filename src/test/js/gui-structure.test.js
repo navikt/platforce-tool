@@ -69,6 +69,14 @@ test("HTML loads every frontend feature file once, with shared definitions first
     assert.ok(html.lastIndexOf("<script") > html.indexOf('id="saveIgnored"'));
 });
 
+test("NODE targets follow Platform BOMs and explicitly describe their limited scope", () => {
+    assert.ok(html.indexOf('id="nodeTable"') > html.indexOf('id="platformBomsTable"'));
+    assert.ok(html.indexOf('id="nodeTable"') < html.indexOf('class="target-section dependencies"'));
+    assert.match(html, /class="target-section node"/);
+    assert.match(html, /package.json dependencies and overrides; devDependencies excluded/);
+    assert.match(html, /Node security scans and PR\/Auto updates are not available yet/);
+});
+
 test("feature files have no startup side effects and bootstrap exposes all inline handlers", () => {
     const calls = [];
     const app = browser(url => {

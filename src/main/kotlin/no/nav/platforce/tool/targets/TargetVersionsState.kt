@@ -7,6 +7,7 @@ data class TargetVersionsState(
     val transientDependencies: Set<String> = emptySet(),
     val platformBoms: MutableMap<String, String> = mutableMapOf(),
     val ignoredDependencies: Set<String> = emptySet(),
+    val nodeDependencies: MutableMap<String, String> = mutableMapOf(),
 )
 
 fun TargetVersionsState.snapshot(): TargetVersionsState =
@@ -17,6 +18,7 @@ fun TargetVersionsState.snapshot(): TargetVersionsState =
         // Gson bypasses constructor defaults when reading older JSON payloads.
         platformBoms = (platformBoms as Map<String, String>?)?.toMutableMap() ?: mutableMapOf(),
         ignoredDependencies = (ignoredDependencies as Set<String>?)?.toSet() ?: emptySet(),
+        nodeDependencies = (nodeDependencies as Map<String, String>?)?.toMutableMap() ?: mutableMapOf(),
     )
 
 fun TargetVersionsState.withoutIgnoredDependencies(): TargetVersionsState =

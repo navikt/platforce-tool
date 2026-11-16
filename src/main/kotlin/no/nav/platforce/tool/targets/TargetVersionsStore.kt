@@ -48,6 +48,12 @@ class TargetVersionsStore(
                         .sortedBy { it.key }
                         .associate { it.key to it.version }
                         .toMutableMap(),
+                nodeDependencies =
+                    versions
+                        .filter { it.type == TargetVersionType.NODE }
+                        .sortedBy { it.key }
+                        .associate { it.key to it.version }
+                        .toMutableMap(),
             )
         return if (includeIgnored) state else state.withoutIgnoredDependencies()
     }
@@ -103,6 +109,18 @@ class TargetVersionsStore(
                         userId = userId,
                         team = team,
                         type = TargetVersionType.PLATFORM_BOM,
+                        key = it.key,
+                        version = it.value,
+                        transient = false,
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                } +
+                normalized.nodeDependencies.map {
+                    TargetVersion(
+                        userId = userId,
+                        team = team,
+                        type = TargetVersionType.NODE,
                         key = it.key,
                         version = it.value,
                         transient = false,

@@ -1918,6 +1918,57 @@ button:hover {
     background: #fbf8ff;
 }
 
+.target-section.node {
+    background: #f2fafb;
+    border: 1px solid #cce5e8;
+}
+
+.node-pill {
+    background: #e1f1f3;
+    color: #22636d;
+    border: 1px solid #22636d;
+}
+
+.target-section.node .target-row:nth-child(odd),
+.finding-container:nth-child(odd) .row.node-row {
+    background: #e1f1f3;
+}
+
+.target-section.node .target-row:nth-child(even),
+.row.node-row {
+    background: #f2fafb;
+}
+
+#nodeTable .target-row {
+    grid-template-columns: minmax(0, 300px) 110px 25px 25px;
+}
+
+#nodeTable .target-row input {
+    min-width: 0;
+}
+
+.node-scan-notice,
+.node-declaration {
+    color: #666;
+    font-size: 12px;
+}
+
+.node-scan-notice {
+    margin: 8px 10px;
+    line-height: 1.5;
+}
+
+.node-declaration {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.status-unresolved {
+    background: #f4f4f4;
+    color: #555;
+    border-color: #bbb;
+}
+
 /* Visibility utilities */
 
 .hidden {

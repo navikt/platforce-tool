@@ -26,6 +26,7 @@ let targetState = {
     plugins: {},
     dependencies: {},
     platformBoms: {},
+    nodeDependencies: {},
     gradleVersion: "",
     transientDependencies: new Set(),
     drafted: new Set()

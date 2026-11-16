@@ -26,7 +26,14 @@ class DependencyScanCache {
     ) {
         val user = forUser(username)
         synchronized(user) {
-            user.inventories = inventories.map { it.copy(plugins = it.plugins.toMap(), dependencies = it.dependencies.toMap()) }
+            user.inventories =
+                inventories.map {
+                    it.copy(
+                        plugins = it.plugins.toMap(),
+                        dependencies = it.dependencies.toMap(),
+                        nodeDependencies = it.nodeDependencies.toList(),
+                    )
+                }
         }
     }
 
@@ -36,7 +43,12 @@ class DependencyScanCache {
     ) {
         val user = forUser(username)
         synchronized(user) {
-            val copy = inventory.copy(plugins = inventory.plugins.toMap(), dependencies = inventory.dependencies.toMap())
+            val copy =
+                inventory.copy(
+                    plugins = inventory.plugins.toMap(),
+                    dependencies = inventory.dependencies.toMap(),
+                    nodeDependencies = inventory.nodeDependencies.toList(),
+                )
             user.inventories =
                 if (user.inventories.any { it.repository == copy.repository }) {
                     user.inventories.map { if (it.repository == copy.repository) copy else it }

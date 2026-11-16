@@ -6,6 +6,7 @@ async function renderTargets(data) {
         plugins: data.plugins || {},
         dependencies: data.dependencies || {},
         platformBoms: data.platformBoms || {},
+        nodeDependencies: data.nodeDependencies || {},
         gradleVersion: data.gradleVersion || "",
         transientDependencies: new Set(data.transientDependencies || []),
         drafted
@@ -24,6 +25,7 @@ function renderTargetTables() {
     renderTable("depsTable", Object.entries(targetState.dependencies)
         .filter(([key]) => !ignoredDependencies.includes(key)), "dependency");
     renderTable("platformBomsTable", Object.entries(targetState.platformBoms), "platform_bom");
+    renderTable("nodeTable", Object.entries(targetState.nodeDependencies), "node");
     renderGradleVersion(targetState.gradleVersion);
 }
 
@@ -40,6 +42,10 @@ function addDraftTarget(kind, key, version) {
 
     if (kind === "PLATFORM_BOM") {
         targetState.platformBoms[key] = version;
+    }
+
+    if (kind === "NODE") {
+        targetState.nodeDependencies[key] = version;
     }
 
     if (kind === "GRADLE") {
@@ -97,7 +103,7 @@ function renderTable(containerId, entries, type) {
         
             <input class="key" />
             <input class="version" />
-            ${securityStatusHtml(securityTarget)}
+            ${type === "node" ? "" : securityStatusHtml(securityTarget)}
             ${
             type === "dependency"
                 ? `
@@ -109,7 +115,7 @@ function renderTable(containerId, entries, type) {
                 `
                 : ""
         }
-            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
+            ${(type === "node" ? "" : targetUpgradeButtonHtml()) + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -129,7 +135,7 @@ function renderTable(containerId, entries, type) {
         row.querySelector(".key").value = key;
         row.querySelector(".version").value = version;
         bindDependencyUsage(row, type);
-        bindTargetUpgrades(row, type);
+        if (type !== "node") bindTargetUpgrades(row, type);
         if (type === "dependency") {
             row.querySelector(".transient-btn").onclick = () => {
                 const transient =
@@ -185,6 +191,10 @@ function renderTable(containerId, entries, type) {
             </svg>
         </button>
     `;
+    if (type === "node") {
+        addRow.querySelector(".key").placeholder = "package or @scope/package";
+        addRow.querySelector(".version").placeholder = "version or range";
+    }
     addRow.querySelector(".add-btn").onclick = () => {
         const kInput = addRow.querySelector(".key");
         const vInput = addRow.querySelector(".version");
@@ -202,8 +212,8 @@ function renderTable(containerId, entries, type) {
        
             <input class="key" />
             <input class="version" />
-            ${securityStatusHtml(securityTarget)}
-            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
+            ${type === "node" ? "" : securityStatusHtml(securityTarget)}
+            ${(type === "node" ? "" : targetUpgradeButtonHtml()) + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -223,7 +233,7 @@ function renderTable(containerId, entries, type) {
         newRow.querySelector(".key").value = k;
         newRow.querySelector(".version").value = v;
         bindDependencyUsage(newRow, type);
-        bindTargetUpgrades(newRow, type);
+        if (type !== "node") bindTargetUpgrades(newRow, type);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
             newRow.querySelector(".target-status-pill");
@@ -240,7 +250,8 @@ function renderTable(containerId, entries, type) {
 }
 
 function declaredTargetKeysField(type) {
-    return type === "plugin" ? "declaredPluginKeys" : type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
+    return type === "node" ? "declaredNodeDependencyKeys"
+        : type === "plugin" ? "declaredPluginKeys" : type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
 }
 
 function dependencyUsageAvailable(type = "dependency") {
@@ -357,6 +368,7 @@ function readTargetInputs() {
             ...read("depsTable")
         },
         platformBoms: read("platformBomsTable"),
+        nodeDependencies: read("nodeTable"),
         gradleVersion: readSingleVersion("gradleTable"),
         transientDependencies:
             Array.from(targetState.transientDependencies)
@@ -368,6 +380,7 @@ function captureTargetDrafts() {
     targetState.plugins = inputs.plugins;
     targetState.dependencies = inputs.dependencies;
     targetState.platformBoms = inputs.platformBoms;
+    targetState.nodeDependencies = inputs.nodeDependencies;
     targetState.gradleVersion = inputs.gradleVersion;
 }
 
@@ -445,6 +458,7 @@ async function saveTargets() {
             plugins: payload.plugins,
             dependencies: payload.dependencies,
             platformBoms: payload.platformBoms,
+            nodeDependencies: payload.nodeDependencies,
             gradleVersion: payload.gradleVersion,
             transientDependencies: new Set(payload.transientDependencies),
             drafted: new Set()

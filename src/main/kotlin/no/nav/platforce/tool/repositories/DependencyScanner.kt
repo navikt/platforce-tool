@@ -4,6 +4,8 @@ import mu.KotlinLogging
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.gradle.GradleDependencyParser
 import no.nav.platforce.tool.gradle.GradleWrapperParser
+import no.nav.platforce.tool.node.PackageJsonParser
+import no.nav.platforce.tool.node.nodeDependencyStatus
 import no.nav.platforce.tool.security.OverrideReason
 import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.security.TargetSecurityStatus
@@ -109,11 +111,22 @@ class DependencyScanner(
         val owner = repository.substringBefore("/")
         val repo = repository.substringAfter("/")
 
+        val buildFile = tryGetBuildFile(owner, repo)
+        if (buildFile == null) {
+            if (!githubClient.fileExists(owner, repo, "package.json")) return null
+            return RepositoryDependencyInventory(
+                repository = repository,
+                scannedAt = Instant.now().toString(),
+                plugins = emptyMap(),
+                dependencies = emptyMap(),
+                gradleVersion = null,
+                projectType = RepositoryProjectType.NODE,
+                nodeDependencies = PackageJsonParser().parse(githubClient.getFile(owner, repo, "package.json")),
+            )
+        }
+
         val wrapperFile = tryGetWrapperFile(owner, repo)
-
         val parsedWrapper = gradleWrapperParser.parse(wrapperFile ?: "")
-
-        val buildFile = tryGetBuildFile(owner, repo) ?: return null
 
         val parsedBuildFile = gradleDependencyParser.parse(buildFile)
         // Exclude test-only dependencies and BOMs from repository scans; retain parser support for future test scanning.
@@ -137,6 +150,35 @@ class DependencyScanner(
         inventory: RepositoryDependencyInventory,
         targetState: TargetVersionsState,
     ): RepositoryDependencyScan {
+        if (inventory.projectType == RepositoryProjectType.NODE) {
+            return RepositoryDependencyScan(
+                repository = inventory.repository,
+                scannedAt = inventory.scannedAt,
+                projectType = RepositoryProjectType.NODE,
+                declaredDependencyKeys = emptyList(),
+                declaredPlatformBomKeys = emptyList(),
+                declaredPluginKeys = emptyList(),
+                declaredNodeDependencyKeys =
+                    inventory.nodeDependencies
+                        .map { it.key }
+                        .distinct()
+                        .sorted(),
+                findings =
+                    inventory.nodeDependencies.mapNotNull { dependency ->
+                        targetState.nodeDependencies[dependency.key]?.let { target ->
+                            DependencyFinding(
+                                kind = DependencyKind.NODE,
+                                key = dependency.key,
+                                currentVersion = dependency.version,
+                                targetVersion = target,
+                                status = nodeDependencyStatus(dependency.version, target),
+                                declaration = dependency.declaration,
+                            )
+                        }
+                    },
+                untrackedNodeDependencies = inventory.nodeDependencies.filter { it.key !in targetState.nodeDependencies },
+            )
+        }
         val findings = mutableListOf<DependencyFinding>()
         val store = targetState
 
@@ -574,12 +616,9 @@ class DependencyScanner(
         owner: String,
         repo: String,
     ): String? =
-        runCatching {
-            githubClient.getFile(owner, repo, "build.gradle")
-        }.getOrNull()
-            ?: runCatching {
-                githubClient.getFile(owner, repo, "build.gradle.kts")
-            }.getOrNull()
+        listOf("build.gradle", "build.gradle.kts")
+            .firstOrNull { githubClient.fileExists(owner, repo, it) }
+            ?.let { githubClient.getFile(owner, repo, it) }
 
     private fun tryGetWrapperFile(
         owner: String,

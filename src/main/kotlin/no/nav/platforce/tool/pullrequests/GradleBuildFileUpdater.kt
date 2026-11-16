@@ -91,7 +91,7 @@ class GradleBuildFileUpdater {
                             result
                         }
 
-                        DependencyKind.GRADLE -> {
+                        DependencyKind.GRADLE, DependencyKind.NODE -> {
                             updated
                         }
                     }

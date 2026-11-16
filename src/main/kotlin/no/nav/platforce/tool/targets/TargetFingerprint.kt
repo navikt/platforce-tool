@@ -13,6 +13,7 @@ fun fingerprint(targetState: TargetVersionsState): String {
                 targetState.transientDependencies.sorted(),
                 targetState.platformBoms.toSortedMap(),
                 targetState.ignoredDependencies.sorted(),
+                targetState.nodeDependencies.toSortedMap(),
             ),
         )
     val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))

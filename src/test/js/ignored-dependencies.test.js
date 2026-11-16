@@ -48,7 +48,7 @@ test("ignored targets are hidden while draft capture and saving retain their ver
     assert.equal(context.readTargetInputs().dependencies["example:ignored"], "2.0");
     vm.runInContext("ignoredDependencies = []", context);
     context.renderTargetTables();
-    assert.deepEqual(rendered.at(-2)[1], [["example:ignored", "2.0"], ["example:visible", "3.0"]]);
+    assert.deepEqual(rendered.findLast(([id]) => id === "depsTable")[1], [["example:ignored", "2.0"], ["example:visible", "3.0"]]);
 });
 
 test("ignore changes refresh backend data and failed saves report errors without changing local state", async () => {

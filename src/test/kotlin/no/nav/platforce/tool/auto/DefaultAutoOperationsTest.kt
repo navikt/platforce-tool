@@ -191,6 +191,19 @@ class DefaultAutoOperationsTest {
     }
 
     @Test
+    fun `Node Auto opt ins are skipped without security prerequisites or GitHub writes`() {
+        val fixture = Fixture()
+        fixture.files.clear()
+        fixture.files["package.json"] = """{"dependencies":{"express":"^4.21.2"}}"""
+        fixture.state.nodeDependencies["express"] = "5.0.0"
+        val report = fixture.operations.createPullRequest("alice", fixture.state, "example/repo") {}
+        assertEquals("Skipped: Node.js Auto updates are not supported yet", report.message)
+        assertFalse(fixture.recording.calls.any { it.startsWith("create") || it.startsWith("update") })
+        assertEquals(0, fixture.resolveQueue.queuedTasks)
+        assertEquals(0, fixture.securityQueue.queuedTasks)
+    }
+
+    @Test
     fun `full refresh replaces caller inventories with current GitHub data for every accessible repository`() {
         val fixture = Fixture()
         val stale = checkNotNull(fixture.dependencyScanner.scanRepository("example/repo"))

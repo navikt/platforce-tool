@@ -66,7 +66,7 @@ function app(fetch, confirmedIdle = true) {
         clearTimeout: id => timers.delete(id),
         fetch
     });
-    for (const file of ["shared", "api", "deployments", "auto"]) {
+    for (const file of ["state", "shared", "api", "deployments", "auto"]) {
         vm.runInContext(readFileSync(resolve(__dirname, `../../main/resources/gui/js/${file}.js`), "utf8"), context);
     }
     if (confirmedIdle) vm.runInContext("autoProcessStatusLoaded = true", context);
@@ -92,6 +92,24 @@ function server(initial = []) {
         }
     };
 }
+
+test("Node Auto switches prevent opting in but allow removing existing opt ins", async () => {
+    const backend = server();
+    const ui = app(backend.fetch);
+    ui.value('lastLoadedData = { scans: [{ repository: "example/node", projectType: "NODE" }] }');
+    await ui.context.loadAutoRepositories();
+    const toggle = ui.context.createAutoToggle("example/node");
+    assert.equal(toggle.disabled, true);
+    assert.match(toggle.title, /Node.js Auto updates are not supported/);
+    await ui.context.saveAutoRepository("example/node");
+    assert.equal(backend.calls.length, 1);
+    backend.repositories.add("example/node");
+    await ui.context.loadAutoRepositories();
+    assert.equal(toggle.disabled, false);
+    await ui.context.saveAutoRepository("example/node");
+    assert.equal(backend.repositories.size, 0);
+    assert.equal(toggle.disabled, true);
+});
 
 test("Auto tab precedes Deployments and renders a sorted compact global list independently of scanner teams", async () => {
     assert.ok(html.indexOf('data-tab="auto"') < html.indexOf('data-tab="deployments"'));

@@ -97,6 +97,8 @@ function renderRepo(repoView, scanMap, container) {
     const untrackedDependencies = scan?.untrackedDependencies ?? [];
     const untrackedPlugins = scan?.untrackedPlugins ?? [];
     const untrackedPlatformBoms = scan?.untrackedPlatformBoms ?? [];
+    const untrackedNodeDependencies = scan?.untrackedNodeDependencies ?? [];
+    const isNode = scan?.projectType === "NODE";
 
     const ok = findings.filter(f => f.status === "OK").length;
     const update = findings.filter(f => f.status === "UPDATE").length;
@@ -109,7 +111,8 @@ function renderRepo(repoView, scanMap, container) {
     const hasActionable = findings.some(f =>
         f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD" || f.status === "REMOVE"
     );
-    const prPrerequisite = !normalSecurityReady ? "Run security scan first"
+    const prPrerequisite = isNode ? "Node.js PR/Auto updates are not supported yet"
+        : !normalSecurityReady ? "Run security scan first"
         : ((findings.some(f => f.kind === "PLATFORM_BOM") || untrackedPlatformBoms.length) && !bomSecurityReady)
             ? "Run BOM scan first" : null;
 
@@ -135,7 +138,7 @@ function renderRepo(repoView, scanMap, container) {
     const isMissing = state === "NOT_IN_GITHUB";
     const isNotScanned = state === "NOT_SCANNED";
 
-    const untrackedCount = untrackedDependencies.length + untrackedPlugins.length + untrackedPlatformBoms.length;
+    const untrackedCount = untrackedDependencies.length + untrackedPlugins.length + untrackedPlatformBoms.length + untrackedNodeDependencies.length;
     const untrackedBadge =
         untrackedCount > 0
             ? `<span class="badge untracked">${untrackedCount} UNTRKD</span>`
@@ -203,10 +206,10 @@ function renderRepo(repoView, scanMap, container) {
                     Refresh
                 </button>
 
-                <span class="pr-create-action${prPrerequisite ? ` pr-create-action--locked pr-create-action--${normalSecurityReady ? "bom" : "scan"}` : ""}"
+                <span class="pr-create-action${prPrerequisite && !isNode ? ` pr-create-action--locked pr-create-action--${normalSecurityReady ? "bom" : "scan"}` : ""}"
                     ${prPrerequisite ? `role="group" aria-label="Create PR unavailable: ${prPrerequisite}"` : ""}>
                 <span class="pr-prerequisite-slot">
-                    ${prPrerequisite ? `<span class="pr-prerequisite-icon" role="img" tabindex="0"
+                    ${prPrerequisite && !isNode ? `<span class="pr-prerequisite-icon" role="img" tabindex="0"
                         aria-label="${prPrerequisite}" title="${prPrerequisite}">
                         <svg width="26" height="30" viewBox="0 0 26 30" fill="none"
                             stroke="currentColor" stroke-width="1" aria-hidden="true">
@@ -224,7 +227,7 @@ function renderRepo(repoView, scanMap, container) {
 
                 ${
                 prPrerequisite
-                    ? `<button class="pr-button create-pr-button disabled" disabled>Create PR</button>`
+                    ? `<button class="pr-button create-pr-button disabled" title="${prPrerequisite}" disabled>Create PR</button>`
                     : hasActionable
                     ? `<button
                                data-repo="${repo}"
@@ -256,13 +259,18 @@ function renderRepo(repoView, scanMap, container) {
             ${
         isScanned
             ? `
+            ${isNode ? `<p class="node-scan-notice">Node: declared package.json dependencies and overrides, not resolved lockfile versions.
+                Comparisons use the lower version of simple exact, ^ or ~ declarations; other ranges, aliases and references require review.
+                No Node vulnerability scan has been performed. PR/Auto updates are not supported yet.</p>` : ""}
             <div class="table">
                 ${findings.map(f => {
                     const kind = (f.kind || "UNKNOWN").toLowerCase();
                     const status = (f.status || "UNKNOWN");
 
                     const displayStatus =
-                        status === "OK_OVERRIDDEN"
+                        f.kind === "NODE"
+                            ? ({ OK: "MATCH", UPDATE: "OLDER", AHEAD: "NEWER", UNRESOLVED: "REVIEW" }[status] || status)
+                        : status === "OK_OVERRIDDEN"
                             ? "OK *"
                             : status === "OK_TRANSIENT"
                                 ? `OK ${BANDAGE_SVG}`
@@ -346,16 +354,18 @@ function renderRepo(repoView, scanMap, container) {
                         <div class="finding-container">
                             <div class="row ${kind}-row">
                                 <div class="pill">${f.kind === "PLATFORM_BOM" ? "PLATFORM BOM" : f.kind}</div>
-                                <div>${f.key || ""}</div>
+                                <div>${escapeHtml(f.key || "")}${f.declaration ? `<small class="node-declaration">${escapeHtml(f.declaration)}</small>` : ""}</div>
                 
                                 <div class="version-cell">
                                     <span class="current-version">
-                                        ${f.currentVersion || ""}
+                                        ${escapeHtml(f.currentVersion || "")}
                                     </span>
                 
                                     ${
                                     (status === "UPDATE" || status === "AHEAD" || status === "ADD") && f.targetVersion
-                                        ? `<span class="target-version-pill">→ ${f.targetVersion}</span>`
+                                        ? `<span class="target-version-pill">→ ${escapeHtml(f.targetVersion)}</span>`
+                                        : status === "UNRESOLVED"
+                                            ? `<span class="target-version-pill">Target: ${escapeHtml(f.targetVersion)}</span>`
                                         : ""
                                 }
                                 </div>
@@ -364,8 +374,8 @@ function renderRepo(repoView, scanMap, container) {
                                     <span
                                         class="status-pill ${statusClass} ${status === "AHEAD" ? "target-draft-pill" : ""}"
                                         data-kind="${f.kind}"
-                                        data-key="${f.key}"
-                                        data-version="${f.currentVersion || ""}"
+                                        data-key="${escapeHtml(f.key)}"
+                                        data-version="${escapeHtml(f.currentVersion || "")}"
                                         ${hasDetails ? 'data-toggle-details="true"' : ""}>
                                         ${displayStatus}
                                     </span>
@@ -381,11 +391,12 @@ function renderRepo(repoView, scanMap, container) {
             </div>
 
             ${
-                (untrackedDependencies.length || untrackedPlugins.length || untrackedPlatformBoms.length)
+                (untrackedDependencies.length || untrackedPlugins.length || untrackedPlatformBoms.length || untrackedNodeDependencies.length)
                     ? `
                         <div class="untracked-section">
                             <div class="untracked-toggle">
-                                Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length}), platform BOMs (${untrackedPlatformBoms.length})
+                                ${isNode ? `Untracked Node declarations (${untrackedNodeDependencies.length})`
+                                    : `Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length}), platform BOMs (${untrackedPlatformBoms.length})`}
                             </div>
                         
                             <div class="untracked-content">
@@ -447,6 +458,19 @@ function renderRepo(repoView, scanMap, container) {
                                                 data-version="${escapeHtml(bom.version)}">
                                                 UNTRACKED
                                             </span>
+                                        </div>
+                                    </div>
+                                `).join("")}
+                                ${untrackedNodeDependencies.map(dep => `
+                                    <div class="row untracked-row node-row">
+                                        <div class="pill">NODE</div>
+                                        <div>${escapeHtml(dep.key)}<small class="node-declaration">${escapeHtml(dep.declaration)}</small></div>
+                                        <div class="version-cell"><span class="current-version">${escapeHtml(dep.version)}</span></div>
+                                        <div>
+                                            <span class="status-pill status-unknown target-draft-pill"
+                                                data-kind="NODE"
+                                                data-key="${escapeHtml(dep.key)}"
+                                                data-version="${escapeHtml(dep.version)}">UNTRACKED</span>
                                         </div>
                                     </div>
                                 `).join("")}
@@ -530,6 +554,7 @@ async function loadData() {
         renderTargetTables();
     }
     render(lastLoadedData);
+    updateAutoToggles();
 
     renderIgnoredRepositories();
 }

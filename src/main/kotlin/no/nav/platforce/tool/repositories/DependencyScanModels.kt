@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.repositories
 
+import no.nav.platforce.tool.node.NodeDependencyDeclaration
 import no.nav.platforce.tool.security.PlatformBomSecurityResult
 
 data class RepositoryDependencyScan(
@@ -12,6 +13,9 @@ data class RepositoryDependencyScan(
     val declaredDependencyKeys: List<String>? = null,
     val declaredPlatformBomKeys: List<String>? = null,
     val declaredPluginKeys: List<String>? = null,
+    val projectType: RepositoryProjectType = RepositoryProjectType.GRADLE,
+    val declaredNodeDependencyKeys: List<String> = emptyList(),
+    val untrackedNodeDependencies: List<NodeDependencyDeclaration> = emptyList(),
 )
 
 data class DependencyFinding(
@@ -25,6 +29,7 @@ data class DependencyFinding(
     val relatedTo: List<DependencyReference> = emptyList(),
     val platformBomSecurity: PlatformBomSecurityResult? = null,
     val bomCoverage: List<DependencyReference> = emptyList(),
+    val declaration: String? = null,
 )
 
 data class DependencyReference(
@@ -38,6 +43,7 @@ enum class DependencyKind {
     DEPENDENCY,
     PLATFORM_BOM,
     GRADLE,
+    NODE,
 }
 
 enum class DependencyStatus {
@@ -50,6 +56,7 @@ enum class DependencyStatus {
     OK_TRANSIENT, // Enrichment from Security Scan
     ADD, // Enrichment from Security Scan
     REMOVE, // Enrichment from Security Scan (on unused transient)
+    UNRESOLVED,
 }
 
 data class UntrackedDependency(

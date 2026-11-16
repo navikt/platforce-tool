@@ -1,6 +1,12 @@
 package no.nav.platforce.tool.repositories
 
 import no.nav.platforce.tool.gradle.GradleDependencyDeclaration
+import no.nav.platforce.tool.node.NodeDependencyDeclaration
+
+enum class RepositoryProjectType {
+    GRADLE,
+    NODE,
+}
 
 data class RepositoryDependencyInventory(
     val repository: String,
@@ -10,6 +16,8 @@ data class RepositoryDependencyInventory(
     val gradleVersion: String?,
     val platformBoms: Map<String, String> = emptyMap(),
     val declarations: List<GradleDependencyDeclaration> = emptyList(),
+    val projectType: RepositoryProjectType = RepositoryProjectType.GRADLE,
+    val nodeDependencies: List<NodeDependencyDeclaration> = emptyList(),
 )
 
 fun RepositoryDependencyInventory.withoutIgnoredDependencies(ignored: Set<String>): RepositoryDependencyInventory =

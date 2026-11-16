@@ -8,6 +8,7 @@ import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.DependencyStatus
+import no.nav.platforce.tool.repositories.RepositoryProjectType
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.security.PluginSecurityScanner
@@ -270,6 +271,9 @@ class DefaultAutoOperations(
                     ?: throw AutoStopped(AutoReport("Auto stopped: repository could not be scanned; work is unfinished", repository))
             cache.updateRepository(username, inventory)
             guard(username, state, checkActive)
+            if (inventory.projectType == RepositoryProjectType.NODE) {
+                return@withRefreshLock AutoReport("Skipped: Node.js Auto updates are not supported yet")
+            }
             view.requirePullRequestReady(username, effective, repository)
             val scan = view.get(username, effective).single { it.repository == repository }
             val actionable =

@@ -357,6 +357,121 @@ test("platform BOM draft uses its own targets map and is included in saves", asy
     assert.equal(app.value("targetState.platformBoms['io.netty:netty-bom']"), "4.2.17.Final");
 });
 
+test("Node targets load, draft, capture and save independently of Maven and BOM targets", async () => {
+    const app = gui();
+    await app.context.renderTargets({
+        nodeDependencies: { "@slack/bolt": "^3.22.0" },
+        dependencies: { "example:library": "1.0" },
+        gradleVersion: "8.0"
+    });
+    assert.equal(app.value('targetState.nodeDependencies["@slack/bolt"]'), "^3.22.0");
+    app.rows.set("#nodeTable .target-row", [{
+        querySelector: selector => ({ value: selector === ".key" ? "@slack/bolt" : "^3.23.0" })
+    }]);
+    app.context.addDraftTarget("NODE", "ws", "^7.5.11");
+    assert.equal(app.value('targetState.nodeDependencies["@slack/bolt"]'), "^3.23.0");
+    assert.equal(app.value('targetState.nodeDependencies.ws'), "^7.5.11");
+    assert.equal(app.value('targetState.dependencies.ws'), undefined);
+    assert.equal(app.value('targetState.platformBoms.ws'), undefined);
+    assert.equal(app.value('targetState.drafted.has("NODE:ws")'), true);
+    let saved;
+    app.responses((url, options) => {
+        if (url.endsWith("/update")) {
+            saved = JSON.parse(options.body);
+            return {};
+        }
+        return repositoryResponse(url);
+    });
+    await app.context.saveTargets();
+    assert.deepEqual(saved.nodeDependencies, { "@slack/bolt": "^3.23.0" });
+    assert.equal(app.value('targetState.nodeDependencies["@slack/bolt"]'), "^3.23.0");
+    assert.equal(app.value("targetState.drafted.size"), 0);
+    app.value(`lastLoadedData = { scans: [
+        { repository: "example/node", declaredNodeDependencyKeys: ["ws"], declaredDependencyKeys: [] },
+        { repository: "example/gradle", declaredNodeDependencyKeys: [], declaredDependencyKeys: ["ws"] }
+    ] }`);
+    assert.deepEqual([...app.context.dependencyUsageRepositories("ws", "node")], ["example/node"]);
+    assert.deepEqual([...app.context.dependencyUsageRepositories("ws")], ["example/gradle"]);
+});
+
+test("Node repository renders declaration contexts, escaped ranges and explicit unsupported PR state", () => {
+    const app = gui();
+    const card = {
+        querySelector: selector => selector === ".repo-header" ? { addEventListener() {} }
+            : selector === ".repo-actions" ? { prepend() {} } : null
+    };
+    app.context.createAutoToggle = () => ({});
+    app.context.document.createElement = () => card;
+    app.value("normalSecurityReady = true; bomSecurityReady = true");
+    const scan = {
+        projectType: "NODE",
+        findings: [{
+            kind: "NODE", key: "@slack/bolt", declaration: "dependencies",
+            currentVersion: "^3.22.0", targetVersion: "3.23.0", status: "UPDATE"
+        }, {
+            kind: "NODE", key: "glob", declaration: "overrides > glob",
+            currentVersion: ">=10.0.0", targetVersion: "10.5.0", status: "UNRESOLVED"
+        }],
+        untrackedNodeDependencies: [{ key: "ws", version: "<script>", declaration: "overrides > ws" }]
+    };
+    app.context.renderRepo(
+        { name: "example/node", state: "SCANNED" },
+        { "example/node": scan },
+        { appendChild() {} }
+    );
+    assert.match(card.innerHTML, /row node-row/);
+    assert.match(card.innerHTML, /node-declaration">overrides &gt; glob/);
+    assert.match(card.innerHTML, /OLDER/);
+    assert.match(card.innerHTML, /REVIEW/);
+    assert.match(card.innerHTML, /Target: 10.5.0/);
+    assert.match(card.innerHTML, /No Node vulnerability scan has been performed/);
+    assert.match(card.innerHTML, /Node.js PR\/Auto updates are not supported yet" disabled>Create PR/);
+    assert.doesNotMatch(card.innerHTML, /pr-prerequisite-icon/);
+    assert.doesNotMatch(card.innerHTML, /onclick="event.stopPropagation\(\); createPr/);
+    assert.match(card.innerHTML, /data-kind="NODE"/);
+    assert.match(card.innerHTML, /&lt;script&gt;/);
+    assert.doesNotMatch(card.innerHTML, /<script>/);
+    assert.match(card.innerHTML, /Untracked Node declarations \(1\)/);
+});
+
+test("Node table supports adding and removing targets without Gradle upgrade or security controls", () => {
+    const app = gui();
+    const rows = [];
+    const table = app.element("nodeTable");
+    table.appendChild = row => rows.push(row);
+    table.insertBefore = (row, before) => rows.splice(rows.indexOf(before), 0, row);
+    app.context.document.createElement = () => {
+        const inputs = new Map();
+        return {
+            querySelector(selector) {
+                if (selector === ".target-status-pill") return null;
+                if (!inputs.has(selector)) inputs.set(selector, { value: "" });
+                return inputs.get(selector);
+            },
+            remove() { rows.splice(rows.indexOf(this), 1); }
+        };
+    };
+    app.context.bindDependencyUsage = () => {};
+    app.context.bindTargetUpgrades = () => { throw new Error("Node must not use Gradle upgrades"); };
+    app.context.renderTable("nodeTable", [["@slack/bolt", "^3.22.0"]], "node");
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].querySelector(".key").value, "@slack/bolt");
+    assert.equal(rows[0].querySelector(".version").value, "^3.22.0");
+    assert.doesNotMatch(rows[0].innerHTML, /target-upgrade-btn|target-status-pill|transient-btn/);
+    assert.match(rows[0].innerHTML, /data-usage-type="node"/);
+    const add = rows[1];
+    assert.equal(add.querySelector(".key").placeholder, "package or @scope/package");
+    add.querySelector(".key").value = "ws";
+    add.querySelector(".version").value = "^7.5.11";
+    add.querySelector(".add-btn").onclick();
+    assert.equal(rows.length, 3);
+    assert.equal(rows[1].querySelector(".key").value, "ws");
+    assert.equal(rows[1].querySelector(".version").value, "^7.5.11");
+    assert.doesNotMatch(rows[1].innerHTML, /target-upgrade-btn|target-status-pill/);
+    rows[1].querySelector(".remove-btn").onclick();
+    assert.equal(rows.length, 2);
+});
+
 test("repository renders BOM-only untracked entries and tracked BOMs as a distinct type", () => {
     const app = gui();
     const card = {

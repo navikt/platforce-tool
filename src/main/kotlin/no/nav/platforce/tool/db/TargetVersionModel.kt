@@ -42,6 +42,7 @@ enum class TargetVersionType {
     DEPENDENCY,
     PLATFORM_BOM,
     GRADLE,
+    NODE,
 }
 
 fun ResultRow.toTargetVersion() =

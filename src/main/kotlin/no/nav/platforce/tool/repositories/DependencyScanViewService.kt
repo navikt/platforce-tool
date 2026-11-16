@@ -19,12 +19,15 @@ class DependencyScanViewService(
         targetState: TargetVersionsState,
         repository: String,
     ) {
-        if (!targetSecurityScanner.normalReady(username, targetState)) {
-            throw PullRequestReadinessException("A matching normal security scan must be READY before creating a pull request")
-        }
         val inventory =
             dependencyScanCache.get(username).singleOrNull { it.repository == repository }
                 ?: error("No scan found for $repository")
+        if (inventory.projectType == RepositoryProjectType.NODE) {
+            throw PullRequestReadinessException("Node.js pull request updates and security scans are not supported yet")
+        }
+        if (!targetSecurityScanner.normalReady(username, targetState)) {
+            throw PullRequestReadinessException("A matching normal security scan must be READY before creating a pull request")
+        }
         if (inventory.platformBoms.isNotEmpty() || inventory.declarations.any { it.platformBom }) {
             if (!targetSecurityScanner.get(username, targetState, includeBoms = true).bomReady) {
                 throw PullRequestReadinessException(
@@ -47,7 +50,7 @@ class DependencyScanViewService(
         return dependencyScanCache.get(username).map { cached ->
             val inventory = cached.withoutIgnoredDependencies(targetState.ignoredDependencies)
             val scan = dependencyScanner.compare(inventory, targetState.withoutIgnoredDependencies())
-            if (securityResult != null) {
+            if (securityResult != null && inventory.projectType != RepositoryProjectType.NODE) {
                 dependencyScanner.enrichSecurityScan(
                     scan = scan,
                     securityResult = securityResult,

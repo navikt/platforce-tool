@@ -33,10 +33,14 @@ function createAutoToggle(repository) {
 
 function updateAutoToggle(button) {
     const repository = button.dataset.repository;
+    const nodeRepository = lastLoadedData?.scans?.some(scan =>
+        scan.repository.toLowerCase() === repository && scan.projectType === "NODE");
+    const nodeDisabled = nodeRepository && !autoRepositories.has(repository);
     button.setAttribute("aria-checked", String(autoRepositories.has(repository)));
     const running = autoProcessRun?.status === "RUNNING";
-    button.disabled = !autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || running || autoRepositoriesSaving.has(repository);
-    button.title = running ? "Auto settings are locked while the process is running"
+    button.disabled = nodeDisabled || !autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || running || autoRepositoriesSaving.has(repository);
+    button.title = nodeRepository ? "Node.js Auto updates are not supported yet; existing opt-ins can be removed"
+        : running ? "Auto settings are locked while the process is running"
         : !autoProcessStatusLoaded ? "Waiting for confirmed Auto process status" : "Global opt-in shared by all users";
 }
 
@@ -90,6 +94,8 @@ async function loadAutoRepositories() {
 async function saveAutoRepository(repository) {
     if (!autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || autoProcessRun?.status === "RUNNING" || autoRepositoriesSaving.has(repository)) return;
     const enabled = !autoRepositories.has(repository);
+    if (enabled && lastLoadedData?.scans?.some(scan =>
+        scan.repository.toLowerCase() === repository && scan.projectType === "NODE")) return;
     autoRepositoriesSaving.add(repository);
     autoReadGeneration++;
     updateAutoToggles();
