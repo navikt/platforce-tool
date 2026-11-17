@@ -473,6 +473,15 @@ class NodeSecurityScanner(
         state: TargetVersionsState,
     ): NodeSecuritySnapshot = jobs.get(username, state).toNodeSnapshot(username)
 
+    fun ready(
+        username: String,
+        state: TargetVersionsState,
+    ): Boolean {
+        val snapshot = get(username, state)
+        return snapshot.status == SecurityScanStatus.READY &&
+            snapshot.result?.targets?.all { it.status !in setOf(NodeSecurityStatus.UNRESOLVED, NodeSecurityStatus.UNSUPPORTED) } == true
+    }
+
     fun invalidate(username: String) = jobs.invalidate(username)
 
     private fun ScanJobSnapshot<NodeSecurityScan>.toNodeSnapshot(username: String): NodeSecuritySnapshot {

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.util.Base64
 
 class GithubPullRequestClientTest {
     private fun pullRequest(number: Int) =
@@ -43,6 +44,33 @@ class GithubPullRequestClientTest {
                         .build()
                 }.build(),
         )
+
+    @Test
+    fun `file reads pin an encoded ref and return its matching content and blob SHA`() {
+        val content = """{"dependencies":{"example":"1.0.0"}}"""
+        val encoded = Base64.getEncoder().encodeToString(content.toByteArray())
+        val github =
+            client { request ->
+                assertEquals("/repos/example/repo/contents/package.json", request.url.encodedPath)
+                assertEquals("release/next&unexpected=true", request.url.queryParameter("ref"))
+                assertNull(request.url.queryParameter("unexpected"))
+                200 to """{"sha":"blob-sha","encoding":"base64","content":"$encoded"}"""
+            }
+        assertEquals(
+            GithubFileContent(content, "blob-sha"),
+            github.getFileAtRef("example", "repo", "package.json", "release/next&unexpected=true"),
+        )
+    }
+
+    @Test
+    fun `only missing files return null while GitHub access and server failures remain explicit`() {
+        assertNull(client { 404 to "{}" }.getFileAtRef("example", "repo", "package-lock.json", "head-sha"))
+        listOf(403, 429, 500).forEach { status ->
+            assertThrows(IllegalStateException::class.java) {
+                client { status to "{}" }.getFileAtRef("example", "repo", "package-lock.json", "head-sha")
+            }
+        }
+    }
 
     @Test
     fun `open PR listing follows all pages and encodes the base branch`() {

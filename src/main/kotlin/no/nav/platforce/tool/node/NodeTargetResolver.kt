@@ -7,7 +7,6 @@ import no.nav.platforce.tool.resolution.ResolvedDependency
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.readText
@@ -129,53 +128,7 @@ class NodeTargetResolver private constructor(
                 ),
             )
             if (username != null) debugFiles?.publishNodeInspection(username, directory, packageName)
-            val output = directory.resolve("npm-output.txt")
-            val processBuilder =
-                ProcessBuilder(
-                    nodeHome.resolve("bin/node").toString(),
-                    nodeHome.resolve("lib/node_modules/npm/bin/npm-cli.js").toString(),
-                    "install",
-                    "--package-lock-only",
-                    "--lockfile-version=3",
-                    "--ignore-scripts",
-                    "--no-audit",
-                    "--no-fund",
-                    "--registry=https://registry.npmjs.org",
-                    "--fetch-retries=0",
-                    "--fetch-timeout=30000",
-                    "--cache=${cacheDirectory ?: directory.resolve("cache")}",
-                    "--prefer-offline",
-                    "--userconfig=${directory.resolve("user.npmrc")}",
-                    "--globalconfig=${directory.resolve("global.npmrc")}",
-                ).directory(directory.toFile())
-                    .redirectErrorStream(true)
-                    .redirectOutput(output.toFile())
-            processBuilder.environment().clear()
-            processBuilder.environment().putAll(
-                mapOf(
-                    "PATH" to "${nodeHome.resolve("bin")}:/usr/bin:/bin",
-                    "HOME" to directory.toString(),
-                    "TMPDIR" to directory.toString(),
-                ),
-            )
-            val process = processBuilder.start()
-            try {
-                check(process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) { "npm resolution timed out after ${timeoutSeconds}s" }
-                check(process.exitValue() == 0) {
-                    val details =
-                        Files.newInputStream(output).use {
-                            it.skipNBytes((Files.size(output) - 4000).coerceAtLeast(0))
-                            String(it.readNBytes(4000), Charsets.UTF_8)
-                        }
-                    "npm resolution failed: $details"
-                }
-            } finally {
-                process.descendants().use { descendants -> descendants.forEach { it.destroyForcibly() } }
-                if (process.isAlive) {
-                    process.destroyForcibly()
-                    process.waitFor(5, TimeUnit.SECONDS)
-                }
-            }
+            NpmInstaller(nodeHome, timeoutSeconds).install(directory, cacheDirectory ?: directory.resolve("cache"), lockfileVersion = 3)
             return parseCombinedLockfile(directory.resolve("package-lock.json").readText(), dependencies, overrides)
         } finally {
             try {

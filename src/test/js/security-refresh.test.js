@@ -430,8 +430,8 @@ test("Node repository uses dependency rows and statuses without declaration subt
     assert.match(card.innerHTML, /data-version="3.22.0"/);
     assert.match(card.innerHTML, /Target: 10.5.0/);
     assert.doesNotMatch(card.innerHTML, /node-scan-notice|Repository lockfiles|Comparisons use the lower version/);
-    assert.match(card.innerHTML, /Node.js PR\/Auto updates are not supported yet" disabled>Create PR/);
-    assert.doesNotMatch(card.innerHTML, /pr-prerequisite-icon/);
+    assert.match(card.innerHTML, /Run Node security scan first" disabled>Create PR/);
+    assert.match(card.innerHTML, /pr-prerequisite-icon/);
     assert.doesNotMatch(card.innerHTML, /onclick="event.stopPropagation\(\); createPr/);
     assert.match(card.innerHTML, /data-kind="NODE"/);
     assert.match(card.innerHTML, /data-node-transient="false"/);
@@ -439,6 +439,68 @@ test("Node repository uses dependency rows and statuses without declaration subt
     assert.match(card.innerHTML, /&lt;script&gt;/);
     assert.doesNotMatch(card.innerHTML, /<script>/);
     assert.match(card.innerHTML, /Untracked plugins \(0\), dependencies \(1\), platform BOMs \(0\)/);
+});
+
+test("Node Create PR uses the shared lock and requires Node readiness rather than Gradle or BOM scans", () => {
+    const app = gui();
+    const card = {
+        querySelector: selector => selector === ".repo-header" ? { addEventListener() {} }
+            : selector === ".repo-actions" ? { prepend() {} } : null
+    };
+    app.context.createAutoToggle = () => ({});
+    app.context.document.createElement = () => card;
+    const scan = {
+        projectType: "NODE",
+        findings: [{ kind: "NODE", key: "express", currentVersion: "^4.20.0", targetVersion: "4.21.2", status: "UPDATE" }]
+    };
+    const render = () => app.context.renderRepo(
+        { name: "example/node", state: "SCANNED" }, { "example/node": scan }, { appendChild() {} }
+    );
+    app.value("normalSecurityReady = true; bomSecurityReady = true");
+    render();
+    assert.match(card.innerHTML, /pr-create-action--locked pr-create-action--scan/);
+    assert.match(card.innerHTML, /Run Node security scan first/);
+    assert.doesNotMatch(card.innerHTML, /onclick="event.stopPropagation\(\); createPr/);
+    app.value('normalSecurityReady = false; bomSecurityReady = false; nodeSecurityScan = { targets: [{ status: "OK" }] }');
+    render();
+    assert.doesNotMatch(card.innerHTML, /pr-create-action--locked|pr-prerequisite-icon|not supported/);
+    assert.match(card.innerHTML, /onclick="event.stopPropagation\(\); createPr\('example\/node'\)"/);
+    for (const status of ["UNSUPPORTED", "UNRESOLVED"]) {
+        app.value(`nodeSecurityScan = { targets: [{ status: "${status}" }] }`);
+        render();
+        assert.match(card.innerHTML, /disabled>Create PR/);
+    }
+    app.value('nodeSecurityScan = { targets: [{ status: "OK" }] }');
+    scan.findings[0].status = "OK";
+    render();
+    assert.match(card.innerHTML, /class="pr-button create-pr-button disabled" disabled>Create PR/);
+});
+
+test("Node Create PR shares the pending spinner, success link and explicit failure feedback", async () => {
+    const app = gui();
+    const button = {};
+    app.rows.set('.create-pr-button[data-repo="example/node"]', [button]);
+    let reply;
+    app.context.fetch = (url, options) => {
+        assert.equal(url, "/internal/api/dependency-scan/pr/example/node");
+        assert.equal(options.method, "POST");
+        return new Promise(resolve => { reply = resolve; });
+    };
+    const opened = [];
+    app.context.window = { open: (...args) => opened.push(args) };
+    const pending = app.context.createPr("example/node");
+    assert.equal(button.disabled, true);
+    assert.match(button.innerHTML, /spinner/);
+    reply({ ok: true, text: async () => "https://github.com/example/node/pull/42" });
+    await pending;
+    assert.match(button.innerHTML, /Done/);
+    [...app.timers.values()].forEach(callback => callback());
+    assert.deepEqual(opened, [["https://github.com/example/node/pull/42", "_blank"]]);
+    app.context.fetch = async () => ({ ok: false, text: async () => "Cannot update pnpm-lock.yaml with npm" });
+    await app.context.createPr("example/node");
+    assert.equal(button.disabled, false);
+    assert.equal(button.innerHTML, "Create PR");
+    assert.deepEqual(app.alerts, ["Failed to create PR: Cannot update pnpm-lock.yaml with npm"]);
 });
 
 test("Node repository statuses share Gradle details and keep override bandages and drafting roles", () => {

@@ -20,6 +20,26 @@ class DefaultGithubClient(
 
     private val log = KotlinLogging.logger { }
 
+    override fun getFileAtRef(
+        owner: String,
+        repo: String,
+        path: String,
+        ref: String,
+    ): GithubFileContent? {
+        val url =
+            "https://api.github.com/repos/$owner/$repo/contents/$path"
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("ref", ref)
+                .build()
+        httpClient.newCall(authenticatedRequest(url.toString())).execute().use { response ->
+            if (response.code == 404) return null
+            check(response.isSuccessful) { "Could not read $path at $ref: HTTP ${response.code}" }
+            val parsed = gson.fromJson(response.body.string(), GithubContentResponse::class.java)
+            return GithubFileContent(decodeGitHubBase64(parsed.content), parsed.sha)
+        }
+    }
+
     override fun listWorkflowFiles(
         owner: String,
         repo: String,

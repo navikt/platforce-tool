@@ -673,6 +673,7 @@ async function scanNodeSecurity() {
     nodeSecurityScan = null;
     captureTargetDrafts();
     renderTargetTables();
+    if (lastLoadedData?.repos) render(lastLoadedData);
     try {
         let snapshot = await fetchNodeSecurity(true);
         const fingerprint = snapshot.targetFingerprint;

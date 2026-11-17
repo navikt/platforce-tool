@@ -1,12 +1,18 @@
 package no.nav.platforce.tool.pullrequests
 
 import com.google.gson.JsonParseException
+import com.google.gson.JsonParser
 import mu.KotlinLogging
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.github.GithubPullRequest
+import no.nav.platforce.tool.node.NpmLockfileGenerator
+import no.nav.platforce.tool.node.nodeTargetVersion
+import no.nav.platforce.tool.repositories.DependencyFinding
 import no.nav.platforce.tool.repositories.DependencyKind
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyStatus
+import no.nav.platforce.tool.repositories.PullRequestReadinessException
+import no.nav.platforce.tool.repositories.RepositoryProjectType
 import no.nav.platforce.tool.targets.TargetVersionsState
 import java.io.IOException
 
@@ -15,6 +21,7 @@ private const val DEPENDENCY_PR_MARKER = "Automated dependency update via platfo
 class DependencyPullRequestService(
     private val githubClient: GithubClient,
     private val dependencyScanViewService: DependencyScanViewService,
+    private val regenerateNodeLockfile: (String, String, String, String) -> String = NpmLockfileGenerator()::generate,
 ) {
     private val buildFileUpdater = GradleBuildFileUpdater()
     private val wrapperFileUpdater = GradleWrapperUpdater()
@@ -47,6 +54,11 @@ class DependencyPullRequestService(
         if (actionable.isEmpty()) {
             return "No changes required "
         }
+        val isNode = scan.projectType == RepositoryProjectType.NODE
+        val checkBeforeWrite = {
+            if (isNode) dependencyScanViewService.requirePullRequestReady(username, targetState, fullRepo)
+            beforeWrite()
+        }
 
         val buildGradleFindings =
             actionable.filter { it.kind != DependencyKind.GRADLE }
@@ -68,7 +80,9 @@ class DependencyPullRequestService(
                 baseBranch,
             )
 
-        beforeWrite()
+        val nodeFiles = if (isNode) prepareNodeFiles(owner, repo, branchSha, actionable) else emptyList()
+
+        checkBeforeWrite()
         githubClient.createBranch(
             owner,
             repo,
@@ -76,7 +90,20 @@ class DependencyPullRequestService(
             branchSha,
         )
 
-        if (buildGradleFindings.isNotEmpty() || wrapperFindings.isNotEmpty()) {
+        if (isNode) {
+            nodeFiles.forEach { file ->
+                checkBeforeWrite()
+                githubClient.updateFile(
+                    owner,
+                    repo,
+                    file.path,
+                    file.content,
+                    file.sha,
+                    branchName,
+                    "chore: update Node dependencies",
+                )
+            }
+        } else if (buildGradleFindings.isNotEmpty() || wrapperFindings.isNotEmpty()) {
             val (filePath, currentContent) =
                 runCatching {
                     "build.gradle" to githubClient.getFile(owner, repo, "build.gradle")
@@ -94,7 +121,7 @@ class DependencyPullRequestService(
                         branchName,
                     )
 
-                beforeWrite()
+                checkBeforeWrite()
                 githubClient.updateFile(
                     owner,
                     repo,
@@ -120,7 +147,7 @@ class DependencyPullRequestService(
                     branchName,
                 )
 
-            beforeWrite()
+            checkBeforeWrite()
             githubClient.updateFile(
                 owner,
                 repo,
@@ -132,44 +159,54 @@ class DependencyPullRequestService(
             )
         }
 
-        beforeWrite()
+        checkBeforeWrite()
         val url =
             githubClient.createPullRequest(
                 owner,
                 repo,
-                title = "chore: update Gradle dependencies",
+                title = if (isNode) "chore: update Node dependencies" else "chore: update Gradle dependencies",
                 body =
                     buildString {
                         appendLine(DEPENDENCY_PR_MARKER)
                         appendLine()
 
                         actionable.forEach { finding ->
+                            val targetVersion = if (isNode) "^${nodeTargetVersion(finding.targetVersion)}" else finding.targetVersion
+                            val kind = if (finding.kind == DependencyKind.NODE) DependencyKind.DEPENDENCY else finding.kind
                             when (finding.status) {
                                 DependencyStatus.ADD -> {
                                     val related = finding.relatedTo.takeIf { it.isNotEmpty() }
+                                    val description =
+                                        if (isNode && finding.declaration == "dependencies") {
+                                            "required dependency"
+                                        } else {
+                                            "transitive dependency override"
+                                        }
 
                                     if (related != null) {
                                         appendLine(
-                                            "- ADD ${finding.key}:${finding.targetVersion} " +
-                                                "(transitive dependency override for " +
+                                            "- ADD ${finding.key}:$targetVersion " +
+                                                "($description for " +
                                                 "${related.joinToString { "${it.key}:${it.version}" }})",
                                         )
                                     } else {
                                         appendLine(
-                                            "- ADD ${finding.key}:${finding.targetVersion} " +
-                                                "(transitive dependency override)",
+                                            "- ADD ${finding.key}:$targetVersion " +
+                                                "($description)",
                                         )
                                     }
                                 }
 
                                 DependencyStatus.REMOVE -> {
-                                    appendLine("- REMOVE ${finding.key}:${finding.targetVersion} (deprecated transitive override)")
+                                    appendLine(
+                                        "- REMOVE ${finding.key}:$targetVersion (${if (isNode) "redundant" else "deprecated"} transitive override)",
+                                    )
                                 }
 
                                 else -> {
                                     appendLine(
-                                        "- ${finding.kind} ${finding.key}: " +
-                                            "${finding.currentVersion} → ${finding.targetVersion}",
+                                        "- $kind ${finding.key}: " +
+                                            "${finding.currentVersion} → $targetVersion",
                                     )
                                 }
                             }
@@ -178,8 +215,61 @@ class DependencyPullRequestService(
                 head = branchName,
                 base = baseBranch,
             )
-        closeSuperseded(owner, repo, url, branchName, baseBranch, beforeWrite, onSuperseded)
+        closeSuperseded(owner, repo, url, branchName, baseBranch, checkBeforeWrite, onSuperseded)
         return url
+    }
+
+    private data class FileUpdate(
+        val path: String,
+        val content: String,
+        val sha: String,
+    )
+
+    private fun prepareNodeFiles(
+        owner: String,
+        repo: String,
+        ref: String,
+        findings: List<DependencyFinding>,
+    ): List<FileUpdate> {
+        try {
+            val source =
+                githubClient.getFileAtRef(owner, repo, "package.json", ref)
+                    ?: throw PullRequestReadinessException("package.json is missing. Refresh the repository and try again.")
+            val manifest = JsonParser.parseString(source.content).asJsonObject
+            check(!manifest.has("workspaces")) { "Node workspace pull requests are not supported" }
+            val manager = manifest["packageManager"]?.asString?.substringBefore('@')
+            check(manager == null || manager == "npm") { "Node pull requests currently support npm repositories only" }
+            listOf("yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb").forEach { path ->
+                check(githubClient.getFileAtRef(owner, repo, path, ref) == null) {
+                    "Cannot update $path with npm. Node pull requests currently support npm lockfiles only."
+                }
+            }
+            val locks =
+                listOf("package-lock.json", "npm-shrinkwrap.json").mapNotNull { path ->
+                    githubClient.getFileAtRef(owner, repo, path, ref)?.let { path to it }
+                }
+            check(
+                locks.size <= 1,
+            ) { "Both npm lockfiles are present. Keep package-lock.json or npm-shrinkwrap.json before creating a pull request." }
+            val update = NodePackageJsonUpdater().apply(source.content, findings)
+            check(update.manifest != source.content) { "No package.json changes remain. Refresh the repository and try again." }
+            return listOf(FileUpdate("package.json", update.manifest, source.sha)) +
+                locks.map { (path, file) ->
+                    FileUpdate(
+                        path,
+                        regenerateNodeLockfile(update.manifest, update.resolutionManifest, file.content, path),
+                        file.sha,
+                    )
+                }
+        } catch (failure: IllegalArgumentException) {
+            throw PullRequestReadinessException("Cannot prepare Node pull request: ${failure.message}", failure)
+        } catch (failure: IllegalStateException) {
+            throw PullRequestReadinessException("Cannot prepare Node pull request: ${failure.message}", failure)
+        } catch (failure: IOException) {
+            throw PullRequestReadinessException("Cannot prepare Node pull request: ${failure.message}", failure)
+        } catch (failure: JsonParseException) {
+            throw PullRequestReadinessException("Cannot prepare Node pull request: ${failure.message}", failure)
+        }
     }
 
     private fun closeSuperseded(

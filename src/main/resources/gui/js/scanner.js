@@ -111,9 +111,12 @@ function renderRepo(repoView, scanMap, container) {
     const hasActionable = findings.some(f =>
         f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD" || f.status === "REMOVE"
     );
-    const prPrerequisite = isNode ? "Node.js PR/Auto updates are not supported yet"
-        : !normalSecurityReady ? "Run security scan first"
-        : ((findings.some(f => f.kind === "PLATFORM_BOM") || untrackedPlatformBoms.length) && !bomSecurityReady)
+    const securityReady = isNode
+        ? nodeSecurityScan?.targets?.every(target => target.status !== "UNRESOLVED" && target.status !== "UNSUPPORTED") === true
+        : normalSecurityReady;
+    const prPrerequisite = !securityReady
+        ? (isNode ? "Run Node security scan first" : "Run security scan first")
+        : (!isNode && (findings.some(f => f.kind === "PLATFORM_BOM") || untrackedPlatformBoms.length) && !bomSecurityReady)
             ? "Run BOM scan first" : null;
 
     const addBadge =
@@ -206,16 +209,16 @@ function renderRepo(repoView, scanMap, container) {
                     Refresh
                 </button>
 
-                <span class="pr-create-action${prPrerequisite && !isNode ? ` pr-create-action--locked pr-create-action--${normalSecurityReady ? "bom" : "scan"}` : ""}"
+                <span class="pr-create-action${prPrerequisite ? ` pr-create-action--locked pr-create-action--${securityReady ? "bom" : "scan"}` : ""}"
                     ${prPrerequisite ? `role="group" aria-label="Create PR unavailable: ${prPrerequisite}"` : ""}>
                 <span class="pr-prerequisite-slot">
-                    ${prPrerequisite && !isNode ? `<span class="pr-prerequisite-icon" role="img" tabindex="0"
+                    ${prPrerequisite ? `<span class="pr-prerequisite-icon" role="img" tabindex="0"
                         aria-label="${prPrerequisite}" title="${prPrerequisite}">
                         <svg width="26" height="30" viewBox="0 0 26 30" fill="none"
                             stroke="currentColor" stroke-width="1" aria-hidden="true">
                             <path d="M7 12.5V7a6 6 0 0 1 12 0v5.5"/>
                             <rect class="pr-lock-body" x="3.5" y="12.5" width="19" height="17" rx="3"/>
-                            ${normalSecurityReady ? `<text class="pr-lock-label" x="13" y="23" text-anchor="middle"
+                            ${securityReady ? `<text class="pr-lock-label" x="13" y="23" text-anchor="middle"
                                 stroke="none" font-family="sans-serif" font-size="5" font-weight="700"
                                 letter-spacing=".3">BOM</text>` : `<g class="pr-lock-search" stroke-linecap="round">
                                 <circle cx="11.5" cy="20" r="3.5"/>
@@ -600,7 +603,7 @@ async function createPr(repo) {
         console.error(e);
         button.disabled = false;
         button.innerHTML = "Create PR";
-        alert("Failed to create PR");
+        alert(`Failed to create PR: ${e.message}`);
     }
 }
 

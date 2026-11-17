@@ -95,7 +95,7 @@ class NodeDependencyFlowTest {
         assertEquals(listOf("foo", "@slack/bolt", "ws", "@scope/bar", "glob", "@scope/plain"), parsed.map { it.key })
         assertEquals("overrides > @slack/bolt@^3 > .", parsed[1].declaration)
         assertEquals("overrides > foo > @scope/bar@2 > .", parsed[3].declaration)
-        assertEquals("${'$'}foo", parsed[4].version)
+        assertEquals("^1.0.0", parsed[4].version)
     }
 
     @Test
@@ -168,7 +168,7 @@ class NodeDependencyFlowTest {
     }
 
     @Test
-    fun `full and single repository refreshes isolate users and PR creation rejects Node before scans or writes`() {
+    fun `full and single repository refreshes isolate users and Node PR creation requires a matching Node scan`() {
         val github =
             object : GithubClient by RecordingGithubClient(mapOf("package.json" to source)) {
                 override fun listRepositories(): List<String> = listOf("navikt/on-behalf")
@@ -213,7 +213,7 @@ class NodeDependencyFlowTest {
             assertThrows(PullRequestReadinessException::class.java) {
                 DependencyPullRequestService(github, view).createPullRequest("navikt", "on-behalf", "alice", targets())
             }
-        assertTrue(failure.message!!.contains("Node.js"))
+        assertTrue(failure.message!!.contains("Node security scan"))
     }
 
     private fun targets() =

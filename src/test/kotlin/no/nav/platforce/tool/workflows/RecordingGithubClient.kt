@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.workflows
 
 import no.nav.platforce.tool.github.GithubClient
+import no.nav.platforce.tool.github.GithubFileContent
 import no.nav.platforce.tool.github.GithubPullRequest
 import no.nav.platforce.tool.main
 import java.io.IOException
@@ -18,6 +19,16 @@ class RecordingGithubClient(
     var creationFailure: IOException? = null
     var failClosing = emptySet<Int>()
     var onPullRequestRead: (Int) -> Unit = {}
+
+    override fun getFileAtRef(
+        owner: String,
+        repo: String,
+        path: String,
+        ref: String,
+    ): GithubFileContent? {
+        calls += "getFileAtRef:$owner/$repo:$path:$ref"
+        return files[path]?.let { GithubFileContent(it, "file-sha") }
+    }
 
     override fun listWorkflowFiles(
         owner: String,

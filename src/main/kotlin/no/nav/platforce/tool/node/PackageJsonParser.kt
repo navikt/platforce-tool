@@ -9,6 +9,7 @@ data class NodeDependencyDeclaration(
     val key: String,
     val version: String,
     val declaration: String,
+    val path: List<String> = emptyList(),
 )
 
 class PackageJsonParser {
@@ -30,8 +31,9 @@ class PackageJsonParser {
             return value.asString
         }
 
-        section("dependencies")?.entrySet()?.forEach { (key, value) ->
-            result += NodeDependencyDeclaration(key, version(value), "dependencies")
+        val dependencies = section("dependencies")
+        dependencies?.entrySet()?.forEach { (key, value) ->
+            result += NodeDependencyDeclaration(key, version(value), "dependencies", listOf("dependencies", key))
         }
 
         fun overrides(
@@ -51,7 +53,15 @@ class PackageJsonParser {
                     require(selector != ".") { "package.json override '.' must contain a version" }
                     overrides(value.asJsonObject, location, key)
                 } else {
-                    result += NodeDependencyDeclaration(key, version(value), location.joinToString(" > "))
+                    val specification = version(value)
+                    val reference = specification.takeIf { it.startsWith('$') }?.drop(1)?.let { dependencies?.get(it) }
+                    result +=
+                        NodeDependencyDeclaration(
+                            key,
+                            reference?.let(::version) ?: specification,
+                            location.joinToString(" > "),
+                            location,
+                        )
                 }
             }
         }

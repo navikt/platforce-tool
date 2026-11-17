@@ -1,6 +1,18 @@
 package no.nav.platforce.tool.github
 
+data class GithubFileContent(
+    val content: String,
+    val sha: String,
+)
+
 interface GithubClient {
+    fun getFileAtRef(
+        owner: String,
+        repo: String,
+        path: String,
+        ref: String,
+    ): GithubFileContent?
+
     fun listWorkflowFiles(
         owner: String,
         repo: String,

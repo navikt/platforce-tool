@@ -9,7 +9,8 @@ import no.nav.platforce.tool.targets.withoutIgnoredDependencies
 
 class PullRequestReadinessException(
     message: String,
-) : IllegalStateException(message)
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
 
 class DependencyScanViewService(
     private val dependencyScanCache: DependencyScanCache,
@@ -26,7 +27,12 @@ class DependencyScanViewService(
             dependencyScanCache.get(username).singleOrNull { it.repository == repository }
                 ?: error("No scan found for $repository")
         if (inventory.projectType == RepositoryProjectType.NODE) {
-            throw PullRequestReadinessException("Node.js pull request updates are not supported yet")
+            if (nodeSecurityScanner?.ready(username, targetState) != true) {
+                throw PullRequestReadinessException(
+                    "Run a matching Node security scan with no unresolved targets before creating a pull request",
+                )
+            }
+            return
         }
         if (!targetSecurityScanner.normalReady(username, targetState)) {
             throw PullRequestReadinessException("A matching normal security scan must be READY before creating a pull request")
