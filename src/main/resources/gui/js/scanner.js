@@ -371,6 +371,7 @@ function renderRepo(repoView, scanMap, container) {
                                     <span
                                         class="status-pill ${statusClass} ${status === "AHEAD" ? "target-draft-pill" : ""}"
                                         data-kind="${f.kind}"
+                                        ${f.kind === "NODE" ? `data-node-transient="${f.declaration?.startsWith("overrides") === true}"` : ""}
                                         data-key="${escapeHtml(f.key)}"
                                         data-version="${escapeHtml(f.currentVersion || "")}"
                                         ${hasDetails ? 'data-toggle-details="true"' : ""}>
@@ -466,6 +467,7 @@ function renderRepo(repoView, scanMap, container) {
                                         <div>
                                             <span class="status-pill status-unknown target-draft-pill"
                                                 data-kind="NODE"
+                                                data-node-transient="${dep.declaration.startsWith("overrides")}"
                                                 data-key="${escapeHtml(dep.key)}"
                                                 data-version="${escapeHtml(dep.version)}">UNTRACKED</span>
                                         </div>
@@ -547,7 +549,8 @@ async function loadData() {
     };
     refreshDependencyUsageButtons();
 
-    if (targetSecurityScan?.targets?.some(target => target.status === "TRANSIENT_UNUSED")) {
+    if (targetSecurityScan?.targets?.some(target => target.status === "TRANSIENT_UNUSED") ||
+        nodeSecurityScan?.targets?.some(target => target.status === "TRANSIENT_UNUSED")) {
         captureTargetDrafts();
         renderTargetTables();
     }

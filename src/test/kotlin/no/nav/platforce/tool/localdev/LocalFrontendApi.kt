@@ -404,6 +404,11 @@ class LocalFrontendApi(
                         it.isJsonPrimitive && it.asJsonPrimitive.isString
                     },
                 ) { "Expected transient dependency names" }
+                parsed["nodeTransientDependencies"]?.let { values ->
+                    require(values.isJsonArray && values.asJsonArray.all { it.isJsonPrimitive && it.asJsonPrimitive.isString }) {
+                        "Expected Node transient dependency names"
+                    }
+                }
                 targets = gson.fromJson(parsed, TargetVersionsState::class.java).snapshot().preservingIgnoredDependencies(targets)
                 resolutionReadyAt = null
                 securityReadyAt = null

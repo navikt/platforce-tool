@@ -613,13 +613,11 @@ body {
     padding: 1px 5px 13px;
 }
 
-.target-section.dependencies {
-    --target-columns: 300px 110px 90px 28px 28px 28px 28px;
-}
-
+.target-section.dependencies,
 .target-section.plugins,
-.target-section.platform-boms {
-    --target-columns: 300px 110px 90px 28px 28px 28px;
+.target-section.platform-boms,
+.target-section.node {
+    --target-columns: 300px 110px 90px 28px 28px 28px 28px;
 }
 
 .target-section > .target-section-header .section-pill {
@@ -1397,23 +1395,32 @@ button:hover {
 }
 
 #pluginsTable .target-row,
-#platformBomsTable .target-row {
+#platformBomsTable .target-row,
+#nodeTable .target-row {
     grid-template-columns: var(--target-columns);
 }
 
 #pluginsTable .target-upgrade-btn,
-#platformBomsTable .target-upgrade-btn {
-    grid-column: 4;
-}
-
-#pluginsTable .dependency-usage-btn,
-#platformBomsTable .dependency-usage-btn {
+#platformBomsTable .target-upgrade-btn,
+#nodeTable .target-upgrade-btn {
     grid-column: 5;
 }
 
-#pluginsTable .remove-btn,
-#platformBomsTable .remove-btn {
+#pluginsTable .dependency-usage-btn,
+#platformBomsTable .dependency-usage-btn,
+#nodeTable .dependency-usage-btn {
     grid-column: 6;
+}
+
+#pluginsTable .remove-btn,
+#platformBomsTable .remove-btn,
+#nodeTable .remove-btn {
+    grid-column: 7;
+}
+
+#depsTable .transient-btn,
+#nodeTable .transient-btn {
+    grid-column: 4;
 }
 
 .target-security-detail .target-upgrade-list {
@@ -1600,7 +1607,7 @@ button:hover {
 .target-grid {
     display: grid;
 
-    grid-template-columns: minmax(625px, 670px) minmax(700px, 705px) auto;
+    grid-template-columns: minmax(700px, 705px) minmax(700px, 705px) auto;
 
     gap: 14px;
 
@@ -1937,22 +1944,6 @@ button:hover {
 .target-section.node .target-row:nth-child(even),
 .row.node-row {
     background: #f2fafb;
-}
-
-#nodeTable .target-row {
-    grid-template-columns: var(--target-columns);
-}
-
-.target-section.node {
-    --target-columns: 300px 110px 90px 28px 28px;
-}
-
-#nodeTable .dependency-usage-btn {
-    grid-column: 4;
-}
-
-#nodeTable .remove-btn {
-    grid-column: 5;
 }
 
 #nodeTable .target-row input {

@@ -10,6 +10,7 @@ data class TargetVersionsState(
     val platformBoms: MutableMap<String, String> = mutableMapOf(),
     val ignoredDependencies: Set<String> = emptySet(),
     val nodeDependencies: MutableMap<String, String> = mutableMapOf(),
+    val nodeTransientDependencies: Set<String> = emptySet(),
 )
 
 fun TargetVersionsState.snapshot(): TargetVersionsState =
@@ -22,6 +23,8 @@ fun TargetVersionsState.snapshot(): TargetVersionsState =
         ignoredDependencies = (ignoredDependencies as Set<String>?)?.toSet() ?: emptySet(),
         nodeDependencies =
             (nodeDependencies as Map<String, String>?)?.mapValues { nodeTargetVersion(it.value) }?.toMutableMap() ?: mutableMapOf(),
+        nodeTransientDependencies =
+            (nodeTransientDependencies as Set<String>?)?.intersect((nodeDependencies as Map<String, String>?).orEmpty().keys) ?: emptySet(),
     )
 
 fun TargetVersionsState.withoutIgnoredDependencies(): TargetVersionsState =

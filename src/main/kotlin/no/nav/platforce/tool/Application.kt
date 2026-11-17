@@ -116,8 +116,13 @@ class Application {
 
     private val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
     private val availableVersionsService = AvailableVersionsService(httpClient)
+    private val nodeTargetResolver = NodeTargetResolver()
     private val nodeSecurityService =
-        NodeSecurityService(NodeTargetResolver()::resolve, OsvVulnerabilityService(httpClient, ecosystem = "npm"))
+        NodeSecurityService(
+            nodeTargetResolver::resolve,
+            OsvVulnerabilityService(httpClient, ecosystem = "npm"),
+            nodeTargetResolver::resolveWithOverrides,
+        )
     private val upgradeSecurityScanner =
         UpgradeSecurityScanner(
             availableVersionsService,

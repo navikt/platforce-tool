@@ -1,6 +1,6 @@
 function findTargetSecurity(type, key, version) {
     if (type === "node") {
-        return nodeSecurityScan?.targets?.find(target => target.key === key && target.targetVersion === nodeTargetVersion(version)) ?? null;
+        return displayTransientStatus(type, key, nodeSecurityScan?.targets?.find(target => target.key === key && target.targetVersion === nodeTargetVersion(version)) ?? null);
     }
     if (type === "plugin") {
         return pluginSecurityScan?.plugins?.find(target => target.key === key && target.targetVersion === version) ?? null;
@@ -11,10 +11,15 @@ function findTargetSecurity(type, key, version) {
         ? targetSecurityScan?.platformBoms
         : type === "dependency" ? targetSecurityScan?.targets : null;
     const target = results?.find(target => target.key === key && target.targetVersion === version) ?? null;
-    if (type !== "dependency" || target?.status !== "TRANSIENT_UNUSED") return target;
+    return displayTransientStatus(type, key, target);
+}
+
+function displayTransientStatus(type, key, target) {
+    if (!["dependency", "node"].includes(type) || target?.status !== "TRANSIENT_UNUSED") return target;
     const scans = lastLoadedData?.scans;
-    if (scans?.length && scans.every(scan => Array.isArray(scan.declaredDependencyKeys)) &&
-        !scans.some(scan => scan.declaredDependencyKeys.includes(key))) {
+    const field = declaredTargetKeysField(type);
+    if (scans?.length && scans.every(scan => Array.isArray(scan[field])) &&
+        !scans.some(scan => scan[field].includes(key))) {
         return { ...target, status: "UNUSED" };
     }
     return target;
@@ -405,7 +410,8 @@ function targetSecurityDetailsHtml(security, type = "dependency") {
                        <ul>${security.replacementDependencies.map(replacement => `
                            <li>${escapeHtml(replacement.dependency)} ${escapeHtml(replacement.targetVersion)}</li>
                        `).join("")}</ul>
-                       Repositories without matching replacements keep this override.`
+                       ${type === "node" ? "Coverage was checked with these saved Node overrides." : "Repositories without matching replacements keep this override."}`
+                    : type === "node" ? "This override is redundant for the saved Node targets."
                     : "This transient override is redundant. Keep the target while scanned repositories still declare it; repository findings suggest removal where appropriate."}
             </div>
         `;

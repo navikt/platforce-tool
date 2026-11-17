@@ -9,6 +9,7 @@ async function renderTargets(data) {
         nodeDependencies: Object.fromEntries(Object.entries(data.nodeDependencies || {}).map(([key, version]) => [key, nodeTargetVersion(version)])),
         gradleVersion: data.gradleVersion || "",
         transientDependencies: new Set(data.transientDependencies || []),
+        nodeTransientDependencies: new Set(data.nodeTransientDependencies || []),
         drafted
     };
 
@@ -29,7 +30,7 @@ function renderTargetTables() {
     renderGradleVersion(targetState.gradleVersion);
 }
 
-function addDraftTarget(kind, key, version) {
+function addDraftTarget(kind, key, version, nodeTransient) {
     captureTargetDrafts();
     if (kind === "PLUGIN") {
         targetState.plugins[key] = version;
@@ -46,6 +47,10 @@ function addDraftTarget(kind, key, version) {
 
     if (kind === "NODE") {
         targetState.nodeDependencies[key] = nodeTargetVersion(version);
+        if (nodeTransient !== undefined) {
+            if (nodeTransient) targetState.nodeTransientDependencies.add(key);
+            else targetState.nodeTransientDependencies.delete(key);
+        }
     }
 
     if (kind === "GRADLE") {
@@ -90,6 +95,29 @@ function renderGradleVersion(version) {
     container.appendChild(row);
 }
 
+function transientTargetButtonHtml(type, active = false) {
+    if (type !== "dependency" && type !== "node") return "";
+    return `<button type="button" class="icon-btn transient-btn ${active ? "active" : ""}"
+        aria-pressed="${!!active}" title="${active ? "Transient dependency" : "Cover transitive vulnerability"}">
+        ${BANDAGE_SVG}
+    </button>`;
+}
+
+function bindTransientTarget(row, type) {
+    if (type !== "dependency" && type !== "node") return;
+    const button = row.querySelector(".transient-btn");
+    button.onclick = () => {
+        const key = row.querySelector(".key").value.trim();
+        const transient = type === "node" ? targetState.nodeTransientDependencies : targetState.transientDependencies;
+        const active = !button.classList.contains("active");
+        if (active) transient.add(key);
+        else transient.delete(key);
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+        button.title = active ? "Transient dependency" : "Cover transitive vulnerability";
+    };
+}
+
 function renderTable(containerId, entries, type) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
@@ -98,8 +126,7 @@ function renderTable(containerId, entries, type) {
         const drafted =
             targetState.drafted?.has(`${type.toUpperCase()}:${key}`);
         const isTransient =
-            type === "dependency" &&
-            targetState.transientDependencies?.has(key);
+            (type === "node" ? targetState.nodeTransientDependencies : type === "dependency" ? targetState.transientDependencies : null)?.has(key);
         const securityTarget = findTargetSecurity(type, key, version);
 
         const row = document.createElement("div");
@@ -109,17 +136,7 @@ function renderTable(containerId, entries, type) {
             <input class="key" />
             <input class="version" />
             ${securityStatusHtml(securityTarget)}
-            ${
-            type === "dependency"
-                ? `
-                    <button
-                        class="icon-btn transient-btn ${isTransient ? "active" : ""}"
-                        title="${isTransient ? "Transient dependency" : "Mark as transient"}">
-                        ${BANDAGE_SVG}
-                    </button>
-                `
-                : ""
-        }
+            ${transientTargetButtonHtml(type, isTransient)}
             ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
@@ -142,34 +159,7 @@ function renderTable(containerId, entries, type) {
         row.querySelector(".version").value = version;
         bindDependencyUsage(row, type);
         bindTargetUpgrades(row, type);
-        if (type === "dependency") {
-            row.querySelector(".transient-btn").onclick = () => {
-                const transient =
-                    targetState.transientDependencies;
-
-                if (transient.has(key)) {
-                    transient.delete(key);
-                } else {
-                    transient.add(key);
-                }
-
-                const button =
-                    row.querySelector(".transient-btn");
-
-                const nowTransient =
-                    transient.has(key);
-
-                button.classList.toggle(
-                    "active",
-                    nowTransient
-                );
-
-                button.title =
-                    nowTransient
-                        ? "Transient dependency"
-                        : "Mark as transient";
-            };
-        }
+        bindTransientTarget(row, type);
 
         row.querySelector(".remove-btn").onclick = () => {
             if (drafted) {
@@ -219,6 +209,7 @@ function renderTable(containerId, entries, type) {
             <input class="key" />
             <input class="version" />
             ${securityStatusHtml(securityTarget)}
+            ${transientTargetButtonHtml(type)}
             ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
@@ -241,6 +232,7 @@ function renderTable(containerId, entries, type) {
         newRow.querySelector(".version").value = v;
         bindDependencyUsage(newRow, type);
         bindTargetUpgrades(newRow, type);
+        bindTransientTarget(newRow, type);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
             newRow.querySelector(".target-status-pill");
@@ -367,6 +359,14 @@ function readTargetInputs() {
         return row.querySelector(".version")?.value ?? "";
     }
 
+    const nodeDependencies = Object.fromEntries(Object.entries(read("nodeTable")).map(([key, version]) => [key, nodeTargetVersion(version)]));
+    const nodeTransientDependencies = Array.from(document.querySelectorAll("#nodeTable .target-row"))
+        .filter(row => {
+            const key = row.querySelector(".key")?.value;
+            return Object.hasOwn(nodeDependencies, key) && (row.querySelector(".transient-btn")?.classList?.contains?.("active")
+                ?? targetState.nodeTransientDependencies?.has(key));
+        })
+        .map(row => row.querySelector(".key").value);
     return {
         plugins: read("pluginsTable"),
         dependencies: {
@@ -375,7 +375,8 @@ function readTargetInputs() {
             ...read("depsTable")
         },
         platformBoms: read("platformBomsTable"),
-        nodeDependencies: Object.fromEntries(Object.entries(read("nodeTable")).map(([key, version]) => [key, nodeTargetVersion(version)])),
+        nodeDependencies,
+        nodeTransientDependencies,
         gradleVersion: readSingleVersion("gradleTable"),
         transientDependencies:
             Array.from(targetState.transientDependencies)
@@ -388,6 +389,7 @@ function captureTargetDrafts() {
     targetState.dependencies = inputs.dependencies;
     targetState.platformBoms = inputs.platformBoms;
     targetState.nodeDependencies = inputs.nodeDependencies;
+    targetState.nodeTransientDependencies = new Set(inputs.nodeTransientDependencies);
     targetState.gradleVersion = inputs.gradleVersion;
 }
 
@@ -397,7 +399,9 @@ async function initTargets() {
 }
 
 async function applySecurityUpgrade(button, key, version, kind = "DEPENDENCY") {
-    addDraftTarget(kind, key, version);
+    captureTargetDrafts();
+    const nodeTransient = kind === "NODE" && !Object.hasOwn(targetState.nodeDependencies, key) ? true : undefined;
+    addDraftTarget(kind, key, version, nodeTransient);
     button.remove();
 }
 
@@ -470,6 +474,7 @@ async function saveTargets() {
             nodeDependencies: payload.nodeDependencies,
             gradleVersion: payload.gradleVersion,
             transientDependencies: new Set(payload.transientDependencies),
+            nodeTransientDependencies: new Set(payload.nodeTransientDependencies),
             drafted: new Set()
         };
 

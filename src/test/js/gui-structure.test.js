@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { readdirSync } = require("node:fs");
+const { readdirSync, readFileSync } = require("node:fs");
 const { resolve } = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
@@ -75,6 +75,40 @@ test("NODE targets follow Platform BOMs with scan controls and no explanatory bl
     assert.match(html, /class="target-section node"/);
     assert.doesNotMatch(html, /Each saved target is scanned independently|Caret and tilde prefixes|Node PR\/Auto updates are not available yet/);
     assert.match(html, /id="scanNode" class="btn-danger"/);
+});
+
+test("Node target rows share the Plugins and Platform BOMs grid and button columns", () => {
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    for (const [selectors, declaration] of [
+        [[".target-section.dependencies", ".target-section.plugins", ".target-section.platform-boms", ".target-section.node"], /--target-columns:\s*300px 110px 90px 28px 28px 28px 28px;/],
+        [["#pluginsTable .target-row", "#platformBomsTable .target-row", "#nodeTable .target-row"], /grid-template-columns:\s*var\(--target-columns\);/],
+        [["#pluginsTable .target-upgrade-btn", "#platformBomsTable .target-upgrade-btn", "#nodeTable .target-upgrade-btn"], /grid-column:\s*5;/],
+        [["#pluginsTable .dependency-usage-btn", "#platformBomsTable .dependency-usage-btn", "#nodeTable .dependency-usage-btn"], /grid-column:\s*6;/],
+        [["#pluginsTable .remove-btn", "#platformBomsTable .remove-btn", "#nodeTable .remove-btn"], /grid-column:\s*7;/]
+    ]) {
+        assert.ok(rules.some(([, selector, body]) =>
+            selectors.every(value => selector.split(",").map(value => value.trim()).includes(value)) &&
+            declaration.test(body)), `Shared layout rule missing for ${selectors.join(", ")}`);
+    }
+    assert.match(css, /#depsTable \.transient-btn,\s*#nodeTable \.transient-btn\s*\{\s*grid-column:\s*4;/);
+    assert.match(css, /grid-template-columns:\s*minmax\(700px, 705px\) minmax\(700px, 705px\) auto;/);
+});
+
+test("repository draft clicks pass the Node override role through to target drafts", () => {
+    const app = browser(() => new Promise(() => {}));
+    loadGuiScripts(app.context);
+    const drafts = [];
+    app.context.addDraftTarget = (...args) => drafts.push(args);
+    for (const transient of ["true", "false"]) {
+        const pill = {
+            dataset: { kind: "NODE", key: "leaf", version: "^2.0.0", nodeTransient: transient },
+            classList: { add() {}, remove() {} }
+        };
+        app.documentListeners[0][1]({ target: { closest: () => pill } });
+        assert.deepEqual(drafts.at(-1), ["NODE", "leaf", "^2.0.0", transient === "true"]);
+        assert.equal(pill.textContent, "DRAFTED");
+    }
 });
 
 test("feature files have no startup side effects and bootstrap exposes all inline handlers", () => {

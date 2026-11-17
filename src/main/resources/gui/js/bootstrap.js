@@ -9,7 +9,7 @@ document.addEventListener("click", e => {
     const key = pill.dataset.key;
     const version = pill.dataset.version;
 
-    addDraftTarget(kind, key, version);
+    addDraftTarget(kind, key, version, kind === "NODE" ? pill.dataset.nodeTransient === "true" : undefined);
 
     pill.textContent = "DRAFTED";
     pill.classList.remove("status-unknown", "status-ahead");

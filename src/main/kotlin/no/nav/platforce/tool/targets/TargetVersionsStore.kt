@@ -55,6 +55,8 @@ class TargetVersionsStore(
                         .sortedBy { it.key }
                         .associate { it.key to nodeTargetVersion(it.version) }
                         .toMutableMap(),
+                nodeTransientDependencies =
+                    versions.filter { it.type == TargetVersionType.NODE && it.transient }.map { it.key }.toSet(),
             )
         return if (includeIgnored) state else state.withoutIgnoredDependencies()
     }
@@ -124,7 +126,7 @@ class TargetVersionsStore(
                         type = TargetVersionType.NODE,
                         key = it.key,
                         version = nodeTargetVersion(it.value),
-                        transient = false,
+                        transient = it.key in normalized.nodeTransientDependencies,
                         createdAt = now,
                         updatedAt = now,
                     )

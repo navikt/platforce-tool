@@ -96,9 +96,10 @@ class NodeTargetResolverTest {
                 /usr/bin/env > '$recorded/environment'
                 """.trimIndent() + "\n/bin/cat > package-lock.json <<'LOCK'\n$lock\nLOCK\n",
             )
-        val result = NodeTargetResolver(home).resolve("@scope/root", "1.0.0")
+        val result = NodeTargetResolver(home).resolveWithOverrides("@scope/root", "1.0.0", mapOf("@scope/transitive" to "2.0.0"))
         assertEquals(5, result.size)
         assertTrue(recorded.resolve("package.json").readText().contains("\"@scope/root\":\"1.0.0\""))
+        assertTrue(recorded.resolve("package.json").readText().contains("\"overrides\":{\"@scope/transitive\":\"2.0.0\"}"))
         val arguments = recorded.resolve("arguments").readText()
         assertTrue(arguments.contains("--package-lock-only"))
         assertTrue(arguments.contains("--ignore-scripts"))
@@ -131,6 +132,14 @@ class NodeTargetResolverTest {
         val packages = NodeTargetResolver(checkNotNull(home)).resolve("is-odd", "3.0.1")
         assertTrue(packages.any { it.name == "is-odd" && it.version == "3.0.1" })
         assertTrue(packages.any { it.name == "is-number" && it.version == "6.0.0" })
+        val overridden = NodeTargetResolver(checkNotNull(home)).resolveWithOverrides("is-odd", "3.0.1", mapOf("is-number" to "7.0.0"))
+        assertTrue(overridden.any { it.name == "is-number" && it.version == "7.0.0" })
+        assertFalse(overridden.any { it.name == "is-number" && it.version == "6.0.0" })
+        val conflict =
+            assertThrows(IllegalStateException::class.java) {
+                NodeTargetResolver(home).resolveWithOverrides("is-odd", "3.0.1", mapOf("is-odd" to "3.0.0"))
+            }
+        assertTrue(conflict.message!!.contains("EOVERRIDE"))
     }
 
     private fun fakeNode(body: String): Path {

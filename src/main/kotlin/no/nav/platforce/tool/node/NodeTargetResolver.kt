@@ -58,9 +58,21 @@ class NodeTargetResolver(
     fun resolve(
         key: String,
         version: String,
+    ): List<ResolvedDependency> = resolveWithOverrides(key, version, emptyMap())
+
+    @OptIn(ExperimentalPathApi::class)
+    fun resolveWithOverrides(
+        key: String,
+        version: String,
+        overrides: Map<String, String>,
     ): List<ResolvedDependency> {
         require(validNodePackage(key)) { "Unsupported npm package name: $key" }
         require(validNodeVersion(version)) { "Expected an exact npm version for $key, got $version" }
+        require(
+            overrides.all { (name, value) ->
+                validNodePackage(name) && validNodeVersion(value)
+            },
+        ) { "Expected exact public npm overrides" }
         val directory = Files.createTempDirectory("platforce-npm-resolution-")
         try {
             directory.resolve("package.json").writeText(
@@ -70,6 +82,7 @@ class NodeTargetResolver(
                         "version" to "1.0.0",
                         "private" to true,
                         "dependencies" to mapOf(key to version),
+                        "overrides" to overrides.toSortedMap(),
                     ),
                 ),
             )

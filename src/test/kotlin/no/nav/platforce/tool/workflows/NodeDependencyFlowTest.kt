@@ -147,6 +147,7 @@ class NodeDependencyFlowTest {
                     TargetVersionsState::class.java,
                 ).snapshot()
         assertTrue(old.nodeDependencies.isEmpty())
+        assertTrue(old.nodeTransientDependencies.isEmpty())
         val state = targets()
         val snapshot = state.snapshot()
         state.nodeDependencies["glob"] = "11.0.0"
@@ -154,6 +155,16 @@ class NodeDependencyFlowTest {
         assertNotEquals(fingerprint(state), fingerprint(snapshot))
         assertEquals(snapshot, Gson().fromJson(Gson().toJson(snapshot), TargetVersionsState::class.java).snapshot())
         assertEquals(fingerprint(snapshot), fingerprint(snapshot.copy(nodeDependencies = snapshot.nodeDependencies.toSortedMap())))
+        val cover = snapshot.copy(nodeTransientDependencies = setOf("glob"))
+        assertNotEquals(fingerprint(snapshot), fingerprint(cover))
+        assertEquals(cover, Gson().fromJson(Gson().toJson(cover), TargetVersionsState::class.java).snapshot())
+        assertTrue(
+            cover
+                .copy(nodeDependencies = mutableMapOf())
+                .snapshot()
+                .nodeTransientDependencies
+                .isEmpty(),
+        )
     }
 
     @Test

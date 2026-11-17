@@ -30,5 +30,6 @@ let targetState = {
     nodeDependencies: {},
     gradleVersion: "",
     transientDependencies: new Set(),
+    nodeTransientDependencies: new Set(),
     drafted: new Set()
 };

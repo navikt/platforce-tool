@@ -15,6 +15,7 @@ fun fingerprint(targetState: TargetVersionsState): String {
                 targetState.platformBoms.toSortedMap(),
                 targetState.ignoredDependencies.sorted(),
                 targetState.nodeDependencies.mapValues { nodeTargetVersion(it.value) }.toSortedMap(),
+                targetState.nodeTransientDependencies.intersect(targetState.nodeDependencies.keys).sorted(),
             ),
         )
     val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))

@@ -361,6 +361,7 @@ test("Node targets load, draft, capture and save independently of Maven and BOM 
     const app = gui();
     await app.context.renderTargets({
         nodeDependencies: { "@slack/bolt": "^3.22.0" },
+        nodeTransientDependencies: ["@slack/bolt"],
         dependencies: { "example:library": "1.0" },
         gradleVersion: "8.0"
     });
@@ -384,6 +385,8 @@ test("Node targets load, draft, capture and save independently of Maven and BOM 
     });
     await app.context.saveTargets();
     assert.deepEqual(saved.nodeDependencies, { "@slack/bolt": "3.23.0" });
+    assert.deepEqual(saved.nodeTransientDependencies, ["@slack/bolt"]);
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("@slack/bolt")'), true);
     assert.equal(app.value('targetState.nodeDependencies["@slack/bolt"]'), "3.23.0");
     assert.equal(app.value("targetState.drafted.size"), 0);
     app.value(`lastLoadedData = { scans: [
@@ -429,6 +432,8 @@ test("Node repository renders declaration contexts, escaped ranges and explicit 
     assert.doesNotMatch(card.innerHTML, /pr-prerequisite-icon/);
     assert.doesNotMatch(card.innerHTML, /onclick="event.stopPropagation\(\); createPr/);
     assert.match(card.innerHTML, /data-kind="NODE"/);
+    assert.match(card.innerHTML, /data-node-transient="false"/);
+    assert.match(card.innerHTML, /data-kind="NODE"\s+data-node-transient="true"\s+data-key="ws"/);
     assert.match(card.innerHTML, /&lt;script&gt;/);
     assert.doesNotMatch(card.innerHTML, /<script>/);
     assert.match(card.innerHTML, /Untracked Node declarations \(1\)/);
@@ -448,7 +453,17 @@ test("Node table binds the shared upgrade button on saved and newly added target
         return {
             querySelector(selector) {
                 if (selector === ".target-status-pill") return null;
-                if (!inputs.has(selector)) inputs.set(selector, { value: "" });
+                if (!inputs.has(selector)) {
+                    const classes = new Set();
+                    inputs.set(selector, {
+                        value: "",
+                        classList: {
+                            toggle(name, active) { if (active) classes.add(name); else classes.delete(name); },
+                            contains: name => classes.has(name)
+                        },
+                        setAttribute() {}
+                    });
+                }
                 return inputs.get(selector);
             },
             remove() { rows.splice(rows.indexOf(this), 1); }
@@ -462,12 +477,18 @@ test("Node table binds the shared upgrade button on saved and newly added target
     assert.equal(rows[0].querySelector(".key").value, "@slack/bolt");
     assert.equal(rows[0].querySelector(".version").value, "3.22.0");
     assert.match(rows[0].innerHTML, /target-upgrade-btn/);
-    assert.doesNotMatch(rows[0].innerHTML, /transient-btn/);
+    assert.match(rows[0].innerHTML, /transient-btn/);
     assert.equal(upgradeBindings[0][0], rows[0]);
     assert.equal(upgradeBindings[0][1], "node");
     assert.match(rows[0].innerHTML, /target-status-pill target-status-ok/);
     assert.match(rows[0].innerHTML, /No vulnerabilities found in the resolved dependency tree/);
     assert.match(rows[0].innerHTML, /data-usage-type="node"/);
+    app.rows.set("#nodeTable .target-row", rows);
+    rows[0].querySelector(".transient-btn").onclick();
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("@slack/bolt")'), true);
+    assert.deepEqual([...app.context.readTargetInputs().nodeTransientDependencies], ["@slack/bolt"]);
+    rows[0].querySelector(".transient-btn").onclick();
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("@slack/bolt")'), false);
     const add = rows[1];
     assert.equal(add.querySelector(".key").placeholder, "package or @scope/package");
     add.querySelector(".key").value = "ws";
@@ -477,11 +498,18 @@ test("Node table binds the shared upgrade button on saved and newly added target
     assert.equal(rows[1].querySelector(".key").value, "ws");
     assert.equal(rows[1].querySelector(".version").value, "7.5.11");
     assert.match(rows[1].innerHTML, /target-upgrade-btn/);
+    assert.match(rows[1].innerHTML, /transient-btn/);
     assert.doesNotMatch(rows[1].innerHTML, /target-status-pill/);
     assert.equal(upgradeBindings[1][0], rows[1]);
     assert.equal(upgradeBindings[1][1], "node");
+    rows[1].querySelector(".transient-btn").onclick();
+    rows[1].querySelector(".key").value = "renamed";
+    app.context.captureTargetDrafts();
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("renamed")'), true);
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("ws")'), false);
     rows[1].querySelector(".remove-btn").onclick();
     assert.equal(rows.length, 2);
+    assert.deepEqual([...app.context.readTargetInputs().nodeTransientDependencies], []);
 });
 
 test("Node scan polls its own job and shows results only at matching normalized versions", async () => {
@@ -630,12 +658,60 @@ test("Node fix pills draft npm targets without saving or changing Gradle targets
     const button = { removed: false, remove() { this.removed = true; } };
     await app.context.applySecurityUpgrade(button, "@scope/package", "2.0.0", "NODE");
     assert.equal(app.value('targetState.nodeDependencies["@scope/package"]'), "2.0.0");
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("@scope/package")'), true);
     assert.equal(app.value('targetState.drafted.has("NODE:@scope/package")'), true);
     assert.equal(app.value('targetState.dependencies["@scope/package"]'), undefined);
     assert.equal(app.calls.length, 0);
     assert.equal(button.removed, true);
     await app.context.applySecurityUpgrade(button, "example:library", "3.0.0");
     assert.equal(app.value('targetState.dependencies["example:library"]'), "3.0.0");
+});
+
+test("Node drafts distinguish repository overrides, normal declarations and fixes to existing targets", async () => {
+    const app = gui();
+    await app.context.renderTargets({
+        nodeDependencies: { normal: "1.0.0", cover: "2.0.0" },
+        nodeTransientDependencies: ["cover"],
+        transientDependencies: ["example:gradle"]
+    });
+    app.context.captureTargetDrafts = () => {};
+    const button = { remove() {} };
+    await app.context.applySecurityUpgrade(button, "normal", "1.1.0", "NODE");
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("normal")'), false);
+    await app.context.applySecurityUpgrade(button, "cover", "2.1.0", "NODE");
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("cover")'), true);
+    await app.context.applySecurityUpgrade(button, "new-cover", "3.0.0", "NODE");
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("new-cover")'), true);
+    app.context.addDraftTarget("NODE", "from-repo", "^2.0.0", true);
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("from-repo")'), true);
+    app.context.addDraftTarget("NODE", "from-repo", "^2.1.0", false);
+    assert.equal(app.value('targetState.nodeTransientDependencies.has("from-repo")'), false);
+    assert.equal(app.value('targetState.nodeDependencies["from-repo"]'), "2.1.0");
+    assert.deepEqual([...app.value("targetState.transientDependencies")], ["example:gradle"]);
+    assert.equal(app.calls.length, 0);
+});
+
+test("Node coverage uses the shared bandage, overridden, redundant and unused statuses", () => {
+    const app = gui();
+    const covered = { key: "parent", targetVersion: "1.0.0", status: "OK_OVERRIDDEN", relatedTo: [
+        { dependency: "leaf", vulnerableVersion: "1.0.0", resolvedVersion: "2.0.0", causedBy: ["leaf:2.0.0"] }
+    ] };
+    const details = app.context.nodeSecurityDetailsHtml(covered);
+    assert.match(details, /Transitive vulnerability overridden/);
+    assert.match(details, /leaf:2.0.0/);
+    assert.match(app.context.securityStatusLabel("OK_TRANSIENT"), /<svg/);
+    assert.equal(app.context.securityStatusLabel("TRANSIENT_UNUSED"), "REDUNDANT");
+    const unused = { key: "leaf", targetVersion: "2.0.0", status: "TRANSIENT_UNUSED" };
+    app.value(`nodeSecurityScan = ${JSON.stringify({ targets: [unused] })}`);
+    assert.equal(app.context.findTargetSecurity("node", "leaf", "2.0.0").status, "TRANSIENT_UNUSED");
+    app.value('lastLoadedData = { scans: [{ declaredNodeDependencyKeys: [] }] }');
+    assert.equal(app.context.findTargetSecurity("node", "leaf", "2.0.0").status, "UNUSED");
+    app.value('lastLoadedData.scans[0].declaredNodeDependencyKeys = ["leaf"]');
+    assert.equal(app.context.findTargetSecurity("node", "leaf", "2.0.0").status, "TRANSIENT_UNUSED");
+    assert.match(app.context.nodeSecurityDetailsHtml(unused), /redundant for the saved Node targets/);
+    assert.doesNotMatch(app.context.nodeSecurityDetailsHtml({
+        ...unused, replacementDependencies: [{ dependency: "other", targetVersion: "2.0.0" }]
+    }), /Repositories without matching replacements/);
 });
 
 test("repository renders BOM-only untracked entries and tracked BOMs as a distinct type", () => {

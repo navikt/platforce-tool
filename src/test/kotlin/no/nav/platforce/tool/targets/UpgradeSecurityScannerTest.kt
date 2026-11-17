@@ -19,6 +19,11 @@ class UpgradeSecurityScannerTest {
     @Test
     fun `npm candidates resolve independently without Gradle and reuse user and fingerprint isolated jobs`() {
         val executor = QueuedExecutor()
+        val nodeState =
+            state.copy(
+                nodeDependencies = mutableMapOf("@scope/package" to "1.0.0"),
+                nodeTransientDependencies = setOf("@scope/package"),
+            )
         val calls = mutableListOf<String>()
         val npmVersions =
             AvailableVersionsService(
@@ -75,7 +80,7 @@ class UpgradeSecurityScannerTest {
             user: String = "alice",
             current: String = "1.0.0",
             start: Boolean = false,
-        ) = scanner.snapshot(user, state, "node", "@scope/package", current, start)
+        ) = scanner.snapshot(user, nodeState, "node", "@scope/package", current, start)
         assertEquals("IDLE", get().status)
         assertEquals("RUNNING", get(current = "^1.0.0", start = true).status)
         get(start = true)

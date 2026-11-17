@@ -101,7 +101,12 @@ class UpgradeSecurityScanner(
         if (kind == "node") {
             val service = checkNotNull(nodeSecurity) { "npm upgrade security scanning is not configured" }
             return candidates.map { candidate ->
-                val result = service.scan(state.copy(nodeDependencies = mutableMapOf(name to candidate.version))).targets.single()
+                val result =
+                    service
+                        .scan(
+                            state.copy(nodeDependencies = mutableMapOf(name to candidate.version), nodeTransientDependencies = emptySet()),
+                        ).targets
+                        .single()
                 UpgradeSecurityResult(
                     candidate.version,
                     result.status.name,
