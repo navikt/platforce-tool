@@ -5,6 +5,8 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.repositories.DependencyStatus
 
+internal val nodeDependencySections = listOf("dependencies", "devDependencies")
+
 data class NodeDependencyDeclaration(
     val key: String,
     val version: String,
@@ -31,9 +33,11 @@ class PackageJsonParser {
             return value.asString
         }
 
-        val dependencies = section("dependencies")
-        dependencies?.entrySet()?.forEach { (key, value) ->
-            result += NodeDependencyDeclaration(key, version(value), "dependencies", listOf("dependencies", key))
+        val dependencies = nodeDependencySections.associateWith(::section)
+        dependencies.forEach { (name, entries) ->
+            entries?.entrySet()?.forEach { (key, value) ->
+                result += NodeDependencyDeclaration(key, version(value), name, listOf(name, key))
+            }
         }
 
         fun overrides(
@@ -54,7 +58,10 @@ class PackageJsonParser {
                     overrides(value.asJsonObject, location, key)
                 } else {
                     val specification = version(value)
-                    val reference = specification.takeIf { it.startsWith('$') }?.drop(1)?.let { dependencies?.get(it) }
+                    val reference =
+                        specification.takeIf { it.startsWith('$') }?.drop(1)?.let { key ->
+                            dependencies["devDependencies"]?.get(key) ?: dependencies["dependencies"]?.get(key)
+                        }
                     result +=
                         NodeDependencyDeclaration(
                             key,

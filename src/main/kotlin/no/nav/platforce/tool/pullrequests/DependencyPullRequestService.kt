@@ -6,6 +6,7 @@ import mu.KotlinLogging
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.github.GithubPullRequest
 import no.nav.platforce.tool.node.NpmLockfileGenerator
+import no.nav.platforce.tool.node.nodeDependencySections
 import no.nav.platforce.tool.node.nodeTargetVersion
 import no.nav.platforce.tool.repositories.DependencyFinding
 import no.nav.platforce.tool.repositories.DependencyKind
@@ -177,7 +178,7 @@ class DependencyPullRequestService(
                                 DependencyStatus.ADD -> {
                                     val related = finding.relatedTo.takeIf { it.isNotEmpty() }
                                     val description =
-                                        if (isNode && finding.declaration == "dependencies") {
+                                        if (isNode && finding.declaration in nodeDependencySections) {
                                             "required dependency"
                                         } else {
                                             "transitive dependency override"

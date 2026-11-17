@@ -22,7 +22,10 @@ fun enrichNodeRepositorySecurity(
 
     fun isGlobalOverride(finding: DependencyFinding) = finding.declaration?.removeSuffix(" > .") == "overrides > ${finding.key}"
 
-    fun present(target: NodeSecurityResult): Boolean =
+    fun present(
+        target: NodeSecurityResult,
+        consumer: DependencyFinding,
+    ): Boolean =
         scan.findings.any { finding ->
             finding.key == target.key &&
                 finding.currentVersion != null &&
@@ -31,7 +34,8 @@ fun enrichNodeRepositorySecurity(
                 if (target.key in state.nodeTransientDependencies) {
                     isGlobalOverride(finding)
                 } else {
-                    finding.declaration == "dependencies"
+                    finding.declaration == "dependencies" ||
+                        (finding.declaration == "devDependencies" && consumer.declaration == "devDependencies")
                 }
         }
 
@@ -62,7 +66,8 @@ fun enrichNodeRepositorySecurity(
                                 target.replacementDependencies.all { replacement ->
                                     targets[replacement.dependency]?.let {
                                         it.targetVersion == replacement.targetVersion &&
-                                            it.status in setOf(NodeSecurityStatus.OK, NodeSecurityStatus.OK_TRANSIENT) && present(it)
+                                            it.status in setOf(NodeSecurityStatus.OK, NodeSecurityStatus.OK_TRANSIENT) &&
+                                            present(it, finding)
                                     } == true
                                 }
                             ) {
@@ -94,7 +99,16 @@ fun enrichNodeRepositorySecurity(
             ) {
                 return@map finding.copy(status = DependencyStatus.UNRESOLVED)
             }
-            val missing = providers.filterNot(::present)
+            val missing = providers.filterNot { present(it, finding) }
+            if (finding.declaration != "devDependencies" &&
+                missing.any { provider ->
+                    provider.key !in state.nodeTransientDependencies &&
+                        scan.findings.any { it.key == provider.key && it.declaration == "devDependencies" } &&
+                        scan.findings.none { it.key == provider.key && it.declaration == "dependencies" }
+                }
+            ) {
+                return@map finding.copy(status = DependencyStatus.UNRESOLVED)
+            }
             missing.forEach { provider ->
                 additions +=
                     DependencyFinding(
@@ -104,7 +118,11 @@ fun enrichNodeRepositorySecurity(
                         targetVersion = provider.targetVersion,
                         status = DependencyStatus.ADD,
                         declaration =
-                            if (provider.key in state.nodeTransientDependencies) "overrides > ${provider.key}" else "dependencies",
+                            when {
+                                provider.key in state.nodeTransientDependencies -> "overrides > ${provider.key}"
+                                finding.declaration == "devDependencies" -> "devDependencies"
+                                else -> "dependencies"
+                            },
                         relatedTo = listOf(reference(target)),
                     )
             }
@@ -129,7 +147,8 @@ fun enrichNodeRepositorySecurity(
         findings =
             findings +
                 additions.groupBy { it.key to it.targetVersion }.values.map { group ->
-                    group.first().copy(relatedTo = group.flatMap { it.relatedTo }.distinct())
+                    val addition = group.firstOrNull { it.declaration == "dependencies" } ?: group.first()
+                    addition.copy(relatedTo = group.flatMap { it.relatedTo }.distinct())
                 },
     )
 }

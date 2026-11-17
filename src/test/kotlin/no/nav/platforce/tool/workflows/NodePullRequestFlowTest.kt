@@ -9,6 +9,7 @@ import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
+import no.nav.platforce.tool.repositories.DependencyStatus
 import no.nav.platforce.tool.repositories.PullRequestReadinessException
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.resolution.ResolvedDependency
@@ -80,13 +81,13 @@ class NodePullRequestFlowTest {
         )
     private val view = DependencyScanViewService(cache, gradle, scanner, nodeScanner)
 
-    private fun ready() {
+    private fun ready(targets: TargetVersionsState = state) {
         val inventory = checkNotNull(scanner.scanRepository("example/repository"))
         cache.update("alice", listOf(inventory))
         cache.update("bob", listOf(inventory))
-        nodeScanner.start("alice", state)
+        nodeScanner.start("alice", targets)
         executor.runNext()
-        assertTrue(nodeScanner.ready("alice", state), nodeScanner.get("alice", state).error)
+        assertTrue(nodeScanner.ready("alice", targets), nodeScanner.get("alice", targets).error)
         github.calls.clear()
     }
 
@@ -132,6 +133,37 @@ class NodePullRequestFlowTest {
         assertTrue(
             github.calls.indexOfFirst { it.contains("updateFile:example/repository:package-lock.json") } <
                 github.calls.indexOfFirst { it.startsWith("createPullRequest:") },
+        )
+    }
+
+    @Test
+    fun `development PR updates and required additions keep their section through a repository refresh`() {
+        files["package.json"] = source.replace("\"dependencies\"", "\"devDependencies\"")
+        files["package-lock.json"] = "original-lock"
+        val targets = state.copy(nodeTransientDependencies = setOf("unused"))
+        ready(targets)
+        val service =
+            DependencyPullRequestService(github, view) { manifest, resolution, _, _ ->
+                val final = JsonParser.parseString(manifest).asJsonObject
+                assertFalse(final.has("dependencies"))
+                assertFalse(final.has("overrides"))
+                assertEquals("^1.1.0", final.getAsJsonObject("devDependencies")["parent"].asString)
+                assertEquals("^2.0.0", final.getAsJsonObject("devDependencies")["cover"].asString)
+                val exact = JsonParser.parseString(resolution).asJsonObject.getAsJsonObject("devDependencies")
+                assertEquals("1.1.0", exact["parent"].asString)
+                assertEquals("2.0.0", exact["cover"].asString)
+                "generated-dev-lock"
+            }
+        service.createPullRequest("example", "repository", "alice", targets)
+        assertEquals("generated-dev-lock", github.updatedFiles["package-lock.json"])
+        assertTrue(github.pullRequestBody!!.contains("- ADD cover:^2.0.0 (required dependency for parent:1.1.0)"))
+        files["package.json"] = checkNotNull(github.updatedFiles["package.json"])
+        cache.updateRepository("alice", checkNotNull(scanner.scanRepository("example/repository")))
+        val merged = view.get("alice", targets).single()
+        assertTrue(merged.findings.all { it.declaration == "devDependencies" })
+        assertEquals(
+            mapOf("parent" to DependencyStatus.OK_OVERRIDDEN, "cover" to DependencyStatus.OK),
+            merged.findings.associate { it.key to it.status },
         )
     }
 

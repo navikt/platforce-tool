@@ -110,6 +110,58 @@ class NodePackageJsonUpdaterTest {
     }
 
     @Test
+    fun `development upgrades and normal additions remain in dev dependencies with exact resolution versions`() {
+        val source = """{"dependencies":{"app":"1.0.0"},"devDependencies":{"tool":"^1.0.0"}}"""
+        val update =
+            updater.apply(
+                source,
+                listOf(
+                    finding("tool", "^1.0.0", "1.1.0", "devDependencies"),
+                    finding("helper", null, "2.0.0", "devDependencies", DependencyStatus.ADD),
+                ),
+            )
+        val result = JsonParser.parseString(update.manifest).asJsonObject
+        assertEquals(setOf("app"), result.getAsJsonObject("dependencies").keySet())
+        assertEquals("^1.1.0", result.getAsJsonObject("devDependencies")["tool"].asString)
+        assertEquals("^2.0.0", result.getAsJsonObject("devDependencies")["helper"].asString)
+        val resolution = JsonParser.parseString(update.resolutionManifest).asJsonObject.getAsJsonObject("devDependencies")
+        assertEquals("1.1.0", resolution["tool"].asString)
+        assertEquals("2.0.0", resolution["helper"].asString)
+
+        val addition = updater.apply("{}", listOf(finding("tool", null, "1.1.0", "devDependencies", DependencyStatus.ADD)))
+        assertEquals(setOf("devDependencies"), JsonParser.parseString(addition.manifest).asJsonObject.keySet())
+    }
+
+    @Test
+    fun `development direct dependencies and global overrides preserve references across repeated upgrades`() {
+        val source = """{"devDependencies":{"uuid":"^8.3.2"}}"""
+        val update =
+            updater.apply(
+                source,
+                listOf(
+                    finding("uuid", null, "11.1.1", "overrides > uuid", DependencyStatus.ADD),
+                    finding("uuid", "^8.3.2", "11.1.1", "devDependencies"),
+                ),
+            )
+        val result = JsonParser.parseString(update.manifest).asJsonObject
+        assertFalse(result.has("dependencies"))
+        assertEquals("^11.1.1", result.getAsJsonObject("devDependencies")["uuid"].asString)
+        assertEquals("\$uuid", result.getAsJsonObject("overrides")["uuid"].asString)
+        val resolution = JsonParser.parseString(update.resolutionManifest).asJsonObject
+        assertEquals("11.1.1", resolution.getAsJsonObject("devDependencies")["uuid"].asString)
+        assertEquals("\$uuid", resolution.getAsJsonObject("overrides")["uuid"].asString)
+        val declarations = PackageJsonParser().parse(update.manifest)
+        assertEquals(listOf("^11.1.1", "^11.1.1"), declarations.map { it.version })
+
+        val next = updater.apply(update.manifest, declarations.map { finding(it.key, it.version, "12.0.1", it.declaration) })
+        assertEquals(listOf("^12.0.1", "^12.0.1"), PackageJsonParser().parse(next.manifest).map { it.version })
+        assertEquals(
+            listOf("devDependencies", "overrides > uuid"),
+            PackageJsonParser().parse(next.manifest).map { it.declaration },
+        )
+    }
+
+    @Test
     fun `new global self override preserves nested overrides and pins an unchanged direct range for resolution`() {
         val source = """{"dependencies":{"uuid":"^11.1.1"},"overrides":{"uuid":{"leaf":"1.0.0"}}}"""
         val update = updater.apply(source, listOf(finding("uuid", null, "11.1.1", "overrides > uuid", DependencyStatus.ADD)))

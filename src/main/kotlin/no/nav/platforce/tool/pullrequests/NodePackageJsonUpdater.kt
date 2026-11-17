@@ -3,6 +3,7 @@ package no.nav.platforce.tool.pullrequests
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.node.PackageJsonParser
+import no.nav.platforce.tool.node.nodeDependencySections
 import no.nav.platforce.tool.node.nodeJson
 import no.nav.platforce.tool.node.nodeTargetVersion
 import no.nav.platforce.tool.node.validNodePackage
@@ -38,7 +39,7 @@ class NodePackageJsonUpdater {
         findings
             .filter { it.kind == DependencyKind.NODE }
             .filter { it.status in setOf(DependencyStatus.UPDATE, DependencyStatus.AHEAD, DependencyStatus.ADD, DependencyStatus.REMOVE) }
-            .sortedBy { if (it.declaration == "dependencies") 0 else 1 }
+            .sortedBy { if (it.declaration in nodeDependencySections) 0 else 1 }
             .forEach { finding ->
                 require(validNodePackage(finding.key)) { "Unsupported npm package: ${finding.key}" }
                 val version = nodeTargetVersion(finding.targetVersion)
@@ -46,9 +47,10 @@ class NodePackageJsonUpdater {
                 val path =
                     if (finding.status == DependencyStatus.ADD) {
                         when (finding.declaration) {
-                            "dependencies" -> {
-                                if (!root.has("dependencies")) root.add("dependencies", JsonObject())
-                                listOf("dependencies", finding.key)
+                            in nodeDependencySections -> {
+                                val section = checkNotNull(finding.declaration)
+                                if (!root.has(section)) root.add(section, JsonObject())
+                                listOf(section, finding.key)
                             }
 
                             "overrides > ${finding.key}" -> {
@@ -83,13 +85,16 @@ class NodePackageJsonUpdater {
                     }
                 } else {
                     val globalOverride = path == listOf("overrides", finding.key) || path == listOf("overrides", finding.key, ".")
-                    val direct = root.getAsJsonObject("dependencies")?.get(finding.key)
+                    val direct =
+                        nodeDependencySections.mapNotNull { section ->
+                            root.getAsJsonObject(section)?.get(finding.key)?.let { section to it.asString }
+                        }
                     val specification =
-                        if (globalOverride && direct != null) {
-                            check(nodeTargetVersion(direct.asString) == version) {
+                        if (globalOverride && direct.isNotEmpty()) {
+                            check(direct.all { nodeTargetVersion(it.second) == version }) {
                                 "Global override ${finding.key} must match its direct dependency. Refresh and align its target version."
                             }
-                            changed[listOf("dependencies", finding.key)] = version
+                            direct.forEach { (section, _) -> changed[listOf(section, finding.key)] = version }
                             "\$${finding.key}"
                         } else {
                             "^$version"

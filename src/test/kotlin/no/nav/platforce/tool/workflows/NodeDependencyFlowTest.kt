@@ -6,6 +6,7 @@ import no.nav.platforce.tool.node.NodeDependencyDeclaration
 import no.nav.platforce.tool.node.PackageJsonParser
 import no.nav.platforce.tool.node.nodeDependencyStatus
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
+import no.nav.platforce.tool.pullrequests.NodePackageJsonUpdater
 import no.nav.platforce.tool.repositories.DependencyKind
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
@@ -43,7 +44,7 @@ class NodeDependencyFlowTest {
         """.trimIndent()
 
     @Test
-    fun `fallback inventories include production dependencies and overrides but no dev dependencies or Gradle`() {
+    fun `fallback inventories include production and development dependencies and overrides but no engines or Gradle`() {
         val github = RecordingGithubClient(mapOf("package.json" to source))
         val scanner = DependencyScanner(github)
         val inventory = checkNotNull(scanner.scanRepository("navikt/on-behalf"))
@@ -52,8 +53,12 @@ class NodeDependencyFlowTest {
         assertTrue(inventory.dependencies.isEmpty())
         assertTrue(inventory.plugins.isEmpty())
         assertTrue(inventory.declarations.isEmpty())
-        assertEquals(6, inventory.nodeDependencies.size)
-        assertTrue(inventory.nodeDependencies.none { it.key in setOf("jest", "node") })
+        assertEquals(7, inventory.nodeDependencies.size)
+        assertTrue(inventory.nodeDependencies.none { it.key == "node" })
+        assertEquals(
+            NodeDependencyDeclaration("jest", "^29.5.0", "devDependencies", listOf("devDependencies", "jest")),
+            inventory.nodeDependencies.single { it.key == "jest" },
+        )
         assertEquals(listOf("^9.0.0", "^10.5.0"), inventory.nodeDependencies.filter { it.key == "glob" }.map { it.version })
         assertTrue(github.calls.none { it.contains("gradle/wrapper") })
 
@@ -61,10 +66,51 @@ class NodeDependencyFlowTest {
         assertTrue(scan.findings.all { it.kind == DependencyKind.NODE })
         assertEquals(listOf(DependencyStatus.UPDATE, DependencyStatus.UPDATE), scan.findings.map { it.status })
         assertEquals(listOf("dependencies", "overrides > glob"), scan.findings.map { it.declaration })
-        assertEquals(listOf("@slack/bolt", "axios", "form-data", "glob", "ws"), scan.declaredNodeDependencyKeys)
-        assertEquals(setOf("@slack/bolt", "axios", "form-data", "ws"), scan.untrackedNodeDependencies.map { it.key }.toSet())
+        assertEquals(listOf("@slack/bolt", "axios", "form-data", "glob", "jest", "ws"), scan.declaredNodeDependencyKeys)
+        assertEquals(setOf("@slack/bolt", "axios", "form-data", "jest", "ws"), scan.untrackedNodeDependencies.map { it.key }.toSet())
         assertTrue(scan.declaredDependencyKeys!!.isEmpty())
         assertEquals(inventory.nodeDependencies, PackageJsonParser().parse(source))
+    }
+
+    @Test
+    fun `shared saved targets retain each repository production or development declaration through upgrades`() {
+        val state = targets().copy(nodeDependencies = mutableMapOf("tool" to "1.1.0"))
+        val saved = Gson().fromJson(Gson().toJson(state), TargetVersionsState::class.java).snapshot()
+        listOf("dependencies", "devDependencies").forEach { section ->
+            val source = """{"$section":{"tool":"^1.0.0"}}"""
+            val scanner = DependencyScanner(RecordingGithubClient(mapOf("package.json" to source)))
+            val inventory = checkNotNull(scanner.scanRepository("example/$section"))
+            val untracked = scanner.compare(inventory, targets()).untrackedNodeDependencies.single()
+            assertEquals(section, untracked.declaration)
+            val findings = scanner.compare(inventory, saved).findings
+            assertEquals(section, findings.single().declaration)
+            assertEquals(DependencyStatus.UPDATE, findings.single().status)
+            val update = NodePackageJsonUpdater().apply(source, findings)
+            val declarations = PackageJsonParser().parse(update.manifest)
+            assertEquals(listOf(NodeDependencyDeclaration("tool", "^1.1.0", section, listOf(section, "tool"))), declarations)
+            val merged = scanner.compare(inventory.copy(nodeDependencies = declarations), saved).findings.single()
+            assertEquals(DependencyStatus.OK, merged.status)
+            assertEquals(section, merged.declaration)
+        }
+    }
+
+    @Test
+    fun `development declarations retain duplicate package roles and resolve override references`() {
+        val parsed =
+            PackageJsonParser().parse(
+                """
+                {"dependencies":{"shared":"^1.0.0"},
+                 "devDependencies":{"shared":"~2.0.0","cypress":"^13.17.0"},
+                 "overrides":{"shared":"${'$'}shared","cypress":"${'$'}cypress"}}
+                """.trimIndent(),
+            )
+        assertEquals(listOf("^1.0.0", "~2.0.0", "~2.0.0"), parsed.filter { it.key == "shared" }.map { it.version })
+        assertEquals(
+            listOf("dependencies", "devDependencies", "overrides > shared"),
+            parsed.filter { it.key == "shared" }.map { it.declaration },
+        )
+        assertEquals("^13.17.0", parsed.last().version)
+        assertEquals(listOf("overrides", "cypress"), parsed.last().path)
     }
 
     @Test
@@ -107,6 +153,10 @@ class NodeDependencyFlowTest {
             """{"dependencies":null}""",
             """{"dependencies":{"foo":42}}""",
             """{"dependencies":{"foo":""}}""",
+            """{"devDependencies":null}""",
+            """{"devDependencies":[]}""",
+            """{"devDependencies":{"foo":42}}""",
+            """{"devDependencies":{"foo":""}}""",
             """{"overrides":{"foo":null}}""",
             """{"overrides":{".":"1.0.0"}}""",
             """{"overrides":{"foo":{".":{}}}}""",

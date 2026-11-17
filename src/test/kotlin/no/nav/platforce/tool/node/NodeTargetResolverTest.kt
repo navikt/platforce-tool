@@ -7,6 +7,7 @@ import no.nav.platforce.tool.security.SecurityScanStatus
 import no.nav.platforce.tool.security.Vulnerability
 import no.nav.platforce.tool.security.VulnerabilityService
 import no.nav.platforce.tool.targets.TargetVersionsState
+import no.nav.platforce.tool.targets.snapshot
 import no.nav.platforce.tool.workflows.QueuedExecutor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -333,6 +334,54 @@ class NodeTargetResolverTest {
                 NodeTargetResolver(home).resolveWithOverrides("is-odd", "3.0.1", mapOf("is-odd" to "3.0.0"))
             }
         assertTrue(conflict.message!!.contains("EOVERRIDE"))
+    }
+
+    @Test
+    fun `real npm scans Cypress drafted from development dependencies and reports extract zip without a patched version`() {
+        val home = System.getenv("PLATFORCE_TEST_NODE_HOME")?.let(Path::of)
+        assumeTrue(home != null, "Set PLATFORCE_TEST_NODE_HOME to run the public registry integration test")
+        val declarations = PackageJsonParser().parse("""{"devDependencies":{"cypress":"^13.17.0"}}""")
+        val state =
+            TargetVersionsState(
+                mutableMapOf(),
+                mutableMapOf(),
+                "9.0",
+                nodeDependencies = declarations.associate { it.key to it.version }.toMutableMap(),
+            ).snapshot()
+        val osv =
+            object : VulnerabilityService {
+                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
+                    dependencies.associate {
+                        "${it.key}:${it.version}" to
+                            if (it.name == "extract-zip" && it.version == "2.0.1") {
+                                listOf(
+                                    Vulnerability(
+                                        "GHSA-jmr9-qjv8-65gv",
+                                        "Synthetic extract-zip advisory",
+                                        emptyList(),
+                                        emptyList(),
+                                        emptyList(),
+                                    ),
+                                )
+                            } else {
+                                emptyList()
+                            }
+                    }
+            }
+        val result = NodeSecurityService(NodeTargetResolver(checkNotNull(home)), osv).scan(state).targets.single()
+        assertEquals("cypress", result.key)
+        assertEquals("13.17.0", result.targetVersion)
+        assertEquals(NodeSecurityStatus.VULNERABLE, result.status)
+        val vulnerable = result.vulnerableDependencies.single()
+        assertEquals("extract-zip", vulnerable.dependency.name)
+        assertEquals("2.0.1", vulnerable.dependency.version)
+        assertEquals("GHSA-jmr9-qjv8-65gv", vulnerable.vulnerabilities.single().id)
+        assertTrue(
+            vulnerable.vulnerabilities
+                .single()
+                .fixedVersions
+                .isEmpty(),
+        )
     }
 
     @Test

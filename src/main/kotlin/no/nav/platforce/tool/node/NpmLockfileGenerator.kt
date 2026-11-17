@@ -76,7 +76,7 @@ class NpmLockfileGenerator(
             lockfile.getAsJsonObject("dependencies")?.let { dependencies(it, "") }
         }
         PackageJsonParser().parse(manifest).filter { validNodeVersion(it.version) }.forEach { declaration ->
-            if (declaration.declaration == "dependencies") {
+            if (declaration.declaration in nodeDependencySections) {
                 check(packages["node_modules/${declaration.key}"]?.second == declaration.version) {
                     "npm did not lock ${declaration.key} at the scanned target ${declaration.version}"
                 }
@@ -129,7 +129,7 @@ class NpmLockfileGenerator(
                     val specification = value.asString
                     if (specification.startsWith('$')) {
                         val key = specification.drop(1)
-                        require(validNodePackage(key) && root.getAsJsonObject("dependencies")?.has(key) == true) {
+                        require(validNodePackage(key) && nodeDependencySections.any { root.getAsJsonObject(it)?.has(key) == true }) {
                             "Unsupported npm override reference: $specification"
                         }
                     } else {

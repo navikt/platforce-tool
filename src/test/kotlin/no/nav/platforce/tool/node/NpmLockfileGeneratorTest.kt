@@ -30,11 +30,12 @@ class NpmLockfileGeneratorTest {
     private fun lock(
         version: Int,
         dependencyVersion: String,
+        section: String = "dependencies",
     ): String =
         if (version == 1) {
             """{"lockfileVersion":1,"dependencies":{"is-number":{"version":"$dependencyVersion"}}}"""
         } else {
-            """{"lockfileVersion":$version,"packages":{"":{"dependencies":{"is-number":"$dependencyVersion"}},"node_modules/is-number":{"version":"$dependencyVersion"}}}"""
+            """{"lockfileVersion":$version,"packages":{"":{"$section":{"is-number":"$dependencyVersion"}},"node_modules/is-number":{"version":"$dependencyVersion"}}}"""
         }
 
     private fun fakeNode(body: String): Path {
@@ -49,14 +50,22 @@ class NpmLockfileGeneratorTest {
     fun `existing npm lock formats and filenames are preserved while root ranges are restored`() {
         for (version in 1..3) {
             for (filename in listOf("package-lock.json", "npm-shrinkwrap.json")) {
-                val home = fakeNode("/bin/cat > $filename <<'LOCK'\n${lock(version, "7.0.0")}\nLOCK")
-                val result = NpmLockfileGenerator(home).generate(manifest, exact, lock(version, "6.0.0"), filename)
-                val json = JsonParser.parseString(result).asJsonObject
-                assertEquals(version, json["lockfileVersion"].asInt)
-                if (version > 1) {
-                    val packages = json.getAsJsonObject("packages")
-                    assertEquals("^7.0.0", packages.getAsJsonObject("").getAsJsonObject("dependencies")["is-number"].asString)
-                    assertEquals("7.0.0", packages.getAsJsonObject("node_modules/is-number")["version"].asString)
+                for (section in listOf("dependencies", "devDependencies")) {
+                    val home = fakeNode("/bin/cat > $filename <<'LOCK'\n${lock(version, "7.0.0", section)}\nLOCK")
+                    val result =
+                        NpmLockfileGenerator(home).generate(
+                            manifest.replace("\"dependencies\"", "\"$section\""),
+                            exact.replace("\"dependencies\"", "\"$section\""),
+                            lock(version, "6.0.0", section),
+                            filename,
+                        )
+                    val json = JsonParser.parseString(result).asJsonObject
+                    assertEquals(version, json["lockfileVersion"].asInt)
+                    if (version > 1) {
+                        val packages = json.getAsJsonObject("packages")
+                        assertEquals("^7.0.0", packages.getAsJsonObject("").getAsJsonObject(section)["is-number"].asString)
+                        assertEquals("7.0.0", packages.getAsJsonObject("node_modules/is-number")["version"].asString)
+                    }
                 }
             }
         }
@@ -130,7 +139,24 @@ class NpmLockfileGeneratorTest {
     }
 
     @Test
-    fun `real npm retains scanned versions with caret manifests and produces a lock accepted by npm ci without running scripts`() {
+    fun `stale development resolutions fail for every supported npm lockfile version`() {
+        for (version in 1..3) {
+            val home = fakeNode("/bin/cat > package-lock.json <<'LOCK'\n${lock(version, "6.0.0", "devDependencies")}\nLOCK")
+            val failure =
+                assertThrows(IllegalStateException::class.java) {
+                    NpmLockfileGenerator(home).generate(
+                        manifest.replace("\"dependencies\"", "\"devDependencies\""),
+                        exact.replace("\"dependencies\"", "\"devDependencies\""),
+                        lock(version, "6.0.0", "devDependencies"),
+                        "package-lock.json",
+                    )
+                }
+            assertTrue(failure.message!!.contains("npm did not lock is-number at the scanned target 7.0.0"))
+        }
+    }
+
+    @Test
+    fun `real npm retains scanned production and dev versions with caret manifests and an npm ci lock without running scripts`() {
         val home = System.getenv("PLATFORCE_TEST_NODE_HOME")?.let(Path::of)
         assumeTrue(home != null, "Set PLATFORCE_TEST_NODE_HOME to run npm integration tests")
         val node = checkNotNull(home)
@@ -139,7 +165,8 @@ class NpmLockfileGeneratorTest {
         val source =
             """
             {"name":"example","version":"1.0.0",
-             "dependencies":{"is-odd":"3.0.0","is-number":"6.0.0","semver":"7.3.8"},
+             "dependencies":{"is-odd":"3.0.0"},
+             "devDependencies":{"is-number":"6.0.0","semver":"7.3.8"},
              "overrides":{"is-number":"${'$'}is-number","ansi-regex":"5.0.1"},
              "scripts":{"install":"echo unsafe > $sentinel","prepare":"echo unsafe > $sentinel"}}
             """.trimIndent()
@@ -168,7 +195,13 @@ class NpmLockfileGeneratorTest {
         val generated = NpmLockfileGenerator(node).generate(update.manifest, update.resolutionManifest, oldLock, "package-lock.json")
         val packages = JsonParser.parseString(generated).asJsonObject.getAsJsonObject("packages")
         assertEquals("7.5.0", packages.getAsJsonObject("node_modules/semver")["version"].asString)
+        assertTrue(packages.getAsJsonObject("node_modules/semver")["dev"].asBoolean)
         assertEquals("7.0.0", packages.getAsJsonObject("node_modules/is-number")["version"].asString)
+        val root = packages.getAsJsonObject("")
+        assertEquals(setOf("is-odd"), root.getAsJsonObject("dependencies").keySet())
+        assertEquals(setOf("is-number", "semver"), root.getAsJsonObject("devDependencies").keySet())
+        assertEquals("^7.5.0", root.getAsJsonObject("devDependencies")["semver"].asString)
+        assertEquals("^7.0.0", root.getAsJsonObject("devDependencies")["is-number"].asString)
         assertFalse(
             packages.entrySet().any {
                 it.key.endsWith("node_modules/is-number") &&

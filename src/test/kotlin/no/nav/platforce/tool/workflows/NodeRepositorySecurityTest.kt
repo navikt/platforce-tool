@@ -87,6 +87,74 @@ class NodeRepositorySecurityTest {
     }
 
     @Test
+    fun `development dependencies receive vulnerability statuses and use global covers without changing their role`() {
+        val covered = scan("""{"devDependencies":{"bull":"^4.16.5"},"overrides":{"uuid":"^11.1.1"}}""")
+        assertEquals(listOf(DependencyStatus.OK_OVERRIDDEN, DependencyStatus.OK_TRANSIENT), covered.findings.map { it.status })
+        assertEquals("devDependencies", covered.findings.first().declaration)
+        val vulnerable =
+            scan(
+                """{"devDependencies":{"bull":"^4.16.5"}}""",
+                listOf(consumer.copy(status = NodeSecurityStatus.VULNERABLE)),
+            )
+        assertEquals(DependencyStatus.VULNERABLE, vulnerable.findings.single().status)
+        assertEquals("devDependencies", vulnerable.findings.single().declaration)
+    }
+
+    @Test
+    fun `normal development providers cover development consumers but not production consumers`() {
+        val targets = state.copy(nodeTransientDependencies = emptySet())
+        val normal = cover.copy(status = NodeSecurityStatus.OK)
+        listOf("dependencies", "devDependencies").forEach { providerSection ->
+            val manifest =
+                if (providerSection == "dependencies") {
+                    """{"devDependencies":{"bull":"4.16.5"},"dependencies":{"uuid":"11.1.1"}}"""
+                } else {
+                    """{"devDependencies":{"bull":"4.16.5","uuid":"11.1.1"}}"""
+                }
+            val result =
+                scan(
+                    manifest,
+                    listOf(consumer, normal),
+                    targets,
+                )
+            assertEquals(DependencyStatus.OK_OVERRIDDEN, result.findings.single { it.key == "bull" }.status)
+            assertEquals(DependencyStatus.OK, result.findings.single { it.key == "uuid" }.status)
+            assertEquals(2, result.findings.size)
+        }
+        val production =
+            scan(
+                """{"dependencies":{"bull":"4.16.5"},"devDependencies":{"uuid":"11.1.1"}}""",
+                listOf(consumer, normal),
+                targets,
+            )
+        assertEquals(listOf(DependencyStatus.UNRESOLVED, DependencyStatus.OK), production.findings.map { it.status })
+        assertEquals("devDependencies", production.findings.last().declaration)
+    }
+
+    @Test
+    fun `missing normal providers stay development only unless a production consumer also needs them`() {
+        val targets =
+            state.copy(
+                nodeDependencies = (state.nodeDependencies + ("other" to "1.0.0")).toMutableMap(),
+                nodeTransientDependencies = emptySet(),
+            )
+        val other = consumer.copy(key = "other", targetVersion = "1.0.0")
+        val normal = cover.copy(status = NodeSecurityStatus.OK)
+        listOf("dependencies", "devDependencies").forEach { section ->
+            val manifest =
+                if (section == "dependencies") {
+                    """{"devDependencies":{"bull":"4.16.5"},"dependencies":{"other":"1.0.0"}}"""
+                } else {
+                    """{"devDependencies":{"bull":"4.16.5","other":"1.0.0"}}"""
+                }
+            val result = scan(manifest, listOf(consumer, other, normal), targets)
+            val addition = result.findings.single { it.status == DependencyStatus.ADD }
+            assertEquals(section, addition.declaration)
+            assertEquals(setOf("bull", "other"), addition.relatedTo.map { it.key }.toSet())
+        }
+    }
+
+    @Test
     fun `normal dependency and scoped override do not stand in for a missing global override`() {
         listOf(
             """{"dependencies":{"bull":"4.16.5","uuid":"11.1.1"}}""",
