@@ -7,14 +7,17 @@ import no.nav.platforce.tool.scanning.ScanJobSnapshot
 import no.nav.platforce.tool.scanning.UserScanJobs
 import no.nav.platforce.tool.scanning.scanExecutor
 import no.nav.platforce.tool.security.SecurityScanStatus
+import no.nav.platforce.tool.security.VersionSuggestion
 import no.nav.platforce.tool.security.VulnerabilityService
 import no.nav.platforce.tool.security.VulnerableDependency
 import no.nav.platforce.tool.targets.TargetVersionsState
+import no.nav.platforce.tool.targets.fingerprint
 import no.nav.platforce.tool.user.userContext
 import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.routing.bind
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 
 enum class NodeSecurityStatus {
@@ -42,7 +45,13 @@ data class NodeSecuritySnapshot(
     val targetFingerprint: String,
     val result: NodeSecurityScan? = null,
     val error: String? = null,
+    val phase: NodeScanPhase? = null,
 )
+
+enum class NodeScanPhase {
+    RESOLUTION,
+    OSV,
+}
 
 class NodeSecurityService(
     private val resolve: (String, String) -> List<ResolvedDependency>,
@@ -50,7 +59,11 @@ class NodeSecurityService(
 ) {
     private val log = KotlinLogging.logger { }
 
-    fun scan(state: TargetVersionsState): NodeSecurityScan {
+    fun scan(
+        state: TargetVersionsState,
+        onPhase: (NodeScanPhase) -> Unit = {},
+    ): NodeSecurityScan {
+        onPhase(NodeScanPhase.RESOLUTION)
         val resolved = mutableMapOf<String, List<ResolvedDependency>>()
         val preliminary =
             state.nodeDependencies.toSortedMap().map { (key, declaration) ->
@@ -90,7 +103,25 @@ class NodeSecurityService(
                 }
             }
         val packages = resolved.values.flatten().distinctBy { it.name to it.version }
+        onPhase(NodeScanPhase.OSV)
         val findings = if (packages.isEmpty()) emptyMap() else vulnerabilities.find(packages)
+        val candidates =
+            packages.associateWith { dependency ->
+                findings["${dependency.key}:${dependency.version}"]
+                    .orEmpty()
+                    .flatMap { it.fixedVersions }
+                    .filter { validNodeVersion(it) && '-' !in it.substringBefore('+') && compareNodeVersions(it, dependency.version) > 0 }
+                    .distinct()
+                    .sortedWith(::compareNodeVersions)
+            }
+        val candidatePackages =
+            candidates
+                .flatMap { (dependency, versions) ->
+                    versions.map { dependency.copy(version = it, requestedVersion = it) }
+                }.distinctBy { it.name to it.version }
+        val unqueried = candidatePackages.filterNot { "${it.key}:${it.version}" in findings }
+        val candidateFindings = findings + if (unqueried.isEmpty()) emptyMap() else vulnerabilities.find(unqueried)
+        check(candidatePackages.all { "${it.key}:${it.version}" in candidateFindings }) { "Missing npm fix vulnerability lookup results" }
         return NodeSecurityScan(
             preliminary.map { result ->
                 val packages = resolved[result.key] ?: return@map result
@@ -100,7 +131,15 @@ class NodeSecurityService(
                             checkNotNull(findings["${dependency.key}:${dependency.version}"]) {
                                 "Missing npm vulnerability lookup for ${dependency.name}@${dependency.version}"
                             }
-                        if (issues.isEmpty()) null else VulnerableDependency(dependency, issues)
+                        if (issues.isEmpty()) {
+                            null
+                        } else {
+                            val fix =
+                                candidates.getValue(dependency).firstOrNull {
+                                    candidateFindings["${dependency.key}:$it"]?.isEmpty() == true
+                                }
+                            VulnerableDependency(dependency, issues, fix?.let { VersionSuggestion(dependency.name, it) })
+                        }
                     }
                 result.copy(
                     status = if (vulnerable.isEmpty()) NodeSecurityStatus.OK else NodeSecurityStatus.VULNERABLE,
@@ -115,22 +154,37 @@ class NodeSecurityScanner(
     service: NodeSecurityService,
     executor: ExecutorService = scanExecutor("node-security"),
 ) {
-    private val jobs = UserScanJobs(executor) { _: String, state: TargetVersionsState -> service.scan(state) }
+    private val phases = ConcurrentHashMap<Pair<String, String>, NodeScanPhase>()
+    private val jobs =
+        UserScanJobs(executor) { username: String, state: TargetVersionsState ->
+            val key = username to fingerprint(state)
+            try {
+                service.scan(state) { phases[key] = it }
+            } finally {
+                phases.remove(key)
+            }
+        }
 
     fun start(
         username: String,
         state: TargetVersionsState,
-    ): NodeSecuritySnapshot = jobs.start(username, state, refreshReady = true).toNodeSnapshot()
+    ): NodeSecuritySnapshot = jobs.start(username, state, refreshReady = true).toNodeSnapshot(username)
 
     fun get(
         username: String,
         state: TargetVersionsState,
-    ): NodeSecuritySnapshot = jobs.get(username, state).toNodeSnapshot()
+    ): NodeSecuritySnapshot = jobs.get(username, state).toNodeSnapshot(username)
 
     fun invalidate(username: String) = jobs.invalidate(username)
 
-    private fun ScanJobSnapshot<NodeSecurityScan>.toNodeSnapshot() =
-        NodeSecuritySnapshot(SecurityScanStatus.valueOf(status.name), targetFingerprint, result, error)
+    private fun ScanJobSnapshot<NodeSecurityScan>.toNodeSnapshot(username: String) =
+        NodeSecuritySnapshot(
+            SecurityScanStatus.valueOf(status.name),
+            targetFingerprint,
+            result,
+            error,
+            if (status.name == "RUNNING") phases[username to targetFingerprint] ?: NodeScanPhase.RESOLUTION else null,
+        )
 }
 
 fun nodeSecurityRoutes(scanner: NodeSecurityScanner) =

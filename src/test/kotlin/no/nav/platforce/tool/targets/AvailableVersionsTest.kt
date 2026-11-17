@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.targets
 
+import com.google.gson.Gson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -21,6 +22,93 @@ import java.util.Collections
 import java.util.concurrent.TimeUnit
 
 class AvailableVersionsTest {
+    @Test
+    fun `npm upgrades use registry semver publication times and user scoped expiring metadata`() {
+        var time = Instant.parse("2026-11-17T12:00:00Z").toEpochMilli()
+        val requests = mutableListOf<String>()
+        val metadata =
+            Gson().toJson(
+                mapOf(
+                    "versions" to
+                        listOf(
+                            "1.0.0",
+                            "1.0.0+build.1",
+                            "1.2.0",
+                            "1.10.0",
+                            "2.0.0",
+                            "2.1.0-test.1",
+                            "invalid",
+                        ).associateWith { emptyMap<String, String>() },
+                    "time" to
+                        mapOf(
+                            "1.2.0" to "2026-11-10T12:00:00Z",
+                            "1.10.0" to "2026-11-10T12:00:01Z",
+                            "2.0.0" to "2024-01-01T00:00:00Z",
+                            "2.1.0-test.1" to "2024-01-01T00:00:00Z",
+                        ),
+                ),
+            )
+        val service =
+            AvailableVersionsService(
+                client { url ->
+                    requests += url
+                    200 to metadata
+                },
+            ) { time }
+        val result = service.available("alice", "@slack/bolt", "^1.0.0", "node")
+        assertEquals("@slack/bolt", result.key)
+        assertEquals("1.0.0", result.currentVersion)
+        assertEquals(listOf("2.1.0-test.1", "2.0.0", "1.10.0", "1.2.0"), result.versions.map { it.version })
+        assertTrue(result.versions.first().prerelease)
+        assertEquals(listOf("2.1.0-test.1", "2.0.0"), result.versions.filter { it.majorUpgrade }.map { it.version })
+        assertEquals(listOf("1.10.0"), result.versions.filter { it.young }.map { it.version })
+        assertEquals("2026-11-10T12:00:00Z", result.versions.last().releaseDate)
+        assertEquals(listOf("https://registry.npmjs.org/@slack%2Fbolt"), requests)
+        service.available("alice", "@slack/bolt", "~1.2.0", "node")
+        assertEquals(1, requests.size)
+        service.available("bob", "@slack/bolt", "1.0.0", "node")
+        assertEquals(2, requests.size)
+        time += TimeUnit.MINUTES.toMillis(5)
+        service.available("alice", "@slack/bolt", "1.0.0", "node")
+        assertEquals(3, requests.size)
+    }
+
+    @Test
+    fun `npm missing and invalid release dates stay visible and failed metadata can be retried`() {
+        var response = 503 to ""
+        val service = AvailableVersionsService(client { response })
+        assertThrows(IOException::class.java) { service.available("alice", "express", "1.0.0", "node") }
+        response =
+            200 to """{"versions":{"1.1.0":{},"1.2.0":{},"1.3.0":{}},"time":{"1.2.0":"invalid","1.3.0":"+999999999-01-01T00:00:00Z"}}"""
+        val versions = service.available("alice", "express", "1.0.0", "node").versions
+        assertEquals(3, versions.size)
+        assertTrue(versions.all { it.releaseDate == null && !it.young && it.releaseDateError!!.startsWith("Release date unavailable:") })
+    }
+
+    @Test
+    fun `npm rejects nonpublic names ranges malformed metadata and redirects`() {
+        val service = AvailableVersionsService(client { error("Invalid input must not request metadata") })
+        listOf("../secret", "@scope/../../secret", "https://example.test", "a:b", "a?query").forEach {
+            assertThrows(IllegalArgumentException::class.java) { service.available("alice", it, "1.0.0", "node") }
+        }
+        listOf("latest", ">=1.0.0", "workspace:*", "1.0", "").forEach {
+            assertThrows(IllegalArgumentException::class.java) { service.available("alice", "express", it, "node") }
+        }
+        listOf(
+            302 to "",
+            404 to "",
+            200 to "{",
+            200 to "[]",
+            200 to """{"versions":[]}""",
+            200 to """{"versions":{"1.1.0":null}}""",
+            200 to "x".repeat(16 * 1024 * 1024 + 1),
+        ).forEach { reply ->
+            assertThrows(IOException::class.java) {
+                AvailableVersionsService(client { reply }).available("alice", "express", "1.0.0", "node")
+            }
+        }
+    }
+
     @Test
     fun `plugin upgrades use marker metadata from Plugin Portal and keep the original ID`() {
         val urls = mutableListOf<String>()

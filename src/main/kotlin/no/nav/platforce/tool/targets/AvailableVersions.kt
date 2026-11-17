@@ -1,10 +1,16 @@
 package no.nav.platforce.tool.targets
 
+import com.google.gson.JsonParseException
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
+import no.nav.platforce.tool.node.compareNodeVersions
+import no.nav.platforce.tool.node.nodeTargetVersion
+import no.nav.platforce.tool.node.validNodePackage
+import no.nav.platforce.tool.node.validNodeVersion
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -15,6 +21,7 @@ import org.xml.sax.SAXException
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.time.Instant
+import java.time.format.DateTimeParseException
 import java.util.concurrent.TimeUnit
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
@@ -53,6 +60,7 @@ class AvailableVersionsService(
     private data class VersionMetadata(
         val artifactUrl: HttpUrl,
         val versions: List<String>,
+        val nodeDates: Map<String, ReleaseDate> = emptyMap(),
     )
 
     private data class ReleaseDate(
@@ -88,37 +96,52 @@ class AvailableVersionsService(
         currentVersion: String,
         kind: String = "dependency",
     ): AvailableVersions {
-        require(kind in setOf("dependency", "platform_bom", "plugin")) { "Unsupported target kind" }
+        require(kind in setOf("dependency", "platform_bom", "plugin", "node")) { "Unsupported target kind" }
+        val node = kind == "node"
+        val currentValue = if (node) nodeTargetVersion(currentVersion) else currentVersion
         val coordinate = if (kind == "plugin") "$key:$key.gradle.plugin" else key
-        require(key.length <= 300 && coordinatePattern.matches(coordinate)) { "Use a valid Maven coordinate or plugin ID" }
-        require(versionPattern.matches(currentVersion) && !currentVersion.endsWith('+') && !currentVersion.startsWith("latest.")) {
+        require(if (node) validNodePackage(key) else key.length <= 300 && coordinatePattern.matches(coordinate)) {
+            "Use a valid ${if (node) "public npm package name" else "Maven coordinate or plugin ID"}"
+        }
+        require(
+            if (node) {
+                currentValue.length <= 200 && validNodeVersion(currentValue)
+            } else {
+                versionPattern.matches(currentValue) && !currentValue.endsWith('+') && !currentValue.startsWith("latest.")
+            },
+        ) {
             "Use a concrete current version"
         }
         val cacheKey = CacheKey(username, "$kind:$coordinate")
         val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now() < it.expiresAt } }
         val metadata =
-            cached?.metadata ?: loadVersions(coordinate, kind == "plugin").also { loaded ->
+            cached?.metadata ?: (if (node) loadNodeVersions(key) else loadVersions(coordinate, kind == "plugin")).also { loaded ->
                 synchronized(cache) {
                     cache.entries.removeIf { now() >= it.value.expiresAt }
                     cache[cacheKey] = CachedVersions(now() + TimeUnit.MINUTES.toMillis(5), loaded)
                     while (cache.size > 256) cache.remove(cache.keys.first())
                 }
             }
-        val current = ComparableVersion(currentVersion)
-        val currentMajor = major(currentVersion)
+        val ordering = if (node) Comparator(::compareNodeVersions) else compareBy<String> { ComparableVersion(it) }
+        val currentMajor = major(currentValue)
         val candidates =
             metadata.versions
-                .filter { ComparableVersion(it) > current }
-                .sortedWith(compareByDescending<String> { ComparableVersion(it) }.thenByDescending { it })
+                .filter { ordering.compare(it, currentValue) > 0 }
+                .sortedWith(ordering.reversed().thenByDescending { it })
         val versions =
             runBlocking {
                 candidates
                     .map { version ->
                         async(dateDispatcher) {
-                            val date = releaseDate(username, metadata.artifactUrl, coordinate.substringAfter(':'), version)
+                            val date =
+                                if (node) {
+                                    metadata.nodeDates.getValue(version)
+                                } else {
+                                    releaseDate(username, metadata.artifactUrl, coordinate.substringAfter(':'), version)
+                                }
                             AvailableVersion(
                                 version,
-                                prereleasePattern.containsMatchIn(version),
+                                if (node) '-' in version.substringBefore('+') else prereleasePattern.containsMatchIn(version),
                                 currentMajor != null && major(version) != null && major(version) != currentMajor,
                                 date.timestamp?.let { Instant.ofEpochMilli(it).toString() },
                                 date.timestamp?.let { it > now() - TimeUnit.DAYS.toMillis(7) } ?: false,
@@ -129,9 +152,63 @@ class AvailableVersionsService(
             }
         return AvailableVersions(
             key,
-            currentVersion,
+            currentValue,
             versions,
         )
+    }
+
+    private fun loadNodeVersions(key: String): VersionMetadata {
+        val url = "https://registry.npmjs.org".toHttpUrl().newBuilder().addPathSegment(key).build()
+        val document =
+            client
+                .newCall(
+                    Request
+                        .Builder()
+                        .url(url)
+                        .header("Accept", "application/json")
+                        .build(),
+                ).execute()
+                .use { response ->
+                    if (!response.isSuccessful) throw IOException("Version lookup failed at registry.npmjs.org: HTTP ${response.code}")
+                    val bytes = response.body.byteStream().readNBytes(16 * 1024 * 1024 + 1)
+                    if (bytes.size > 16 * 1024 * 1024) throw IOException("npm version metadata is too large")
+                    try {
+                        JsonParser.parseString(bytes.toString(Charsets.UTF_8))
+                    } catch (failure: JsonParseException) {
+                        throw IOException("Invalid npm version metadata", failure)
+                    }
+                }
+        if (!document.isJsonObject) throw IOException("Invalid npm version metadata")
+        val versions = document.asJsonObject.get("versions")
+        if (versions?.isJsonObject != true) throw IOException("Missing npm versions metadata")
+        val dates =
+            document.asJsonObject
+                .get("time")
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+        val published = versions.asJsonObject.keySet().filter { it.length <= 200 && validNodeVersion(it) }
+        val releaseDates =
+            published.associateWith { version ->
+                if (!versions.asJsonObject.get(version).isJsonObject) throw IOException("Invalid npm version metadata for $key@$version")
+                val date = dates?.get(version)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+                val timestamp =
+                    try {
+                        date?.let { Instant.parse(it).toEpochMilli() }
+                    } catch (failure: DateTimeParseException) {
+                        log.warn(failure) { "Invalid npm release date for $key@$version" }
+                        null
+                    } catch (failure: ArithmeticException) {
+                        log.warn(failure) { "npm release date out of range for $key@$version" }
+                        null
+                    }
+                if (timestamp == null) {
+                    log.warn { "Release date unavailable for $key@$version" }
+                    ReleaseDate(null, "Release date unavailable: missing or invalid npm publication time")
+                } else {
+                    ReleaseDate(timestamp)
+                }
+            }
+        return VersionMetadata(url, published, releaseDates)
     }
 
     private fun releaseDate(

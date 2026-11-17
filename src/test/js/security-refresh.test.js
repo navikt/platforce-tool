@@ -424,7 +424,7 @@ test("Node repository renders declaration contexts, escaped ranges and explicit 
     assert.match(card.innerHTML, /OLDER/);
     assert.match(card.innerHTML, /REVIEW/);
     assert.match(card.innerHTML, /Target: 10.5.0/);
-    assert.match(card.innerHTML, /Repository lockfiles and effective override combinations have not been scanned/);
+    assert.doesNotMatch(card.innerHTML, /node-scan-notice|Repository lockfiles|Comparisons use the lower version/);
     assert.match(card.innerHTML, /Node.js PR\/Auto updates are not supported yet" disabled>Create PR/);
     assert.doesNotMatch(card.innerHTML, /pr-prerequisite-icon/);
     assert.doesNotMatch(card.innerHTML, /onclick="event.stopPropagation\(\); createPr/);
@@ -434,7 +434,7 @@ test("Node repository renders declaration contexts, escaped ranges and explicit 
     assert.match(card.innerHTML, /Untracked Node declarations \(1\)/);
 });
 
-test("Node table shows security status and supports adding and removing targets without Gradle upgrade controls", () => {
+test("Node table binds the shared upgrade button on saved and newly added targets", () => {
     const app = gui();
     app.value(`nodeSecurityScan = { targets: [
         { key: "@slack/bolt", targetVersion: "3.22.0", status: "OK", resolvedPackageCount: 7 }
@@ -455,14 +455,18 @@ test("Node table shows security status and supports adding and removing targets 
         };
     };
     app.context.bindDependencyUsage = () => {};
-    app.context.bindTargetUpgrades = () => { throw new Error("Node must not use Gradle upgrades"); };
+    const upgradeBindings = [];
+    app.context.bindTargetUpgrades = (row, type) => upgradeBindings.push([row, type]);
     app.context.renderTable("nodeTable", [["@slack/bolt", "^3.22.0"]], "node");
     assert.equal(rows.length, 2);
     assert.equal(rows[0].querySelector(".key").value, "@slack/bolt");
     assert.equal(rows[0].querySelector(".version").value, "3.22.0");
-    assert.doesNotMatch(rows[0].innerHTML, /target-upgrade-btn|transient-btn/);
+    assert.match(rows[0].innerHTML, /target-upgrade-btn/);
+    assert.doesNotMatch(rows[0].innerHTML, /transient-btn/);
+    assert.equal(upgradeBindings[0][0], rows[0]);
+    assert.equal(upgradeBindings[0][1], "node");
     assert.match(rows[0].innerHTML, /target-status-pill target-status-ok/);
-    assert.match(rows[0].innerHTML, /No known vulnerabilities found in 7 resolved package versions/);
+    assert.match(rows[0].innerHTML, /No vulnerabilities found in the resolved dependency tree/);
     assert.match(rows[0].innerHTML, /data-usage-type="node"/);
     const add = rows[1];
     assert.equal(add.querySelector(".key").placeholder, "package or @scope/package");
@@ -472,7 +476,10 @@ test("Node table shows security status and supports adding and removing targets 
     assert.equal(rows.length, 3);
     assert.equal(rows[1].querySelector(".key").value, "ws");
     assert.equal(rows[1].querySelector(".version").value, "7.5.11");
-    assert.doesNotMatch(rows[1].innerHTML, /target-upgrade-btn|target-status-pill/);
+    assert.match(rows[1].innerHTML, /target-upgrade-btn/);
+    assert.doesNotMatch(rows[1].innerHTML, /target-status-pill/);
+    assert.equal(upgradeBindings[1][0], rows[1]);
+    assert.equal(upgradeBindings[1][1], "node");
     rows[1].querySelector(".remove-btn").onclick();
     assert.equal(rows.length, 2);
 });
@@ -491,7 +498,13 @@ test("Node scan polls its own job and shows results only at matching normalized 
     assert.deepEqual(app.calls.map(([url]) => url), ["/internal/api/node-security/start", "/internal/api/node-security"]);
     assert.equal(app.element("scanNode").disabled, false);
     assert.equal(app.element("scanNode").textContent, "SCAN");
-    assert.equal(app.element("nodeScanStatus").textContent, "DONE");
+    assert.equal(app.element("nodeScanMessage").textContent, "DONE");
+    assert.match(app.element("nodeScanStatus").innerHTML, /class="target-scan-step"/);
+    assert.match(app.element("nodeScanStatus").innerHTML, /npm target resolution/);
+    assert.match(app.element("nodeScanStatus").innerHTML, /Query OSV for vulnerabilities/);
+    assert.ok(app.steps.some(([id, status]) => id === "nodeStepResolution" && status === "RUNNING"));
+    assert.ok(app.steps.some(([id, status]) => id === "nodeStepOsv" && status === "DONE"));
+    assert.ok(app.steps.some(([id, status]) => id === "nodeStepDone" && status === "DONE"));
     assert.equal(app.context.findTargetSecurity("node", "@slack/bolt", "^3.22.0").status, "VULNERABLE");
     assert.equal(app.context.findTargetSecurity("node", "@slack/bolt", "3.23.0"), null);
     assert.equal(app.context.findTargetSecurity("plugin", "@slack/bolt", "3.22.0"), null);
@@ -517,7 +530,7 @@ test("Node scan disables repeated starts and restores controls after lookup fail
     await pending;
     assert.equal(app.element("scanNode").disabled, false);
     assert.equal(app.element("scanNode").textContent, "SCAN");
-    assert.match(app.element("nodeScanStatus").textContent, /FAILED: Registry unavailable/);
+    assert.match(app.element("nodeScanMessage").textContent, /FAILED: Registry unavailable/);
     assert.equal(app.value("nodeSecurityScan"), null);
 });
 
@@ -539,7 +552,7 @@ test("Node scanning rejects stale fingerprints and results invalidated by saving
         assert.equal(app.value("nodeSecurityScan"), null);
         assert.equal(app.element("scanNode").disabled, false);
         if (change === "fingerprint") {
-            assert.match(app.element("nodeScanStatus").textContent, /Target versions changed during Node scanning/);
+            assert.match(app.element("nodeScanMessage").textContent, /Target versions changed during Node scanning/);
         }
     }
 });
@@ -551,10 +564,13 @@ test("Node cached scans restore independently and clear stale badges on idle or 
     app.responses(() => snapshot);
     await app.context.loadCachedNodeSecurity();
     assert.equal(app.context.findTargetSecurity("node", "express", "4.21.2").status, "OK");
-    snapshot = { status: "RUNNING" };
+    snapshot = { status: "RUNNING", phase: "OSV" };
     await app.context.loadCachedNodeSecurity();
     assert.equal(app.value("nodeSecurityScan"), null);
-    assert.match(app.element("nodeScanStatus").textContent, /Node scan is running/);
+    assert.match(app.element("nodeScanStatus").innerHTML, /nodeScanSteps/);
+    assert.ok(app.steps.some(([id, status]) => id === "nodeStepResolution" && status === "DONE"));
+    assert.ok(app.steps.some(([id, status]) => id === "nodeStepOsv" && status === "RUNNING"));
+    assert.doesNotMatch(app.element("nodeScanStatus").innerHTML, /Click SCAN|independently|exact npm/);
     snapshot = { status: "IDLE" };
     await app.context.loadCachedNodeSecurity();
     assert.equal(app.element("nodeScanStatus").hidden, true);
@@ -573,31 +589,53 @@ test("saving targets invalidates Node badges and hides old scan feedback", async
     assert.equal(app.element("nodeScanStatus").hidden, true);
 });
 
-test("Node unresolved targets have explicit completion feedback and details never claim repository coverage", async () => {
+test("Node reports share the Gradle layout with collapsed advisories and clickable fix pills", async () => {
     const app = gui();
     app.responses(() => ({
         status: "READY",
         result: { targets: [{ key: "express", targetVersion: "latest", status: "UNSUPPORTED" }] }
     }));
     await app.context.scanNodeSecurity();
-    assert.match(app.element("nodeScanStatus").textContent, /1 unresolved or unsupported targets/);
+    assert.match(app.element("nodeScanMessage").textContent, /1 unresolved or unsupported targets/);
     const details = app.context.nodeSecurityDetailsHtml({
         key: "@slack/bolt",
         targetVersion: "3.22.0",
         status: "VULNERABLE",
         vulnerableDependencies: [{
-            dependency: { name: "transitive", version: "1.0.0" },
+            dependency: { group: "npm", name: "transitive", version: "1.0.0" },
+            suggestedVersion: { dependency: "transitive", version: "2.0.0" },
             vulnerabilities: [{ id: "NPM-TEST", summary: "<script>", fixedVersions: ["2.0.0"] }]
         }]
     });
     assert.match(details, /transitive/);
     assert.match(details, /NPM-TEST/);
-    assert.match(details, /package fixes: 2.0.0/);
-    assert.match(details, /Repository lockfiles, override combinations and OS packages are not covered/);
+    assert.match(details, /Fixed in:\s*2.0.0/);
+    assert.match(details, /<details>\s*<summary>Vulnerability details<\/summary>/);
+    assert.match(details, /class="target-version-pill"/);
+    assert.match(details, /applySecurityUpgrade\(\s*this,\s*'transitive',\s*'2.0.0', 'NODE'/);
+    assert.doesNotMatch(details, /npm:transitive|independently|Repository lockfiles|Package fix versions/);
     assert.match(details, /&lt;script&gt;/);
     assert.doesNotMatch(details, /No known vulnerabilities|<script>/);
     const safe = app.context.nodeSecurityDetailsHtml({ key: "safe", targetVersion: "1.0.0", status: "OK", resolvedPackageCount: 7 });
-    assert.match(safe, /No known vulnerabilities found in 7 resolved package versions/);
+    assert.match(safe, /No vulnerabilities found in the resolved dependency tree/);
+    const unresolved = app.context.nodeSecurityDetailsHtml({
+        key: "missing", targetVersion: "1.0.0", status: "UNRESOLVED", error: "Registry <unavailable>"
+    });
+    assert.match(unresolved, /Registry &lt;unavailable&gt;/);
+    assert.doesNotMatch(unresolved, /No vulnerabilities found/);
+});
+
+test("Node fix pills draft npm targets without saving or changing Gradle targets", async () => {
+    const app = gui();
+    const button = { removed: false, remove() { this.removed = true; } };
+    await app.context.applySecurityUpgrade(button, "@scope/package", "2.0.0", "NODE");
+    assert.equal(app.value('targetState.nodeDependencies["@scope/package"]'), "2.0.0");
+    assert.equal(app.value('targetState.drafted.has("NODE:@scope/package")'), true);
+    assert.equal(app.value('targetState.dependencies["@scope/package"]'), undefined);
+    assert.equal(app.calls.length, 0);
+    assert.equal(button.removed, true);
+    await app.context.applySecurityUpgrade(button, "example:library", "3.0.0");
+    assert.equal(app.value('targetState.dependencies["example:library"]'), "3.0.0");
 });
 
 test("repository renders BOM-only untracked entries and tracked BOMs as a distinct type", () => {

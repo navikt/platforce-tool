@@ -259,10 +259,6 @@ function renderRepo(repoView, scanMap, container) {
             ${
         isScanned
             ? `
-            ${isNode ? `<p class="node-scan-notice">Node: declared package.json dependencies and overrides, not resolved lockfile versions.
-                Comparisons use the lower version of simple exact, ^ or ~ declarations; other ranges, aliases and references require review.
-                Repository lockfiles and effective override combinations have not been scanned.
-                Use SCAN in the NODE targets section for independent target checks. PR/Auto updates are not supported yet.</p>` : ""}
             <div class="table">
                 ${findings.map(f => {
                     const kind = (f.kind || "UNKNOWN").toLowerCase();

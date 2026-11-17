@@ -1,5 +1,9 @@
 package no.nav.platforce.tool.targets
 
+import no.nav.platforce.tool.node.NodeSecurityService
+import no.nav.platforce.tool.node.nodeTargetVersion
+import no.nav.platforce.tool.node.validNodePackage
+import no.nav.platforce.tool.node.validNodeVersion
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.resolution.unsupportedPluginReason
@@ -28,6 +32,7 @@ class UpgradeSecurityScanner(
     private val resolve: (String, TargetVersionsState, Map<String, String>) -> TargetResolution,
     private val osv: VulnerabilityService,
     private val executor: ExecutorService = scanExecutor("upgrade-security"),
+    private val nodeSecurity: NodeSecurityService? = null,
 ) {
     private data class Key(
         val kind: String,
@@ -45,15 +50,32 @@ class UpgradeSecurityScanner(
         currentVersion: String,
         start: Boolean,
     ): UpgradeSecuritySnapshot {
-        require(kind == "plugin" || kind == "dependency") { "Standalone upgrade scanning supports dependencies and plugins" }
-        require(name.length <= 300 && name.matches(Regex("""[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?"""))) { "Invalid target name" }
-        require(currentVersion.matches(Regex("""[A-Za-z0-9][A-Za-z0-9._+-]{0,199}"""))) { "Invalid current version" }
+        require(
+            kind in setOf("plugin", "dependency", "node"),
+        ) { "Standalone upgrade scanning supports dependencies, plugins and npm packages" }
+        val node = kind == "node"
+        require(
+            if (node) {
+                validNodePackage(name)
+            } else {
+                name.length <= 300 && name.matches(Regex("""[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?"""))
+            },
+        ) { "Invalid target name" }
+        val current = if (node) nodeTargetVersion(currentVersion) else currentVersion
+        require(
+            current.length <= 200 &&
+                if (node) {
+                    validNodeVersion(current)
+                } else {
+                    current.matches(Regex("""[A-Za-z0-9][A-Za-z0-9._+-]{0,199}"""))
+                },
+        ) { "Invalid current version" }
         val userJobs = jobs.computeIfAbsent(username) { ConcurrentHashMap() }
-        val key = Key(kind, name, currentVersion)
+        val key = Key(kind, name, current)
         val job =
             if (start) {
                 userJobs.computeIfAbsent(key) {
-                    UserScanJobs(executor) { user, savedState -> scan(user, savedState, kind, name, currentVersion) }
+                    UserScanJobs(executor) { user, savedState -> scan(user, savedState, kind, name, current) }
                 }
             } else {
                 userJobs[key]
@@ -76,6 +98,21 @@ class UpgradeSecurityScanner(
     ): List<UpgradeSecurityResult> {
         val candidates = versions.available(username, name, current, kind).versions.filterNot { it.prerelease }
         if (candidates.isEmpty()) return emptyList()
+        if (kind == "node") {
+            val service = checkNotNull(nodeSecurity) { "npm upgrade security scanning is not configured" }
+            return candidates.map { candidate ->
+                val result = service.scan(state.copy(nodeDependencies = mutableMapOf(name to candidate.version))).targets.single()
+                UpgradeSecurityResult(
+                    candidate.version,
+                    result.status.name,
+                    result.vulnerableDependencies
+                        .flatMap { it.vulnerabilities }
+                        .distinctBy { it.id }
+                        .size,
+                    result.error,
+                )
+            }
+        }
         if (kind == "plugin") require(unsupportedPluginReason(name, current) == null) { "Plugin has no supported published marker" }
         val coordinate = if (kind == "plugin") "$name:$name.gradle.plugin" else name
         val modules = candidates.associate { it.version to "$coordinate:${it.version}" }

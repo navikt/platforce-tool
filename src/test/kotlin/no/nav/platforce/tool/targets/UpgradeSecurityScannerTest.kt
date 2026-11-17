@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.targets
 
+import no.nav.platforce.tool.node.NodeSecurityService
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.security.Vulnerability
@@ -15,6 +16,89 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class UpgradeSecurityScannerTest {
+    @Test
+    fun `npm candidates resolve independently without Gradle and reuse user and fingerprint isolated jobs`() {
+        val executor = QueuedExecutor()
+        val calls = mutableListOf<String>()
+        val npmVersions =
+            AvailableVersionsService(
+                OkHttpClient
+                    .Builder()
+                    .addInterceptor { chain ->
+                        Response
+                            .Builder()
+                            .request(chain.request())
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(
+                                """{"versions":{"1.0.0":{},"1.1.0":{},"2.0.0":{},"3.0.0":{},"4.0.0-rc.1":{}}}"""
+                                    .toResponseBody("application/json".toMediaType()),
+                            ).build()
+                    }.build(),
+            )
+        val scanner =
+            UpgradeSecurityScanner(
+                npmVersions,
+                { _, _, _ -> error("Node must not run Gradle") },
+                object : VulnerabilityService {
+                    override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
+                        error("Node must not query Maven OSV")
+                },
+                executor,
+                NodeSecurityService(
+                    { name, version ->
+                        calls += version
+                        assertEquals("@scope/package", name)
+                        if (version == "3.0.0") throw java.io.IOException("Missing npm package")
+                        listOf(
+                            node(name, version).copy(group = "npm"),
+                            node("transitive", if (version == "2.0.0") "1.0.0" else "2.0.0").copy(group = "npm"),
+                        )
+                    },
+                    object : VulnerabilityService {
+                        override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
+                            dependencies.associate {
+                                assertEquals("npm", it.group)
+                                "${it.key}:${it.version}" to
+                                    if (it.name == "transitive" && it.version == "1.0.0") {
+                                        listOf(Vulnerability("TEST", "Synthetic", emptyList(), emptyList(), emptyList()))
+                                    } else {
+                                        emptyList()
+                                    }
+                            }
+                    },
+                ),
+            )
+
+        fun get(
+            user: String = "alice",
+            current: String = "1.0.0",
+            start: Boolean = false,
+        ) = scanner.snapshot(user, state, "node", "@scope/package", current, start)
+        assertEquals("IDLE", get().status)
+        assertEquals("RUNNING", get(current = "^1.0.0", start = true).status)
+        get(start = true)
+        assertEquals(1, executor.queuedTasks)
+        executor.runNext()
+        assertEquals(listOf("3.0.0", "2.0.0", "1.1.0"), calls)
+        assertEquals(listOf("UNRESOLVED", "VULNERABLE", "OK"), get().result!!.map { it.status })
+        assertEquals(listOf(0, 1, 0), get().result!!.map { it.vulnerabilityCount })
+        assertTrue(
+            get()
+                .result!!
+                .first()
+                .error!!
+                .contains("Missing npm package"),
+        )
+        get(start = true)
+        assertEquals(0, executor.queuedTasks)
+        assertEquals("IDLE", get("bob").status)
+        assertEquals("IDLE", scanner.snapshot("alice", state.copy(gradleVersion = "9.0"), "node", "@scope/package", "1.0.0", false).status)
+        scanner.invalidate("alice")
+        assertEquals("IDLE", get().status)
+    }
+
     private val versions =
         AvailableVersionsService(
             OkHttpClient

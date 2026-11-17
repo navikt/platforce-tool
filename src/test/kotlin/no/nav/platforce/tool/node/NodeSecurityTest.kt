@@ -50,9 +50,97 @@ class NodeSecurityTest {
                 .dependency.name,
         )
         assertEquals(listOf(advisory), vulnerable.vulnerableDependencies.single().vulnerabilities)
+        assertEquals(
+            "2.0.0",
+            vulnerable.vulnerableDependencies
+                .single()
+                .suggestedVersion!!
+                .version,
+        )
+        assertEquals(
+            "transitive",
+            vulnerable.vulnerableDependencies
+                .single()
+                .suggestedVersion!!
+                .dependency,
+        )
         assertTrue(result.targets.filter { it.key != "vulnerable" }.all { it.status == NodeSecurityStatus.OK })
         assertTrue(queried.all { it.group == "npm" })
         assertEquals(queried.distinctBy { it.name to it.version }, queried)
+    }
+
+    @Test
+    fun `fix suggestions choose the lowest stable newer version with a clean OSV lookup`() {
+        val lookedUp = mutableListOf<String>()
+        val issues =
+            advisory.copy(fixedVersions = listOf("1.2.0", "1.10.0", "2.0.0", "0.9.0", "1.3.0-beta.1", "invalid"))
+        val service =
+            NodeSecurityService(
+                { key, version -> listOf(node(key, version)) },
+                object : VulnerabilityService {
+                    override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
+                        dependencies.associate {
+                            lookedUp += it.version
+                            "${it.key}:${it.version}" to if (it.version in setOf("1.0.0", "1.2.0")) listOf(issues) else emptyList()
+                        }
+                },
+            )
+        val result = service.scan(state("@scope/root" to "1.0.0")).targets.single()
+        val fix = result.vulnerableDependencies.single().suggestedVersion!!
+        assertEquals("@scope/root", fix.dependency)
+        assertEquals("1.10.0", fix.version)
+        assertEquals(listOf("1.0.0", "1.2.0", "1.10.0", "2.0.0"), lookedUp)
+    }
+
+    @Test
+    fun `missing fix lookups fail explicitly and still vulnerable candidates have no suggestion`() {
+        listOf(true, false).forEach { missing ->
+            val service =
+                NodeSecurityService(
+                    { key, version -> listOf(node(key, version)) },
+                    object : VulnerabilityService {
+                        override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
+                            dependencies
+                                .filterNot { missing && it.version == "2.0.0" }
+                                .associate { "${it.key}:${it.version}" to listOf(advisory) }
+                    },
+                )
+            if (missing) {
+                assertThrows(IllegalStateException::class.java) { service.scan(state("root" to "1.0.0")) }
+            } else {
+                val result = service.scan(state("root" to "1.0.0")).targets.single()
+                assertEquals(NodeSecurityStatus.VULNERABLE, result.status)
+                assertNull(result.vulnerableDependencies.single().suggestedVersion)
+            }
+        }
+    }
+
+    @Test
+    fun `running scan phases distinguish resolution from OSV lookups`() {
+        val queue = QueuedExecutor()
+        val state = state("safe" to "1.0.0")
+        lateinit var scanner: NodeSecurityScanner
+        val observed = mutableListOf<NodeScanPhase?>()
+        scanner =
+            NodeSecurityScanner(
+                NodeSecurityService(
+                    { key, version ->
+                        observed += scanner.get("alice", state).phase
+                        listOf(node(key, version))
+                    },
+                    object : VulnerabilityService {
+                        override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
+                            observed += scanner.get("alice", state).phase
+                            return dependencies.associate { "${it.key}:${it.version}" to emptyList() }
+                        }
+                    },
+                ),
+                queue,
+            )
+        assertEquals(NodeScanPhase.RESOLUTION, scanner.start("alice", state).phase)
+        queue.runNext()
+        assertEquals(listOf(NodeScanPhase.RESOLUTION, NodeScanPhase.OSV), observed)
+        assertNull(scanner.get("alice", state).phase)
     }
 
     @Test

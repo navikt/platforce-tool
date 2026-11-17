@@ -20,6 +20,36 @@ internal fun validNodeVersion(version: String): Boolean =
 internal fun validNodePackage(key: String): Boolean =
     key.length <= 214 && Regex("""(?:@[a-z0-9_.-]+/)?[a-z0-9_][a-z0-9_.-]*""").matches(key)
 
+internal fun compareNodeVersions(
+    first: String,
+    second: String,
+): Int {
+    fun parts(version: String) = version.substringBefore('+').split('-', limit = 2)
+    val a = parts(first)
+    val b = parts(second)
+    a[0].split('.').zip(b[0].split('.')).forEach { (left, right) ->
+        val comparison = left.toBigInteger().compareTo(right.toBigInteger())
+        if (comparison != 0) return comparison
+    }
+    if (a.size != b.size) return if (a.size == 1) 1 else -1
+    if (a.size == 1) return 0
+    val left = a[1].split('.')
+    val right = b[1].split('.')
+    left.zip(right).forEach { (x, y) ->
+        val nx = x.toBigIntegerOrNull()
+        val ny = y.toBigIntegerOrNull()
+        val comparison =
+            when {
+                nx != null && ny != null -> nx.compareTo(ny)
+                nx != null -> -1
+                ny != null -> 1
+                else -> x.compareTo(y)
+            }
+        if (comparison != 0) return comparison
+    }
+    return left.size.compareTo(right.size)
+}
+
 class NodeTargetResolver(
     private val nodeHome: Path = Path.of(System.getenv("PLATFORCE_NODE_HOME") ?: "/opt/node"),
     private val timeoutSeconds: Long = 120,

@@ -9,7 +9,7 @@ function targetUpgradeButtonHtml() {
 
 async function fetchAvailableUpgrades(key, currentVersion, type = "dependency") {
     const response = await fetch(
-        `/internal/api/target-versions/available?key=${encodeURIComponent(key)}&currentVersion=${encodeURIComponent(currentVersion)}${type === "plugin" ? "&kind=plugin" : ""}`,
+        `/internal/api/target-versions/available?key=${encodeURIComponent(key)}&currentVersion=${encodeURIComponent(currentVersion)}${type === "plugin" || type === "node" ? `&kind=${type}` : ""}`,
         { cache: "no-store" }
     );
     const result = await response.json();
@@ -241,7 +241,7 @@ function bindTargetUpgrades(row, type) {
             renderAvailableUpgrades(details, result, type, (kind, coordinate, version) => {
                 if (keyInput.value.trim() !== key || versionInput.value.trim() !== currentVersion) return;
                 addDraftTarget(kind, coordinate, version);
-                const containerId = type === "platform_bom" ? "platformBomsTable" : type === "plugin" ? "pluginsTable" : "depsTable";
+                const containerId = type === "platform_bom" ? "platformBomsTable" : type === "plugin" ? "pluginsTable" : type === "node" ? "nodeTable" : "depsTable";
                 Array.from(document.querySelectorAll(`#${containerId} .target-row`))
                     .find(target => target.querySelector(".key")?.value === coordinate)
                     ?.querySelector(".version")?.focus();

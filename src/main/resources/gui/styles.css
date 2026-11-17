@@ -1959,15 +1959,9 @@ button:hover {
     min-width: 0;
 }
 
-.node-scan-notice,
 .node-declaration {
     color: #666;
     font-size: 12px;
-}
-
-.node-scan-notice {
-    margin: 8px 10px;
-    line-height: 1.5;
 }
 
 .node-declaration {

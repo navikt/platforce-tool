@@ -69,12 +69,11 @@ test("HTML loads every frontend feature file once, with shared definitions first
     assert.ok(html.lastIndexOf("<script") > html.indexOf('id="saveIgnored"'));
 });
 
-test("NODE targets follow Platform BOMs and explicitly describe their limited scope", () => {
+test("NODE targets follow Platform BOMs with scan controls and no explanatory block", () => {
     assert.ok(html.indexOf('id="nodeTable"') > html.indexOf('id="platformBomsTable"'));
     assert.ok(html.indexOf('id="nodeTable"') < html.indexOf('class="target-section dependencies"'));
     assert.match(html, /class="target-section node"/);
-    assert.match(html, /Each saved target is scanned independently at its exact version/);
-    assert.match(html, /Node PR\/Auto updates are not available yet/);
+    assert.doesNotMatch(html, /Each saved target is scanned independently|Caret and tilde prefixes|Node PR\/Auto updates are not available yet/);
     assert.match(html, /id="scanNode" class="btn-danger"/);
 });
 

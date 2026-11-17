@@ -120,7 +120,7 @@ function renderTable(containerId, entries, type) {
                 `
                 : ""
         }
-            ${(type === "node" ? "" : targetUpgradeButtonHtml()) + dependencyUsageButtonHtml(type)}
+            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -141,7 +141,7 @@ function renderTable(containerId, entries, type) {
         row.querySelector(".key").value = key;
         row.querySelector(".version").value = version;
         bindDependencyUsage(row, type);
-        if (type !== "node") bindTargetUpgrades(row, type);
+        bindTargetUpgrades(row, type);
         if (type === "dependency") {
             row.querySelector(".transient-btn").onclick = () => {
                 const transient =
@@ -219,7 +219,7 @@ function renderTable(containerId, entries, type) {
             <input class="key" />
             <input class="version" />
             ${securityStatusHtml(securityTarget)}
-            ${(type === "node" ? "" : targetUpgradeButtonHtml()) + dependencyUsageButtonHtml(type)}
+            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -240,7 +240,7 @@ function renderTable(containerId, entries, type) {
         newRow.querySelector(".key").value = k;
         newRow.querySelector(".version").value = v;
         bindDependencyUsage(newRow, type);
-        if (type !== "node") bindTargetUpgrades(newRow, type);
+        bindTargetUpgrades(newRow, type);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
             newRow.querySelector(".target-status-pill");
@@ -396,8 +396,8 @@ async function initTargets() {
     await renderTargets(data);
 }
 
-async function applySecurityUpgrade(button, key, version) {
-    addDraftTarget("DEPENDENCY", key, version);
+async function applySecurityUpgrade(button, key, version, kind = "DEPENDENCY") {
+    addDraftTarget(kind, key, version);
     button.remove();
 }
 

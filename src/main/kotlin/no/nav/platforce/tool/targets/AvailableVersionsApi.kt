@@ -16,7 +16,7 @@ fun availableVersionsRoutes(service: AvailableVersionsService) =
             val log = KotlinLogging.logger { }
             try {
                 require(
-                    request.query("kind") == "plugin" ||
+                    request.query("kind") in setOf("plugin", "node") ||
                         request.query("key") !in context.targetVersionsStore.get().ignoredDependencies,
                 ) { "Dependency is ignored" }
                 val result =

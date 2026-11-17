@@ -55,13 +55,13 @@ const result = {
 };
 
 test("upgrade button works without scan data, fetches only on open and drafts dependencies or BOMs without saving", async () => {
-    for (const type of ["dependency", "platform_bom", "plugin"]) {
+    for (const type of ["dependency", "platform_bom", "plugin", "node"]) {
         const ui = app();
         let calls = 0;
         ui.context.fetch = async (url, options) => {
             if (url.includes("upgrade-security")) return { ok: true, json: async () => ({ status: "IDLE" }) };
             calls++;
-            assert.equal(url, "/internal/api/target-versions/available?key=example%3Alibrary&currentVersion=1.0" + (type === "plugin" ? "&kind=plugin" : ""));
+            assert.equal(url, "/internal/api/target-versions/available?key=example%3Alibrary&currentVersion=1.0" + (type === "plugin" || type === "node" ? `&kind=${type}` : ""));
             assert.equal(options.cache, "no-store");
             return { ok: true, json: async () => result };
         };
@@ -93,6 +93,32 @@ test("upgrade button works without scan data, fetches only on open and drafts de
         assert.equal(calls, 1, "Closing does not start another lookup");
         assert.equal(ui.button.getAttribute("aria-expanded"), "false");
     }
+});
+
+test("scoped Node upgrades encode the package, draft only NODE and focus the Node row", async () => {
+    const ui = app();
+    ui.key.value = "@slack/bolt";
+    ui.version.value = "3.22.0";
+    let focused = false;
+    ui.version.focus = () => { focused = true; };
+    ui.context.document.querySelectorAll = selector => {
+        assert.equal(selector, "#nodeTable .target-row");
+        return [ui.row];
+    };
+    ui.context.fetch = async (url, options) => {
+        assert.equal(options.cache, "no-store");
+        if (url.includes("upgrade-security")) {
+            assert.match(url, /kind=node&key=%40slack%2Fbolt&currentVersion=3.22.0$/);
+            return { ok: true, json: async () => ({ status: "IDLE" }) };
+        }
+        assert.equal(url, "/internal/api/target-versions/available?key=%40slack%2Fbolt&currentVersion=3.22.0&kind=node");
+        return { ok: true, json: async () => ({ key: "@slack/bolt", currentVersion: "3.22.0", versions: [{ version: "4.0.0", majorUpgrade: true }] }) };
+    };
+    ui.context.bindTargetUpgrades(ui.row, "node");
+    await ui.button.onclick();
+    ui.row.children[0].children[0].children[1].children[0].children[0].onclick();
+    assert.deepEqual(ui.drafts, [["NODE", "@slack/bolt", "4.0.0"]]);
+    assert.equal(focused, true);
 });
 
 test("editing a target or removing its row while loading discards stale upgrade results", async () => {
@@ -339,12 +365,14 @@ test("Upgrade all shows the shared spinner while waiting and restores its icon a
 });
 
 test("dropdown security scans are opt-in, poll results and reuse cached vulnerability badges on reopen", async () => {
+    for (const type of ["dependency", "node"]) {
             const ui = app();
             const calls = [];
             let cached = false;
             ui.context.setTimeout = callback => callback();
             ui.context.fetch = async url => {
                 calls.push(url);
+                assert.match(url, new RegExp(`kind=${type}&`));
                 const snapshot = url.includes("/start")
                     ? { status: "RUNNING", targetFingerprint: "saved" }
                     : cached || calls.length > 2
@@ -356,7 +384,7 @@ test("dropdown security scans are opt-in, poll results and reuse cached vulnerab
                 return { ok: true, json: async () => snapshot };
             };
             const panel = element();
-            ui.context.renderAvailableUpgrades(panel, result, "dependency", () => {});
+            ui.context.renderAvailableUpgrades(panel, result, type, () => {});
             await new Promise(resolve => setImmediate(resolve));
             assert.equal(calls.length, 1);
             assert.ok(!calls[0].includes("/start"));
@@ -369,8 +397,9 @@ test("dropdown security scans are opt-in, poll results and reuse cached vulnerab
             assert.equal(scan.disabled, false);
             cached = true;
             const reopened = element();
-            ui.context.renderAvailableUpgrades(reopened, result, "dependency", () => {});
+            ui.context.renderAvailableUpgrades(reopened, result, type, () => {});
             await new Promise(resolve => setImmediate(resolve));
             assert.equal(reopened.children[1].children[0].children[1].textContent, "2 vulnerabilities");
             assert.equal(calls.filter(url => url.includes("/start")).length, 1);
+    }
 });

@@ -21,22 +21,7 @@ function findTargetSecurity(type, key, version) {
 }
 
 function nodeSecurityDetailsHtml(security) {
-    return `<div class="finding-details target-security-detail">
-        <h4>${escapeHtml(security.key)} ${escapeHtml(security.targetVersion)}</h4>
-        <p>Exact target and its npm dependency tree, resolved independently.
-            No repository scripts were executed. Repository lockfiles, override combinations and OS packages are not covered.
-            Optional and platform-specific packages present in the lockfile are included.</p>
-        ${security.error ? `<p>${escapeHtml(security.error)}</p>` : ""}
-        ${security.status === "OK" ? `<p>No known vulnerabilities found in ${security.resolvedPackageCount} resolved package versions.</p>` : ""}
-        ${(security.vulnerableDependencies || []).map(item => `<div class="target-security-vulnerability">
-            <strong>${escapeHtml(item.dependency.name)}</strong> ${escapeHtml(item.dependency.version)}
-            <ul>${(item.vulnerabilities || []).map(v => `<li>${escapeHtml(v.id)}:
-                ${escapeHtml(v.summary || "")}
-                ${v.fixedVersions?.length ? `(package fixes: ${v.fixedVersions.map(escapeHtml).join(", ")})` : ""}
-            </li>`).join("")}</ul>
-        </div>`).join("")}
-        ${security.status === "VULNERABLE" ? "<p>Package fix versions are not necessarily upgrade suggestions for this target. Update the target and rescan.</p>" : ""}
-    </div>`;
+    return targetSecurityDetailsHtml(security, "node");
 }
 
 function pluginSecurityDetailsHtml(security) {
@@ -174,7 +159,7 @@ function securityStatusClass(status) {
     }
 }
 
-function targetSecurityDetailsHtml(security) {
+function targetSecurityDetailsHtml(security, type = "dependency") {
     if (!security) {
         return `
             <div class="finding-details">
@@ -190,6 +175,10 @@ function targetSecurityDetailsHtml(security) {
                 ${escapeHtml(security.targetVersion)}
             </h4>
     `;
+
+    if (security.error) {
+        html += `<div>${escapeHtml(security.error)}</div>`;
+    }
 
     if (security.status === "OK") {
         html += `
@@ -319,12 +308,13 @@ function targetSecurityDetailsHtml(security) {
             security.vulnerableDependencies.forEach(vulnerable => {
                 const dependency = vulnerable.dependency;
                 const suggestion = vulnerable.suggestedVersion;
+                const dependencyKey = type === "node" ? dependency.name : `${dependency.group}:${dependency.name}`;
 
                 html += `
                     <div class="target-security-vulnerability">
                         <div>
                             <strong>
-                                ${escapeHtml(dependency.group)}:${escapeHtml(dependency.name)}
+                                ${escapeHtml(dependencyKey)}
                             </strong>
                             <span>
                                 ${escapeHtml(dependency.version)}
@@ -339,7 +329,7 @@ function targetSecurityDetailsHtml(security) {
                                             onclick="applySecurityUpgrade(
                                                 this,
                                                 '${escapeHtml(suggestion.dependency)}',
-                                                '${escapeHtml(suggestion.version)}'
+                                                '${escapeHtml(suggestion.version)}'${type === "node" ? ", 'NODE'" : ""}
                                             )"
                                         >
                                             → ${escapeHtml(suggestion.version)}

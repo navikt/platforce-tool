@@ -597,6 +597,40 @@ async function fetchNodeSecurity(start = false) {
     return snapshot;
 }
 
+function showNodeScanDetails(message = "") {
+    const container = document.getElementById("nodeScanStatus");
+    container.hidden = false;
+    container.innerHTML = `
+        <div id="nodeScanSteps">
+            <div id="nodeStepResolution" class="target-scan-step">
+                <span class="step-status">WAITING</span>
+                <span>npm target resolution</span>
+            </div>
+            <div id="nodeStepOsv" class="target-scan-step">
+                <span class="step-status">WAITING</span>
+                <span>Query OSV for vulnerabilities</span>
+            </div>
+            <div id="nodeStepDone" class="target-scan-step">
+                <span class="step-status">WAITING</span>
+                <span>Update security status</span>
+            </div>
+        </div>
+        <div id="nodeScanMessage" style="margin-top:8px"></div>
+    `;
+    showNodeScanMessage(message);
+}
+
+function showNodeScanMessage(message) {
+    const element = document.getElementById("nodeScanMessage");
+    element.textContent = message;
+    element.hidden = !message;
+}
+
+function updateNodeScanSteps(phase) {
+    updateScanStep("nodeStepResolution", phase === "OSV" ? "DONE" : "RUNNING");
+    updateScanStep("nodeStepOsv", phase === "OSV" ? "RUNNING" : "WAITING");
+}
+
 async function loadCachedNodeSecurity() {
     const generation = targetScanGeneration;
     try {
@@ -605,7 +639,10 @@ async function loadCachedNodeSecurity() {
         nodeSecurityScan = snapshot.status === "READY" ? snapshot.result : null;
         const status = document.getElementById("nodeScanStatus");
         status.hidden = snapshot.status !== "RUNNING";
-        if (!status.hidden) status.textContent = "Node scan is running. Click SCAN in Node to follow its progress.";
+        if (!status.hidden) {
+            showNodeScanDetails();
+            updateNodeScanSteps(snapshot.phase);
+        }
     } catch (error) {
         console.error("Could not load Node security", error);
         if (generation !== targetScanGeneration) return;
@@ -620,11 +657,10 @@ async function scanNodeSecurity() {
     const button = document.getElementById("scanNode");
     if (button.disabled) return;
     const generation = targetScanGeneration;
-    const status = document.getElementById("nodeScanStatus");
     button.disabled = true;
     button.textContent = "SCANNING...";
-    status.hidden = false;
-    status.textContent = "Resolving saved exact npm targets and querying OSV...";
+    showNodeScanDetails();
+    updateNodeScanSteps();
     nodeSecurityScan = null;
     captureTargetDrafts();
     renderTargetTables();
@@ -632,6 +668,7 @@ async function scanNodeSecurity() {
         let snapshot = await fetchNodeSecurity(true);
         const fingerprint = snapshot.targetFingerprint;
         while (snapshot.status === "RUNNING") {
+            updateNodeScanSteps(snapshot.phase);
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (generation !== targetScanGeneration) return;
             snapshot = await fetchNodeSecurity();
@@ -644,16 +681,24 @@ async function scanNodeSecurity() {
             throw new Error(`Node scan did not complete: ${snapshot.status}`);
         }
         nodeSecurityScan = snapshot.result;
+        updateScanStep("nodeStepResolution", "DONE");
+        updateScanStep("nodeStepOsv", "DONE");
         captureTargetDrafts();
         renderTargetTables();
+        updateScanStep("nodeStepDone", "DONE");
         const incomplete = snapshot.result.targets.filter(target =>
             target.status === "UNRESOLVED" || target.status === "UNSUPPORTED").length;
-        status.textContent = incomplete
+        showNodeScanMessage(incomplete
             ? `DONE with ${incomplete} unresolved or unsupported targets. See their details.`
-            : "DONE";
+            : "DONE");
     } catch (error) {
         console.error("Node security scan failed", error);
-        if (generation === targetScanGeneration) status.textContent = `FAILED: ${error.message}`;
+        if (generation === targetScanGeneration) {
+            updateScanStep("nodeStepResolution", "FAILED");
+            updateScanStep("nodeStepOsv", "FAILED");
+            updateScanStep("nodeStepDone", "FAILED");
+            showNodeScanMessage(`FAILED: ${error.message}`);
+        }
     } finally {
         button.disabled = false;
         button.textContent = "SCAN";

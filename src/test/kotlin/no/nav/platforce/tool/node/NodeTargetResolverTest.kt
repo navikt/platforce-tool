@@ -31,6 +31,28 @@ class NodeTargetResolverTest {
         """.trimIndent()
 
     @Test
+    fun `npm version comparison follows semver ordering and ignores build metadata`() {
+        val ordered =
+            listOf(
+                "1.0.0-alpha",
+                "1.0.0-alpha.1",
+                "1.0.0-alpha.beta",
+                "1.0.0-beta.2",
+                "1.0.0-beta.11",
+                "1.0.0-rc.1",
+                "1.0.0",
+                "1.2.0",
+                "1.10.0",
+                "2.0.0",
+            )
+        ordered.zipWithNext().forEach { (first, second) ->
+            assertTrue(compareNodeVersions(first, second) < 0, "$first < $second")
+            assertTrue(compareNodeVersions(second, first) > 0, "$second > $first")
+        }
+        assertEquals(0, compareNodeVersions("1.0.0+build.1", "1.0.0+build.2"))
+    }
+
+    @Test
     fun `lock parser retains scoped names aliases nested versions and optional packages`() {
         val packages = NodeTargetResolver().parseLockfile(lock, "@scope/root", "1.0.0")
         assertEquals(

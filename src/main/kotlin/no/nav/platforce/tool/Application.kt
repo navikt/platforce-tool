@@ -116,11 +116,14 @@ class Application {
 
     private val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
     private val availableVersionsService = AvailableVersionsService(httpClient)
+    private val nodeSecurityService =
+        NodeSecurityService(NodeTargetResolver()::resolve, OsvVulnerabilityService(httpClient, ecosystem = "npm"))
     private val upgradeSecurityScanner =
         UpgradeSecurityScanner(
             availableVersionsService,
             GradleTargetResolutionService(debugFiles = ResolutionDebugFiles(Path.of("/tmp/files/upgrade-scans")))::resolveUpgradeCandidates,
             osvVulnerabilityService,
+            nodeSecurity = nodeSecurityService,
         )
 
     private val targetSecurityService = TargetSecurityService(osvVulnerabilityService)
@@ -130,7 +133,7 @@ class Application {
         PluginSecurityScanner(gradleTargetResolutionService::resolvePlugins, PluginSecurityService(osvVulnerabilityService))
     private val nodeSecurityScanner =
         NodeSecurityScanner(
-            NodeSecurityService(NodeTargetResolver()::resolve, OsvVulnerabilityService(httpClient, ecosystem = "npm")),
+            nodeSecurityService,
         )
 
     private val dependencyScanner = DependencyScanner(githubClient)

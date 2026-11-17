@@ -14,7 +14,7 @@ fun upgradeSecurityRoutes(scanner: UpgradeSecurityScanner) =
             val context = request.userContext()
             try {
                 val state = context.targetVersionsStore.get()
-                require(request.query("kind") == "plugin" || request.query("key") !in state.ignoredDependencies) {
+                require(request.query("kind") in setOf("plugin", "node") || request.query("key") !in state.ignoredDependencies) {
                     "Dependency is ignored"
                 }
                 val snapshot =
