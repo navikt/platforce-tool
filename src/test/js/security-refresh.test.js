@@ -699,6 +699,30 @@ test("Node fix pills draft npm targets without saving or changing Gradle targets
     assert.equal(button.removed, true);
     await app.context.applySecurityUpgrade(button, "example:library", "3.0.0");
     assert.equal(app.value('targetState.dependencies["example:library"]'), "3.0.0");
+    assert.equal(app.value('targetState.transientDependencies.has("example:library")'), true);
+});
+
+test("Gradle vulnerability fixes bandage only newly introduced targets and preserve existing roles and ignored dependencies", async () => {
+    for (const key of ["example:new", "example:normal", "example:cover", "example:ignored"]) {
+        const app = gui();
+        await app.context.renderTargets({
+            dependencies: { "example:normal": "1.0.0", "example:cover": "1.0.0" },
+            transientDependencies: ["example:cover"],
+            ignoredDependencies: ["example:ignored"]
+        });
+        app.rows.set("#depsTable .target-row", ["example:normal", "example:cover"].map(name => ({
+            querySelector: selector => ({ value: selector === ".key" ? name : "1.0.0" })
+        })));
+        const button = { removed: false, remove() { this.removed = true; } };
+        await app.context.applySecurityUpgrade(button, key, "2.0.0");
+        assert.equal(app.value(`targetState.transientDependencies.has("${key}")`),
+            key === "example:new" || key === "example:cover");
+        assert.equal(app.value(`targetState.dependencies["${key}"]`), key === "example:ignored" ? undefined : "2.0.0");
+        assert.equal(app.value(`targetState.drafted.has("DEPENDENCY:${key}")`), key !== "example:ignored");
+        assert.equal(app.value('targetState.nodeTransientDependencies.size'), 0);
+        assert.equal(button.removed, true);
+        assert.equal(app.calls.length, 0);
+    }
 });
 
 test("Node drafts distinguish repository overrides, normal declarations and fixes to existing targets", async () => {

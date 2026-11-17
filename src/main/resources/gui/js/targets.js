@@ -400,6 +400,9 @@ async function initTargets() {
 
 async function applySecurityUpgrade(button, key, version, kind = "DEPENDENCY") {
     captureTargetDrafts();
+    if (kind === "DEPENDENCY" && !Object.hasOwn(targetState.dependencies, key) && !ignoredDependencies.includes(key)) {
+        targetState.transientDependencies.add(key);
+    }
     const nodeTransient = kind === "NODE" && !Object.hasOwn(targetState.nodeDependencies, key) ? true : undefined;
     addDraftTarget(kind, key, version, nodeTransient);
     button.remove();
