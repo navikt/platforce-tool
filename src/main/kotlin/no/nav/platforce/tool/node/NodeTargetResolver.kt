@@ -50,10 +50,31 @@ internal fun compareNodeVersions(
     return left.size.compareTo(right.size)
 }
 
-class NodeTargetResolver(
-    private val nodeHome: Path = Path.of(System.getenv("PLATFORCE_NODE_HOME") ?: "/opt/node"),
-    private val timeoutSeconds: Long = 120,
+data class NodeCombinedResolution(
+    val packages: List<ResolvedDependency>,
+    val targets: Map<String, List<ResolvedDependency>>,
+)
+
+class NodeTargetResolver private constructor(
+    private val nodeHome: Path,
+    private val timeoutSeconds: Long,
+    private val cacheDirectory: Path?,
 ) {
+    constructor(
+        nodeHome: Path = Path.of(System.getenv("PLATFORCE_NODE_HOME") ?: "/opt/node"),
+        timeoutSeconds: Long = 120,
+    ) : this(nodeHome, timeoutSeconds, null)
+
+    @OptIn(ExperimentalPathApi::class)
+    fun <T> withSession(action: (NodeTargetResolver) -> T): T {
+        val cache = Files.createTempDirectory("platforce-npm-cache-")
+        try {
+            return action(NodeTargetResolver(nodeHome, timeoutSeconds, cache))
+        } finally {
+            cache.deleteRecursively()
+        }
+    }
+
     @OptIn(ExperimentalPathApi::class)
     fun resolve(
         key: String,
@@ -65,9 +86,21 @@ class NodeTargetResolver(
         key: String,
         version: String,
         overrides: Map<String, String>,
-    ): List<ResolvedDependency> {
-        require(validNodePackage(key)) { "Unsupported npm package name: $key" }
-        require(validNodeVersion(version)) { "Expected an exact npm version for $key, got $version" }
+    ): List<ResolvedDependency> = resolveProject(mapOf(key to version), overrides).packages
+
+    fun resolveCombined(
+        dependencies: Map<String, String>,
+        overrides: Map<String, String>,
+    ): NodeCombinedResolution = resolveProject(dependencies, overrides)
+
+    @OptIn(ExperimentalPathApi::class)
+    private fun resolveProject(
+        dependencies: Map<String, String>,
+        overrides: Map<String, String>,
+    ): NodeCombinedResolution {
+        require(dependencies.all { (key, version) -> validNodePackage(key) && validNodeVersion(version) }) {
+            "Expected exact public npm dependencies"
+        }
         require(
             overrides.all { (name, value) ->
                 validNodePackage(name) && validNodeVersion(value)
@@ -81,7 +114,7 @@ class NodeTargetResolver(
                         "name" to "platforce-target-resolution",
                         "version" to "1.0.0",
                         "private" to true,
-                        "dependencies" to mapOf(key to version),
+                        "dependencies" to dependencies.toSortedMap(),
                         "overrides" to overrides.toSortedMap(),
                     ),
                 ),
@@ -100,7 +133,8 @@ class NodeTargetResolver(
                     "--registry=https://registry.npmjs.org",
                     "--fetch-retries=0",
                     "--fetch-timeout=30000",
-                    "--cache=${directory.resolve("cache")}",
+                    "--cache=${cacheDirectory ?: directory.resolve("cache")}",
+                    "--prefer-offline",
                     "--userconfig=${directory.resolve("user.npmrc")}",
                     "--globalconfig=${directory.resolve("global.npmrc")}",
                 ).directory(directory.toFile())
@@ -116,14 +150,14 @@ class NodeTargetResolver(
             )
             val process = processBuilder.start()
             try {
-                check(process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) { "npm resolution timed out for $key after ${timeoutSeconds}s" }
+                check(process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) { "npm resolution timed out after ${timeoutSeconds}s" }
                 check(process.exitValue() == 0) {
                     val details =
                         Files.newInputStream(output).use {
                             it.skipNBytes((Files.size(output) - 4000).coerceAtLeast(0))
                             String(it.readNBytes(4000), Charsets.UTF_8)
                         }
-                    "npm resolution failed for $key: $details"
+                    "npm resolution failed: $details"
                 }
             } finally {
                 process.descendants().use { descendants -> descendants.forEach { it.destroyForcibly() } }
@@ -132,7 +166,7 @@ class NodeTargetResolver(
                     process.waitFor(5, TimeUnit.SECONDS)
                 }
             }
-            return parseLockfile(directory.resolve("package-lock.json").readText(), key, version)
+            return parseCombinedLockfile(directory.resolve("package-lock.json").readText(), dependencies, overrides)
         } finally {
             directory.deleteRecursively()
         }
@@ -142,29 +176,97 @@ class NodeTargetResolver(
         source: String,
         key: String,
         version: String,
-    ): List<ResolvedDependency> {
+    ): List<ResolvedDependency> = parseCombinedLockfile(source, mapOf(key to version), emptyMap()).packages
+
+    internal fun parseCombinedLockfile(
+        source: String,
+        dependencies: Map<String, String>,
+        overrides: Map<String, String>,
+    ): NodeCombinedResolution {
         val root = JsonParser.parseString(source).asJsonObject
         check(root["lockfileVersion"]?.asInt == 3) { "Expected npm lockfile version 3" }
         val packages = root["packages"]?.asJsonObject ?: error("npm lockfile has no packages")
-        check(packages["node_modules/$key"]?.asJsonObject?.get("version")?.asString == version) {
-            "npm did not resolve $key to the exact target $version"
+        dependencies.forEach { (key, version) ->
+            check(packages["node_modules/$key"]?.asJsonObject?.get("version")?.asString == version) {
+                "npm did not resolve $key to the exact target $version"
+            }
         }
-        return packages
-            .entrySet()
-            .filter { it.key.isNotEmpty() }
-            .map { (path, value) ->
-                val entry = value.asJsonObject
-                check(entry["link"]?.asBoolean != true) { "Linked npm dependencies are not supported: $path" }
-                val name = entry["name"]?.asString ?: path.substringAfterLast("node_modules/")
-                val resolvedVersion = entry["version"]?.asString ?: error("Missing resolved npm version for $path")
-                check(validNodePackage(name) && validNodeVersion(resolvedVersion)) { "Unsupported npm lockfile entry: $path" }
-                entry["resolved"]?.asString?.let {
-                    val uri = URI(it)
-                    check(uri.scheme == "https" && uri.host == "registry.npmjs.org" && uri.userInfo == null && uri.port in setOf(-1, 443)) {
-                        "Only public npm registry packages are supported: $name"
+        val entries = packages.entrySet().filter { it.key.isNotEmpty() }.associate { it.key to it.value.asJsonObject }
+        val resolved =
+            entries
+                .entries
+                .map { (path, value) ->
+                    val entry = value.asJsonObject
+                    check(entry["link"]?.asBoolean != true) { "Linked npm dependencies are not supported: $path" }
+                    val name = entry["name"]?.asString ?: path.substringAfterLast("node_modules/")
+                    val resolvedVersion = entry["version"]?.asString ?: error("Missing resolved npm version for $path")
+                    check(validNodePackage(name) && validNodeVersion(resolvedVersion)) { "Unsupported npm lockfile entry: $path" }
+                    entry["resolved"]?.asString?.let {
+                        val uri = URI(it)
+                        check(
+                            uri.scheme == "https" && uri.host == "registry.npmjs.org" && uri.userInfo == null && uri.port in setOf(-1, 443),
+                        ) {
+                            "Only public npm registry packages are supported: $name"
+                        }
                     }
+                    path to ResolvedDependency("npm", name, resolvedVersion, resolvedVersion, emptyList())
+                }.toMap()
+        overrides.forEach { (key, version) ->
+            check(resolved.values.filter { it.name == key }.all { it.version == version }) {
+                "npm did not apply exact override $key@$version"
+            }
+        }
+
+        fun locate(
+            path: String,
+            name: String,
+        ): String? {
+            var parent = path
+            while (true) {
+                val candidate = if (parent.isEmpty()) "node_modules/$name" else "$parent/node_modules/$name"
+                if (candidate in resolved) return candidate
+                if (parent.isEmpty()) return null
+                parent = parent.substringBeforeLast("/node_modules/", "")
+            }
+        }
+
+        val edges =
+            entries.mapValues { (path, entry) ->
+                val optional = entry["optionalDependencies"]?.asJsonObject?.keySet().orEmpty()
+                val peers = entry["peerDependencies"]?.asJsonObject?.keySet().orEmpty()
+                val required = entry["dependencies"]?.asJsonObject?.keySet().orEmpty() - optional
+                (required + optional + peers).mapNotNull { name ->
+                    val dependency = locate(path, name)
+                    val optionalPeer =
+                        entry["peerDependenciesMeta"]
+                            ?.asJsonObject
+                            ?.get(name)
+                            ?.asJsonObject
+                            ?.get("optional")
+                            ?.asBoolean == true
+                    check(dependency != null || name in optional || (name in peers && name !in required && optionalPeer)) {
+                        "Missing npm dependency $name for $path"
+                    }
+                    dependency
                 }
-                ResolvedDependency("npm", name, resolvedVersion, resolvedVersion, emptyList())
-            }.distinctBy { it.name to it.version }
+            }
+        val targets =
+            (dependencies + overrides).mapValues { (key, version) ->
+                val pending =
+                    ArrayDeque(
+                        if (key in dependencies) {
+                            listOf("node_modules/$key")
+                        } else {
+                            resolved.filterValues { it.name == key && it.version == version }.keys.toList()
+                        },
+                    )
+                val visited = mutableSetOf<String>()
+                while (pending.isNotEmpty()) {
+                    val path = pending.removeFirst()
+                    if (visited.add(path)) pending.addAll(edges.getValue(path))
+                }
+                visited.map { resolved.getValue(it) }.distinctBy { it.name to it.version }
+            }
+        return NodeCombinedResolution(resolved.values.distinctBy { it.name to it.version }, targets)
     }
 }

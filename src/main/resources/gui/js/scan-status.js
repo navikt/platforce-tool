@@ -610,6 +610,10 @@ function showNodeScanDetails(message = "") {
                 <span class="step-status">WAITING</span>
                 <span>Query OSV for vulnerabilities</span>
             </div>
+            <div id="nodeStepCoverage" class="target-scan-step">
+                <span class="step-status">WAITING</span>
+                <span>Check override coverage</span>
+            </div>
             <div id="nodeStepDone" class="target-scan-step">
                 <span class="step-status">WAITING</span>
                 <span>Update security status</span>
@@ -626,9 +630,14 @@ function showNodeScanMessage(message) {
     element.hidden = !message;
 }
 
-function updateNodeScanSteps(phase) {
-    updateScanStep("nodeStepResolution", phase === "OSV" ? "DONE" : "RUNNING");
-    updateScanStep("nodeStepOsv", phase === "OSV" ? "RUNNING" : "WAITING");
+function updateNodeScanSteps(phase, completedResolutions = 0) {
+    const coverage = phase === "COVERAGE";
+    updateScanStep("nodeStepResolution", phase === "OSV" || coverage ? "DONE" : "RUNNING");
+    updateScanStep("nodeStepOsv", coverage ? "DONE" : phase === "OSV" ? "RUNNING" : "WAITING");
+    updateScanStep("nodeStepCoverage", coverage ? "RUNNING" : "WAITING");
+    showNodeScanMessage(completedResolutions
+        ? `Scan in progress: ${completedResolutions} npm resolution${completedResolutions === 1 ? "" : "s"} completed`
+        : "Scan in progress...");
 }
 
 async function loadCachedNodeSecurity() {
@@ -641,7 +650,7 @@ async function loadCachedNodeSecurity() {
         status.hidden = snapshot.status !== "RUNNING";
         if (!status.hidden) {
             showNodeScanDetails();
-            updateNodeScanSteps(snapshot.phase);
+            updateNodeScanSteps(snapshot.phase, snapshot.completedResolutions);
         }
     } catch (error) {
         console.error("Could not load Node security", error);
@@ -668,7 +677,7 @@ async function scanNodeSecurity() {
         let snapshot = await fetchNodeSecurity(true);
         const fingerprint = snapshot.targetFingerprint;
         while (snapshot.status === "RUNNING") {
-            updateNodeScanSteps(snapshot.phase);
+            updateNodeScanSteps(snapshot.phase, snapshot.completedResolutions);
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (generation !== targetScanGeneration) return;
             snapshot = await fetchNodeSecurity();
@@ -683,6 +692,7 @@ async function scanNodeSecurity() {
         nodeSecurityScan = snapshot.result;
         updateScanStep("nodeStepResolution", "DONE");
         updateScanStep("nodeStepOsv", "DONE");
+        updateScanStep("nodeStepCoverage", "DONE");
         captureTargetDrafts();
         renderTargetTables();
         updateScanStep("nodeStepDone", "DONE");
@@ -696,6 +706,7 @@ async function scanNodeSecurity() {
         if (generation === targetScanGeneration) {
             updateScanStep("nodeStepResolution", "FAILED");
             updateScanStep("nodeStepOsv", "FAILED");
+            updateScanStep("nodeStepCoverage", "FAILED");
             updateScanStep("nodeStepDone", "FAILED");
             showNodeScanMessage(`FAILED: ${error.message}`);
         }

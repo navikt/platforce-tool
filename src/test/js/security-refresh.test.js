@@ -562,6 +562,34 @@ test("Node scan disables repeated starts and restores controls after lookup fail
     assert.equal(app.value("nodeSecurityScan"), null);
 });
 
+test("Node override checks keep completed phases done and expose concise resolution progress", async () => {
+    const app = gui();
+    const snapshots = [
+        { status: "RUNNING", phase: "RESOLUTION", completedResolutions: 1 },
+        { status: "RUNNING", phase: "OSV", completedResolutions: 2 },
+        { status: "RUNNING", phase: "COVERAGE", completedResolutions: 3 },
+        { status: "RUNNING", phase: "COVERAGE", completedResolutions: 4 },
+        { status: "READY", result: { targets: [] } }
+    ];
+    const messages = [];
+    app.responses(() => {
+        const snapshot = snapshots.shift();
+        if (snapshot.phase === "COVERAGE" && snapshot.completedResolutions === 4) {
+            assert.equal(app.steps.filter(([id]) => id === "nodeStepResolution").at(-1)[1], "DONE");
+            assert.equal(app.steps.filter(([id]) => id === "nodeStepOsv").at(-1)[1], "DONE");
+            assert.equal(app.steps.filter(([id]) => id === "nodeStepCoverage").at(-1)[1], "RUNNING");
+        }
+        messages.push(app.element("nodeScanMessage").textContent);
+        return { targetFingerprint: "node", ...snapshot };
+    });
+    await app.context.scanNodeSecurity();
+    assert.ok(messages.includes("Scan in progress: 1 npm resolution completed"));
+    assert.ok(messages.includes("Scan in progress: 4 npm resolutions completed"));
+    assert.match(app.element("nodeScanStatus").innerHTML, /Check override coverage/);
+    assert.equal(app.steps.filter(([id]) => id === "nodeStepCoverage").at(-1)[1], "DONE");
+    assert.equal(app.element("nodeScanMessage").textContent, "DONE");
+});
+
 test("Node scanning rejects stale fingerprints and results invalidated by saving", async () => {
     for (const change of ["fingerprint", "save"]) {
         const app = gui();
@@ -599,6 +627,12 @@ test("Node cached scans restore independently and clear stale badges on idle or 
     assert.ok(app.steps.some(([id, status]) => id === "nodeStepResolution" && status === "DONE"));
     assert.ok(app.steps.some(([id, status]) => id === "nodeStepOsv" && status === "RUNNING"));
     assert.doesNotMatch(app.element("nodeScanStatus").innerHTML, /Click SCAN|independently|exact npm/);
+    snapshot = { status: "RUNNING", phase: "COVERAGE", completedResolutions: 12, totalResolutions: 18 };
+    await app.context.loadCachedNodeSecurity();
+    assert.equal(app.steps.filter(([id]) => id === "nodeStepResolution").at(-1)[1], "DONE");
+    assert.equal(app.steps.filter(([id]) => id === "nodeStepOsv").at(-1)[1], "DONE");
+    assert.equal(app.steps.filter(([id]) => id === "nodeStepCoverage").at(-1)[1], "RUNNING");
+    assert.equal(app.element("nodeScanMessage").textContent, "Scan in progress: 12 npm resolutions completed");
     snapshot = { status: "IDLE" };
     await app.context.loadCachedNodeSecurity();
     assert.equal(app.element("nodeScanStatus").hidden, true);

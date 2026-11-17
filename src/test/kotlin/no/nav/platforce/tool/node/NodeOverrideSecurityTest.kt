@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.util.Collections
 
 class NodeOverrideSecurityTest {
     private fun node(
@@ -43,7 +44,23 @@ class NodeOverrideSecurityTest {
     private fun service(
         lookup: VulnerabilityService = osv,
         graph: (String, String, Map<String, String>) -> List<ResolvedDependency>,
-    ) = NodeSecurityService({ key, version -> graph(key, version, emptyMap()) }, lookup, graph)
+    ) = NodeSecurityService(
+        { key, version -> graph(key, version, emptyMap()) },
+        lookup,
+        { dependencies, overrides ->
+            val roots = dependencies.mapValues { (key, version) -> graph(key, version, overrides) }
+            val packages = roots.values.flatten().distinct()
+            val covers =
+                overrides.mapValues { (key, version) ->
+                    if (packages.any { it.name == key && it.version == version }) {
+                        graph(key, version, overrides).filter { it in packages }
+                    } else {
+                        emptyList()
+                    }
+                }
+            NodeCombinedResolution(packages, roots + covers)
+        },
+    )
 
     private fun tree(
         key: String,
@@ -109,6 +126,119 @@ class NodeOverrideSecurityTest {
     }
 
     @Test
+    fun `one combined resolution and one solo per target finish before OSV and coverage inference`() {
+        val progress = mutableListOf<NodeScanProgress>()
+        val calls = Collections.synchronizedList(mutableListOf<String>())
+        val lookupPhases = mutableListOf<NodeScanPhase>()
+        val lookup =
+            object : VulnerabilityService {
+                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
+                    lookupPhases += progress.last().phase
+                    return osv.find(dependencies)
+                }
+            }
+        val results =
+            NodeSecurityService(
+                { key, version ->
+                    calls += key
+                    tree(key, version, emptyMap())
+                },
+                lookup,
+                { dependencies, overrides ->
+                    calls += "combined"
+                    assertEquals(mapOf("parent" to "1.0.0"), dependencies)
+                    assertEquals(mapOf("leaf" to "2.0.0"), overrides)
+                    val packages = listOf(node("parent", "1.0.0"), node("leaf", "2.0.0"), node("new-transitive", "1.0.0"))
+                    NodeCombinedResolution(packages, mapOf("parent" to packages, "leaf" to listOf(node("leaf", "2.0.0"))))
+                },
+            ).scan(state("parent" to "1.0.0", "leaf" to "2.0.0", covers = setOf("leaf")), progress::add)
+        assertEquals(listOf(NodeScanPhase.RESOLUTION, NodeScanPhase.OSV, NodeScanPhase.COVERAGE), progress.map { it.phase }.distinct())
+        assertTrue(progress.zipWithNext().all { (before, after) -> before.phase.ordinal <= after.phase.ordinal })
+        assertTrue(progress.zipWithNext().all { (before, after) -> before.completedResolutions <= after.completedResolutions })
+        assertEquals(listOf(NodeScanPhase.OSV), lookupPhases)
+        assertEquals(3, calls.size)
+        assertEquals(calls.size, calls.distinct().size)
+        assertEquals(NodeScanProgress(NodeScanPhase.COVERAGE, 3, 3), progress.last())
+        assertTrue(progress.filter { it.phase != NodeScanPhase.RESOLUTION }.all { it.completedResolutions == 3 })
+        assertEquals(NodeSecurityStatus.OK_OVERRIDDEN, results.targets.single { it.key == "parent" }.status)
+        assertEquals(NodeSecurityStatus.OK_TRANSIENT, results.targets.single { it.key == "leaf" }.status)
+    }
+
+    @Test
+    fun `twenty dependencies and six overrides require exactly twenty seven npm resolutions and one OSV batch`() {
+        val dependencies = (1..20).associate { "dependency-$it" to "^1.0.0" }
+        val overrides = (1..6).associate { "cover-$it" to "~2.0.0" }
+        val calls = Collections.synchronizedList(mutableListOf<String>())
+        val progress = mutableListOf<NodeScanProgress>()
+        var lookups = 0
+
+        fun cover(key: String) = "cover-${(key.substringAfterLast('-').toInt() - 1) % 6 + 1}"
+        val service =
+            NodeSecurityService(
+                { key, version ->
+                    calls += key
+                    listOf(node(key, version)) + if (key in dependencies) listOf(node(cover(key), "1.0.0")) else emptyList()
+                },
+                object : VulnerabilityService {
+                    override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
+                        lookups++
+                        assertEquals(NodeScanPhase.OSV, progress.last().phase)
+                        return dependencies.associate {
+                            "${it.key}:${it.version}" to
+                                if (it.name.startsWith("cover-") && it.version == "1.0.0") listOf(advisory) else emptyList()
+                        }
+                    }
+                },
+                { normal, covers ->
+                    calls += "combined"
+                    assertEquals(dependencies.mapValues { "1.0.0" }, normal)
+                    assertEquals(overrides.mapValues { "2.0.0" }, covers)
+                    val roots =
+                        normal.mapValues { (key, version) -> listOf(node(key, version), node(cover(key), "2.0.0")) } +
+                            covers.mapValues { (key, version) -> listOf(node(key, version)) }
+                    NodeCombinedResolution(roots.values.flatten().distinct(), roots)
+                },
+            )
+        val result =
+            service.scan(
+                state(*(dependencies + overrides).toList().toTypedArray(), covers = overrides.keys),
+                progress::add,
+            )
+        assertEquals(27, calls.size)
+        assertEquals(27, calls.distinct().size)
+        assertEquals(1, lookups)
+        assertTrue(progress.all { it.totalResolutions == 27 })
+        assertEquals(NodeScanProgress(NodeScanPhase.COVERAGE, 27, 27), progress.last())
+        assertTrue(result.targets.filter { it.key in dependencies }.all { it.status == NodeSecurityStatus.OK_OVERRIDDEN })
+        assertTrue(result.targets.filter { it.key in overrides }.all { it.status == NodeSecurityStatus.OK_TRANSIENT })
+    }
+
+    @Test
+    fun `a normal target can provide coverage when npm actually selects its safe version in the consumer tree`() {
+        val result =
+            NodeSecurityService(
+                { key, version -> tree(key, version, emptyMap()) },
+                osv,
+                { dependencies, overrides ->
+                    assertEquals(mapOf("parent" to "1.0.0", "leaf" to "2.0.0"), dependencies)
+                    assertTrue(overrides.isEmpty())
+                    val packages = listOf(node("parent", "1.0.0"), node("leaf", "2.0.0"))
+                    NodeCombinedResolution(packages, mapOf("parent" to packages, "leaf" to listOf(node("leaf", "2.0.0"))))
+                },
+            ).scan(state("parent" to "1.0.0", "leaf" to "2.0.0", covers = emptySet())).targets.associateBy { it.key }
+        assertEquals(NodeSecurityStatus.OK_OVERRIDDEN, result.getValue("parent").status)
+        assertEquals(
+            listOf("leaf:2.0.0"),
+            result
+                .getValue("parent")
+                .relatedTo
+                .single()
+                .causedBy,
+        )
+        assertEquals(NodeSecurityStatus.OK, result.getValue("leaf").status)
+    }
+
+    @Test
     fun `safe but unused overrides are redundant while vulnerable overrides stay vulnerable`() {
         val safe = state("parent" to "1.0.0", "unrelated" to "2.0.0", covers = setOf("unrelated"))
         assertEquals(
@@ -140,21 +270,31 @@ class NodeOverrideSecurityTest {
     }
 
     @Test
-    fun `equivalent covers retain a deterministic survivor instead of making both redundant`() {
+    fun `direct override is retained rather than mistaking another branch providing the same version for a replacement`() {
         val state = state("parent" to "1.0.0", "leaf" to "2.0.0", "alternative" to "2.0.0", covers = setOf("leaf", "alternative"))
         val results =
             service { key, version, overrides ->
-                if (key == "parent" &&
-                    overrides.isNotEmpty()
-                ) {
-                    listOf(node(key, version), node("leaf", "2.0.0"))
-                } else {
-                    tree(key, version, overrides)
+                when (key) {
+                    "parent" -> {
+                        listOf(
+                            node(key, version),
+                            node("alternative", overrides["alternative"] ?: "1.0.0"),
+                            node("leaf", if (overrides.isEmpty()) "1.0.0" else "2.0.0"),
+                        )
+                    }
+
+                    "alternative" -> {
+                        listOf(node(key, version), node("leaf", "2.0.0"))
+                    }
+
+                    else -> {
+                        tree(key, version, overrides)
+                    }
                 }
             }.scan(state).targets.associateBy { it.key }
         assertEquals(NodeSecurityStatus.TRANSIENT_UNUSED, results.getValue("alternative").status)
         assertEquals(NodeSecurityStatus.OK_TRANSIENT, results.getValue("leaf").status)
-        assertEquals(listOf("leaf"), results.getValue("alternative").replacementDependencies.map { it.dependency })
+        assertTrue(results.getValue("alternative").replacementDependencies.isEmpty())
         assertEquals(
             listOf("leaf:2.0.0"),
             results
@@ -170,7 +310,12 @@ class NodeOverrideSecurityTest {
         val results =
             service { key, version, overrides ->
                 if (key == "parent") {
-                    listOf(node(key, version), node("leaf", if (overrides.keys.containsAll(setOf("first", "second"))) "2.0.0" else "1.0.0"))
+                    listOf(
+                        node(key, version),
+                        node("first", overrides["first"] ?: "1.0.0"),
+                        node("second", overrides["second"] ?: "1.0.0"),
+                        node("leaf", if (overrides.keys.containsAll(setOf("first", "second"))) "2.0.0" else "1.0.0"),
+                    )
                 } else {
                     listOf(node(key, version))
                 }
@@ -247,7 +392,7 @@ class NodeOverrideSecurityTest {
     }
 
     @Test
-    fun `failed removal comparisons keep a cover unresolved instead of assuming it is needed or redundant`() {
+    fun `coverage inference never runs leave-one-out override comparisons`() {
         val results =
             service { key, version, overrides ->
                 if (key == "parent" && overrides.keys == setOf("other")) throw IOException("Comparison failed")
@@ -256,7 +401,7 @@ class NodeOverrideSecurityTest {
             }.scan(state("parent" to "1.0.0", "second" to "1.0.0", "leaf" to "2.0.0", "other" to "2.0.0", covers = setOf("leaf", "other")))
                 .targets
                 .associateBy { it.key }
-        assertEquals(NodeSecurityStatus.UNRESOLVED, results.getValue("leaf").status)
+        assertEquals(NodeSecurityStatus.OK_TRANSIENT, results.getValue("leaf").status)
         assertEquals(NodeSecurityStatus.OK_TRANSIENT, results.getValue("other").status)
         assertFalse(results.values.any { it.status == NodeSecurityStatus.TRANSIENT_UNUSED })
     }
@@ -266,7 +411,7 @@ class NodeOverrideSecurityTest {
         val results =
             service { key, version, overrides ->
                 tree(key, version, overrides) +
-                    if (key == "parent" && overrides.isNotEmpty()) listOf(node("other", "1.0.0")) else emptyList()
+                    if (key in setOf("parent", "leaf") && overrides.isNotEmpty()) listOf(node("other", "1.0.0")) else emptyList()
             }.scan(state("parent" to "1.0.0", "leaf" to "2.0.0", covers = setOf("leaf"))).targets.associateBy { it.key }
         assertEquals(NodeSecurityStatus.VULNERABLE, results.getValue("parent").status)
         assertEquals(NodeSecurityStatus.VULNERABLE, results.getValue("leaf").status)

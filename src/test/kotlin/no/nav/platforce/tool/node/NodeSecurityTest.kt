@@ -13,6 +13,12 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class NodeSecurityTest {
     private val advisory = Vulnerability("TEST-NPM", "Synthetic", emptyList(), emptyList(), listOf("2.0.0"))
@@ -29,14 +35,21 @@ class NodeSecurityTest {
 
     @Test
     fun `caret and tilde targets resolve exactly and independent transitive vulnerabilities cannot be overridden by another target`() {
-        val calls = mutableListOf<Pair<String, String>>()
+        val calls = Collections.synchronizedList(mutableListOf<Pair<String, String>>())
         val service =
-            NodeSecurityService(
+            service(
                 { key, version ->
                     calls += key to version
                     listOf(node(key, version), node("transitive", if (key == "vulnerable") "1.0.0" else "2.0.0"))
                 },
                 osv,
+                { dependencies, _ ->
+                    val roots =
+                        dependencies.mapValues { (key, version) ->
+                            listOf(node(key, version), node("transitive", if (key == "vulnerable") "1.0.0" else "2.0.0"))
+                        }
+                    NodeCombinedResolution(roots.values.flatten().distinct(), roots)
+                },
             )
         val result = service.scan(state("vulnerable" to "^1.2.3", "@scope/safe" to "~2.0.0", "transitive" to "2.0.0"))
         assertTrue(calls.containsAll(listOf("vulnerable" to "1.2.3", "@scope/safe" to "2.0.0")))
@@ -75,7 +88,7 @@ class NodeSecurityTest {
         val issues =
             advisory.copy(fixedVersions = listOf("1.2.0", "1.10.0", "2.0.0", "0.9.0", "1.3.0-beta.1", "invalid"))
         val service =
-            NodeSecurityService(
+            service(
                 { key, version -> listOf(node(key, version)) },
                 object : VulnerabilityService {
                     override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
@@ -96,7 +109,7 @@ class NodeSecurityTest {
     fun `missing fix lookups fail explicitly and still vulnerable candidates have no suggestion`() {
         listOf(true, false).forEach { missing ->
             val service =
-                NodeSecurityService(
+                service(
                     { key, version -> listOf(node(key, version)) },
                     object : VulnerabilityService {
                         override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
@@ -123,7 +136,7 @@ class NodeSecurityTest {
         val observed = mutableListOf<NodeScanPhase?>()
         scanner =
             NodeSecurityScanner(
-                NodeSecurityService(
+                service(
                     { key, version ->
                         observed += scanner.get("alice", state).phase
                         listOf(node(key, version))
@@ -144,8 +157,63 @@ class NodeSecurityTest {
     }
 
     @Test
+    fun `slow independent resolutions run four at a time and publish isolated progress until ready`() {
+        val started = CountDownLatch(4)
+        val release = CountDownLatch(1)
+        val active = AtomicInteger()
+        val maximum = AtomicInteger()
+        val progress = CopyOnWriteArrayList<NodeScanProgress>()
+        val state = state(*(1..8).map { "target-$it" to "1.0.0" }.toTypedArray())
+        val service =
+            service(
+                { key, version ->
+                    val running = active.incrementAndGet()
+                    maximum.updateAndGet { maxOf(it, running) }
+                    started.countDown()
+                    try {
+                        check(release.await(10, TimeUnit.SECONDS))
+                        listOf(node(key, version))
+                    } finally {
+                        active.decrementAndGet()
+                    }
+                },
+                osv,
+            )
+        Executors.newSingleThreadExecutor().use { executor ->
+            val scanner = NodeSecurityScanner(service, executor)
+            scanner.start("alice", state)
+            try {
+                assertTrue(started.await(5, TimeUnit.SECONDS), "Expected four concurrent resolutions")
+                val running = scanner.get("alice", state)
+                assertEquals(SecurityScanStatus.RUNNING, running.status)
+                assertNull(running.result)
+                assertEquals(NodeScanPhase.RESOLUTION, running.phase)
+                assertEquals(0, running.completedResolutions)
+                assertEquals(9, running.totalResolutions)
+                val otherUser = scanner.get("bob", state)
+                assertEquals(SecurityScanStatus.IDLE, otherUser.status)
+                assertNull(otherUser.phase)
+                assertEquals(0, otherUser.totalResolutions)
+                assertEquals(SecurityScanStatus.IDLE, scanner.get("alice", state("changed" to "1.0.0")).status)
+            } finally {
+                release.countDown()
+            }
+            executor.submit {}.get(10, TimeUnit.SECONDS)
+            val ready = scanner.get("alice", state)
+            assertEquals(SecurityScanStatus.READY, ready.status)
+            assertEquals(8, ready.result!!.targets.size)
+            assertNull(ready.phase)
+            assertEquals(0, ready.totalResolutions)
+        }
+        assertEquals(4, maximum.get())
+        service.scan(state, progress::add)
+        assertTrue(progress.zipWithNext().all { (before, after) -> before.completedResolutions <= after.completedResolutions })
+        assertEquals(NodeScanProgress(NodeScanPhase.COVERAGE, 9, 9), progress.last())
+    }
+
+    @Test
     fun `invalid names and non exact specifications are unsupported without executing a resolver`() {
-        val service = NodeSecurityService({ _, _ -> error("Must not execute") }, osv)
+        val service = service({ _, _ -> error("Must not execute") }, osv)
         val invalid =
             listOf(
                 "safe" to ">=1.0.0",
@@ -170,7 +238,7 @@ class NodeSecurityTest {
     @Test
     fun `failed or incomplete resolutions cannot turn green and do not hide other targets`() {
         val service =
-            NodeSecurityService(
+            service(
                 { key, version ->
                     when (key) {
                         "failed" -> throw IOException("Registry unavailable")
@@ -185,14 +253,15 @@ class NodeSecurityTest {
         val result = service.scan(state(*listOf("failed", "empty", "wrong", "incomplete", "safe").map { it to "1.0.0" }.toTypedArray()))
         assertEquals(NodeSecurityStatus.OK, result.targets.single { it.key == "safe" }.status)
         assertTrue(result.targets.filter { it.key != "safe" }.all { it.status == NodeSecurityStatus.UNRESOLVED && it.error != null })
-        assertEquals(listOf("safe"), queried.map { it.name })
+        assertTrue(queried.any { it.name == "safe" })
+        assertTrue(queried.all { validNodeVersion(it.version) })
     }
 
     @Test
     fun `lookup failures and missing OSV results fail the scan instead of reporting safe targets`() {
         listOf(true, false).forEach { fail ->
             val service =
-                NodeSecurityService(
+                service(
                     { key, version -> listOf(node(key, version)) },
                     object : VulnerabilityService {
                         override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
@@ -215,7 +284,7 @@ class NodeSecurityTest {
     @Test
     fun `jobs isolate users and fingerprints refresh ready scans and discard invalidated work`() {
         val queue = QueuedExecutor()
-        val service = NodeSecurityService({ key, version -> listOf(node(key, version)) }, osv)
+        val service = service({ key, version -> listOf(node(key, version)) }, osv)
         val scanner = NodeSecurityScanner(service, queue)
         val original = state("safe" to "1.0.0")
         val changed = state("safe" to "2.0.0")
@@ -250,7 +319,7 @@ class NodeSecurityTest {
     @Test
     fun `caret and exact forms have identical saved target semantics and scan fingerprints`() {
         val queue = QueuedExecutor()
-        val scanner = NodeSecurityScanner(NodeSecurityService({ key, version -> listOf(node(key, version)) }, osv), queue)
+        val scanner = NodeSecurityScanner(service({ key, version -> listOf(node(key, version)) }, osv), queue)
         val caret = state("safe" to "^1.2.3")
         val exact = state("safe" to "1.2.3")
         scanner.start("alice", caret)
@@ -270,7 +339,7 @@ class NodeSecurityTest {
 
     @Test
     fun `interruption propagates instead of continuing with more targets`() {
-        val service = NodeSecurityService({ _, _ -> throw InterruptedException("Cancelled") }, osv)
+        val service = service({ _, _ -> throw InterruptedException("Cancelled") }, osv)
         try {
             assertThrows(InterruptedException::class.java) { service.scan(state("safe" to "1.0.0")) }
             assertTrue(Thread.currentThread().isInterrupted)
@@ -278,6 +347,47 @@ class NodeSecurityTest {
             Thread.interrupted()
         }
     }
+
+    @Test
+    fun `interrupted resolution cancels and joins other workers before returning`() {
+        val started = CountDownLatch(3)
+        val stopped = CountDownLatch(3)
+        val service =
+            service(
+                { key, _ ->
+                    if (key == "cancel") {
+                        check(started.await(5, TimeUnit.SECONDS))
+                        throw InterruptedException("Cancelled")
+                    }
+                    started.countDown()
+                    try {
+                        CountDownLatch(1).await()
+                        error("Expected cancellation")
+                    } finally {
+                        stopped.countDown()
+                    }
+                },
+                osv,
+            )
+        try {
+            assertThrows(InterruptedException::class.java) {
+                service.scan(state("cancel" to "1.0.0", "first" to "1.0.0", "second" to "1.0.0", "third" to "1.0.0"))
+            }
+            assertTrue(Thread.currentThread().isInterrupted)
+            assertEquals(0L, stopped.count)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    private fun service(
+        resolve: (String, String) -> List<ResolvedDependency>,
+        lookup: VulnerabilityService = osv,
+        combined: (Map<String, String>, Map<String, String>) -> NodeCombinedResolution = { dependencies, overrides ->
+            val roots = (dependencies + overrides).mapValues { (key, version) -> listOf(node(key, version)) }
+            NodeCombinedResolution(roots.values.flatten().distinct(), roots)
+        },
+    ) = NodeSecurityService(resolve, lookup, combined)
 
     private fun state(vararg dependencies: Pair<String, String>) =
         TargetVersionsState(mutableMapOf(), mutableMapOf(), "8.0", nodeDependencies = dependencies.toMap().toMutableMap())

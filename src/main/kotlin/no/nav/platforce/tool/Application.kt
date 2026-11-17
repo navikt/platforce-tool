@@ -119,9 +119,8 @@ class Application {
     private val nodeTargetResolver = NodeTargetResolver()
     private val nodeSecurityService =
         NodeSecurityService(
-            nodeTargetResolver::resolve,
+            nodeTargetResolver,
             OsvVulnerabilityService(httpClient, ecosystem = "npm"),
-            nodeTargetResolver::resolveWithOverrides,
         )
     private val upgradeSecurityScanner =
         UpgradeSecurityScanner(

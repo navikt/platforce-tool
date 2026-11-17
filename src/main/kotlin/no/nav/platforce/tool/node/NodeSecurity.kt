@@ -21,7 +21,11 @@ import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.routing.bind
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 enum class NodeSecurityStatus {
     OK,
@@ -55,18 +59,35 @@ data class NodeSecuritySnapshot(
     val result: NodeSecurityScan? = null,
     val error: String? = null,
     val phase: NodeScanPhase? = null,
+    val completedResolutions: Int = 0,
+    val totalResolutions: Int = 0,
 )
 
 enum class NodeScanPhase {
     RESOLUTION,
     OSV,
+    COVERAGE,
 }
+
+data class NodeScanProgress(
+    val phase: NodeScanPhase,
+    val completedResolutions: Int,
+    val totalResolutions: Int,
+)
 
 class NodeSecurityService(
     private val resolve: (String, String) -> List<ResolvedDependency>,
     private val vulnerabilities: VulnerabilityService,
-    private val resolveWithOverrides: ((String, String, Map<String, String>) -> List<ResolvedDependency>)? = null,
+    private val resolveCombined: (Map<String, String>, Map<String, String>) -> NodeCombinedResolution,
+    private val resolver: NodeTargetResolver? = null,
 ) {
+    constructor(resolver: NodeTargetResolver, vulnerabilities: VulnerabilityService) : this(
+        resolver::resolve,
+        vulnerabilities,
+        resolver::resolveCombined,
+        resolver,
+    )
+
     private val log = KotlinLogging.logger { }
 
     private data class Tree(
@@ -76,19 +97,44 @@ class NodeSecurityService(
 
     fun scan(
         state: TargetVersionsState,
-        onPhase: (NodeScanPhase) -> Unit = {},
-    ): NodeSecurityScan {
-        onPhase(NodeScanPhase.RESOLUTION)
-        val trees = mutableMapOf<Pair<String, Map<String, String>>, Tree>()
+        onProgress: (NodeScanProgress) -> Unit = {},
+    ): NodeSecurityScan =
+        if (resolver != null) {
+            resolver.withSession { session ->
+                NodeSecurityService(session::resolve, vulnerabilities, session::resolveCombined).scan(state, onProgress)
+            }
+        } else {
+            Executors
+                .newFixedThreadPool(4) { task ->
+                    Thread(task, "node-npm-resolution").apply { isDaemon = true }
+                }.use { executor ->
+                    try {
+                        scan(state, onProgress, executor)
+                    } finally {
+                        executor.shutdownNow()
+                    }
+                }
+        }
 
-        fun tree(
-            key: String,
-            overrides: Map<String, String> = emptyMap(),
-        ): Tree =
-            trees.getOrPut(key to overrides.toMap()) {
-                val version = nodeTargetVersion(state.nodeDependencies.getValue(key))
-                val initial = NodeSecurityResult(key, version, NodeSecurityStatus.OK)
-                if (!validNodePackage(key) || !validNodeVersion(version)) {
+    private fun scan(
+        state: TargetVersionsState,
+        onProgress: (NodeScanProgress) -> Unit,
+        executor: ExecutorService,
+    ): NodeSecurityScan {
+        var phase = NodeScanPhase.RESOLUTION
+        var completed = 0
+        val targets = state.nodeDependencies.toSortedMap().mapValues { nodeTargetVersion(it.value) }
+        val supported = targets.filter { (key, version) -> validNodePackage(key) && validNodeVersion(version) }
+        val overrides = targets.filterKeys { it in state.nodeTransientDependencies }
+        val normal = targets - overrides.keys
+        val complete = supported.size == targets.size
+        val total = supported.size + if (complete && targets.isNotEmpty()) 1 else 0
+
+        fun report() = onProgress(NodeScanProgress(phase, completed, total))
+        report()
+        val standalone =
+            targets
+                .mapValues { (key, version) ->
                     Tree(
                         NodeSecurityResult(
                             key,
@@ -97,69 +143,136 @@ class NodeSecurityService(
                             error = "Use a public npm package name and an exact version, optionally prefixed with ^ or ~",
                         ),
                     )
-                } else {
+                }.toMutableMap()
+
+        fun resolveTree(key: String): Tree {
+            val version = targets.getValue(key)
+            val initial = NodeSecurityResult(key, version, NodeSecurityStatus.OK)
+            return if (!validNodePackage(key) || !validNodeVersion(version)) {
+                Tree(
+                    NodeSecurityResult(
+                        key,
+                        version,
+                        NodeSecurityStatus.UNSUPPORTED,
+                        error = "Use a public npm package name and an exact version, optionally prefixed with ^ or ~",
+                    ),
+                )
+            } else {
+                val started = System.nanoTime()
+                log.info { "Resolving npm target $key@$version solo" }
+                try {
+                    val packages = resolve(key, version)
+                    check(
+                        packages.any { it.name == key && it.version == version },
+                    ) { "Resolution is missing exact target $key@$version" }
+                    check(packages.all { it.group == "npm" && validNodePackage(it.name) && validNodeVersion(it.version) }) {
+                        "Incomplete npm resolution for $key@$version"
+                    }
+                    Tree(initial.copy(resolvedPackageCount = packages.size), packages)
+                } catch (failure: Exception) {
+                    if (failure is InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw failure
+                    }
+                    log.warn(failure) { "npm target resolution failed for $key@$version" }
+                    Tree(initial.copy(status = NodeSecurityStatus.UNRESOLVED, error = failure.message ?: failure.javaClass.simpleName))
+                } finally {
+                    log.info { "Finished npm target resolution for $key@$version in ${(System.nanoTime() - started) / 1_000_000}ms" }
+                }
+            }
+        }
+
+        fun <T> await(future: Future<T>): T =
+            try {
+                future.get()
+            } catch (failure: ExecutionException) {
+                val cause = failure.cause ?: failure
+                if (cause is InterruptedException) Thread.currentThread().interrupt()
+                throw cause
+            }
+
+        val combinedFuture =
+            if (complete && targets.isNotEmpty()) {
+                executor.submit<Result<NodeCombinedResolution>> {
+                    val started = System.nanoTime()
+                    log.info { "Resolving combined npm targets: ${normal.size} dependencies, ${overrides.size} overrides" }
                     try {
-                        onPhase(NodeScanPhase.RESOLUTION)
-                        val packages =
-                            if (overrides.isEmpty()) {
-                                resolve(key, version)
-                            } else {
-                                checkNotNull(resolveWithOverrides) {
-                                    "npm override resolution is not configured"
-                                }(key, version, overrides)
-                            }
-                        check(
-                            packages.any { it.name == key && it.version == version },
-                        ) { "Resolution is missing exact target $key@$version" }
-                        check(packages.all { it.group == "npm" && validNodePackage(it.name) && validNodeVersion(it.version) }) {
-                            "Incomplete npm resolution for $key@$version"
+                        val combined = resolveCombined(normal, overrides)
+                        check(combined.packages.all { it.group == "npm" && validNodePackage(it.name) && validNodeVersion(it.version) }) {
+                            "Incomplete combined npm resolution"
                         }
-                        Tree(initial.copy(resolvedPackageCount = packages.size), packages)
+                        targets.forEach { (key, version) ->
+                            val packages = checkNotNull(combined.targets[key]) { "Missing combined npm target $key" }
+                            check(packages.all { it in combined.packages }) { "Incomplete combined npm tree for $key" }
+                            if (key in normal) {
+                                check(packages.any { it.name == key && it.version == version }) {
+                                    "Combined resolution is missing exact target $key@$version"
+                                }
+                            }
+                        }
+                        Result.success(combined)
                     } catch (failure: Exception) {
                         if (failure is InterruptedException) {
                             Thread.currentThread().interrupt()
                             throw failure
                         }
-                        log.warn(failure) { "npm target resolution failed for $key@$version" }
-                        Tree(initial.copy(status = NodeSecurityStatus.UNRESOLVED, error = failure.message ?: failure.javaClass.simpleName))
+                        log.warn(failure) { "Combined npm resolution failed" }
+                        Result.failure(failure)
+                    } finally {
+                        log.info { "Finished combined npm resolution in ${(System.nanoTime() - started) / 1_000_000}ms" }
                     }
                 }
+            } else {
+                null
             }
-        val standalone = state.nodeDependencies.toSortedMap().mapValues { (key, _) -> tree(key) }
-        onPhase(NodeScanPhase.OSV)
+        val completion = ExecutorCompletionService<Pair<String, Tree>>(executor)
+        supported.keys.forEach { key -> completion.submit { key to resolveTree(key) } }
+        repeat(supported.size) {
+            val (key, resolved) = await(completion.take())
+            standalone[key] = resolved
+            completed++
+            report()
+        }
+        val combinedResult =
+            combinedFuture?.let {
+                await(it).also {
+                    completed++
+                    report()
+                }
+            }
+        val combined = combinedResult?.getOrNull()
+        val combinedError = combinedResult?.exceptionOrNull()?.message ?: "Combined npm resolution is incomplete"
+        phase = NodeScanPhase.OSV
+        report()
         val findings = mutableMapOf<String, List<Vulnerability>>()
 
         fun lookup(packages: List<ResolvedDependency>) {
             val missing = packages.distinctBy { "${it.key}:${it.version}" }.filterNot { "${it.key}:${it.version}" in findings }
             if (missing.isNotEmpty()) {
-                onPhase(NodeScanPhase.OSV)
                 findings.putAll(vulnerabilities.find(missing))
                 check(missing.all { "${it.key}:${it.version}" in findings }) { "Missing npm vulnerability lookup results" }
             }
         }
-        lookup(standalone.values.flatMap { it.packages })
+        val allPackages = (standalone.values.flatMap { it.packages } + combined?.packages.orEmpty()).distinctBy { it.name to it.version }
+        lookup(allPackages)
+        val candidates =
+            allPackages.associateWith { dependency ->
+                findings
+                    .getValue("${dependency.key}:${dependency.version}")
+                    .flatMap { it.fixedVersions }
+                    .filter {
+                        validNodeVersion(it) && '-' !in it.substringBefore('+') && compareNodeVersions(it, dependency.version) > 0
+                    }.distinct()
+                    .sortedWith(::compareNodeVersions)
+            }
+        lookup(
+            candidates.flatMap { (dependency, versions) ->
+                versions.map { dependency.copy(version = it, requestedVersion = it) }
+            },
+        )
 
-        fun vulnerable(packages: List<ResolvedDependency>): List<VulnerableDependency> {
-            lookup(packages)
-            val candidates =
-                packages.associateWith { dependency ->
-                    findings
-                        .getValue("${dependency.key}:${dependency.version}")
-                        .flatMap { it.fixedVersions }
-                        .filter {
-                            validNodeVersion(
-                                it,
-                            ) && '-' !in it.substringBefore('+') && compareNodeVersions(it, dependency.version) > 0
-                        }.distinct()
-                        .sortedWith(::compareNodeVersions)
-                }
-            val candidatePackages =
-                candidates
-                    .flatMap { (dependency, versions) ->
-                        versions.map { dependency.copy(version = it, requestedVersion = it) }
-                    }.distinctBy { it.name to it.version }
-            lookup(candidatePackages)
-            return packages.mapNotNull { dependency ->
+        fun vulnerable(packages: List<ResolvedDependency>): List<VulnerableDependency> =
+            packages.mapNotNull { dependency ->
                 val issues = findings.getValue("${dependency.key}:${dependency.version}")
                 if (issues.isEmpty()) {
                     null
@@ -171,7 +284,6 @@ class NodeSecurityService(
                     VulnerableDependency(dependency, issues, fix?.let { VersionSuggestion(dependency.name, it) })
                 }
             }
-        }
         val evaluated = mutableMapOf<Tree, NodeSecurityResult>()
 
         fun evaluate(tree: Tree): NodeSecurityResult =
@@ -187,164 +299,136 @@ class NodeSecurityService(
                 }
             }
         val baseline = standalone.mapValues { evaluate(it.value) }
-        val overrides =
-            state.nodeDependencies.filterKeys { it in state.nodeTransientDependencies }.mapValues {
-                nodeTargetVersion(
-                    it.value,
+        phase = NodeScanPhase.COVERAGE
+        report()
+        if (combined == null) {
+            return NodeSecurityScan(
+                baseline.values.map {
+                    if (it.status in setOf(NodeSecurityStatus.UNSUPPORTED, NodeSecurityStatus.UNRESOLVED)) {
+                        it
+                    } else {
+                        it.copy(status = NodeSecurityStatus.UNRESOLVED, error = combinedError)
+                    }
+                },
+            )
+        }
+        val actual =
+            baseline.mapValues { (key, original) ->
+                val packages = combined.targets.getValue(key)
+                if (original.status in setOf(NodeSecurityStatus.UNSUPPORTED, NodeSecurityStatus.UNRESOLVED) || packages.isEmpty()) {
+                    original
+                } else {
+                    evaluate(
+                        Tree(original.copy(status = NodeSecurityStatus.OK, resolvedPackageCount = packages.size, error = null), packages),
+                    )
+                }
+            }
+
+        val safeProviders = actual.filterValues { it.status == NodeSecurityStatus.OK }
+        val inferred =
+            actual.mapValues { (key, result) ->
+                if (result.status in setOf(NodeSecurityStatus.UNSUPPORTED, NodeSecurityStatus.UNRESOLVED)) return@mapValues result
+                val packages = combined.targets.getValue(key)
+                val reasons =
+                    baseline.getValue(key).vulnerableDependencies.mapNotNull { item ->
+                        if (packages.isEmpty() ||
+                            result.vulnerableDependencies.any { remaining ->
+                                remaining.dependency.name == item.dependency.name &&
+                                    remaining.vulnerabilities.any { issue -> item.vulnerabilities.any { it.id == issue.id } }
+                            }
+                        ) {
+                            return@mapNotNull null
+                        }
+                        val replacements = packages.filter { it.name == item.dependency.name }.map { it.version }.toSet()
+                        val alternatives =
+                            safeProviders.keys
+                                .filter { provider ->
+                                    provider != key &&
+                                        standalone.getValue(provider).packages.any {
+                                            it.name == item.dependency.name &&
+                                                it.version in replacements
+                                        } &&
+                                        combined.targets.getValue(provider).any {
+                                            it.name == item.dependency.name &&
+                                                it.version in replacements
+                                        }
+                                }.toSet()
+                        val ancestors =
+                            safeProviders.keys.filter { provider ->
+                                provider != key &&
+                                    standalone
+                                        .getValue(
+                                            key,
+                                        ).packages
+                                        .any { it.name == provider && it.version != targets.getValue(provider) } &&
+                                    packages.any { it.name == provider && it.version == targets.getValue(provider) }
+                            }
+                        val direct =
+                            item.dependency.name.takeIf {
+                                it in overrides && it in safeProviders && overrides[it] in replacements
+                            }
+                        val providers =
+                            when {
+                                direct != null -> setOf(direct)
+                                ancestors.isNotEmpty() -> ancestors.toSet()
+                                else -> alternatives - overrides.keys
+                            }
+                        OverrideReason(
+                            item.dependency.name,
+                            targets[item.dependency.name] ?: item.dependency.version,
+                            replacements.sortedWith(::compareNodeVersions).joinToString(", ").ifEmpty { "not present" },
+                            item.dependency.version,
+                            providers.sorted().map { "$it:${targets.getValue(it)}" },
+                        )
+                    }
+                result.copy(
+                    status =
+                        if (result.status == NodeSecurityStatus.OK &&
+                            reasons.isNotEmpty()
+                        ) {
+                            NodeSecurityStatus.OK_OVERRIDDEN
+                        } else {
+                            result.status
+                        },
+                    relatedTo = reasons,
                 )
             }
-        if (overrides.isEmpty()) return NodeSecurityScan(baseline.values.toList())
-        val normal = (state.nodeDependencies.keys - overrides.keys).sorted()
-        val effective =
-            normal.associateWith { key ->
-                if (baseline.getValue(key).status in setOf(NodeSecurityStatus.UNRESOLVED, NodeSecurityStatus.UNSUPPORTED)) {
-                    baseline.getValue(key)
-                } else {
-                    evaluate(tree(key, overrides))
-                }
-            }
-        val coverResults =
-            overrides.keys.associateWith { key ->
-                if (baseline.getValue(key).status in setOf(NodeSecurityStatus.UNRESOLVED, NodeSecurityStatus.UNSUPPORTED)) {
-                    baseline.getValue(key)
-                } else {
-                    evaluate(tree(key, overrides))
-                }
-            }
+        val incomplete = baseline.values.any { it.status in setOf(NodeSecurityStatus.UNSUPPORTED, NodeSecurityStatus.UNRESOLVED) }
 
-        fun risks(result: NodeSecurityResult) =
-            result.vulnerableDependencies.flatMap { item -> item.vulnerabilities.map { item.dependency.name to it.id } }.toSet()
-        val retained = overrides.toMutableMap()
-        val uncertain = mutableMapOf<String, String>()
-        val usage = mutableMapOf<String, List<TransientDependencyUsage>>()
-        val coveredRisks = mutableMapOf<String, Map<String, Set<Pair<String, String>>>>()
-        val introduced = mutableMapOf<String, List<VulnerableDependency>>()
-        val incomplete = effective.values.any { it.status in setOf(NodeSecurityStatus.UNRESOLVED, NodeSecurityStatus.UNSUPPORTED) }
-        if (!incomplete) {
-            var removed: Boolean
-            do {
-                removed = false
-                for (key in retained.keys.sorted()) {
-                    if (coverResults.getValue(key).status != NodeSecurityStatus.OK) continue
-                    val without = normal.associateWith { evaluate(tree(it, retained - key)) }
-                    val failed =
-                        without.values.firstOrNull {
-                            it.status in
-                                setOf(NodeSecurityStatus.UNRESOLVED, NodeSecurityStatus.UNSUPPORTED)
-                        }
-                    if (failed != null) {
-                        uncertain[key] = failed.error ?: "Incomplete npm override comparison"
-                        continue
-                    }
-                    uncertain.remove(key)
-                    val added =
-                        normal.flatMap { parent ->
-                            val remaining = risks(without.getValue(parent))
-                            effective.getValue(parent).vulnerableDependencies.mapNotNull { item ->
-                                val issues = item.vulnerabilities.filter { (item.dependency.name to it.id) !in remaining }
-                                item.copy(vulnerabilities = issues).takeIf { issues.isNotEmpty() }
-                            }
-                        }
-                    introduced[key] = added
-                    val protected =
-                        normal
-                            .associateWith {
-                                risks(
-                                    without.getValue(it),
-                                ) - risks(effective.getValue(it))
-                            }.filterValues { it.isNotEmpty() }
-                    coveredRisks[key] = protected
-                    usage[key] = protected.keys.map { TransientDependencyUsage(it, baseline.getValue(it).targetVersion) }
-                    if (protected.isEmpty() && added.isEmpty()) {
-                        retained.remove(key)
-                        removed = true
-                    }
-                }
-            } while (removed)
-        }
+        fun provides(
+            key: String,
+            reason: OverrideReason,
+        ) = "$key:${targets.getValue(key)}" in reason.causedBy
+        val ambiguousCoverage = inferred.values.any { it.relatedTo.any { reason -> reason.causedBy.isEmpty() } }
         return NodeSecurityScan(
-            baseline.map { (key, original) ->
-                if (key in overrides) {
-                    val actual = coverResults.getValue(key)
-                    when {
-                        actual.status != NodeSecurityStatus.OK -> {
-                            actual
-                        }
-
-                        incomplete -> {
-                            actual.copy(
-                                status = NodeSecurityStatus.UNRESOLVED,
-                                error = "Incomplete Node targets; override coverage is unknown",
-                            )
-                        }
-
-                        key in uncertain -> {
-                            actual.copy(status = NodeSecurityStatus.UNRESOLVED, error = uncertain.getValue(key))
-                        }
-
-                        introduced[key].orEmpty().isNotEmpty() -> {
-                            actual.copy(status = NodeSecurityStatus.VULNERABLE, vulnerableDependencies = introduced.getValue(key))
-                        }
-
-                        key !in retained -> {
-                            actual.copy(
-                                status = NodeSecurityStatus.TRANSIENT_UNUSED,
-                                replacementDependencies = retained.map { TransientDependencyUsage(it.key, it.value) },
-                            )
-                        }
-
-                        else -> {
-                            actual.copy(status = NodeSecurityStatus.OK_TRANSIENT, transientUsage = usage[key].orEmpty())
-                        }
-                    }
-                } else {
-                    val actual = effective.getValue(key)
-                    val remaining = risks(actual)
-                    val covered =
-                        original.vulnerableDependencies.filter { item ->
-                            item.vulnerabilities.all {
-                                (item.dependency.name to it.id) !in
-                                    remaining
-                            }
-                        }
-                    val reasons =
-                        if (actual.status in
-                            setOf(NodeSecurityStatus.UNRESOLVED, NodeSecurityStatus.UNSUPPORTED)
-                        ) {
-                            emptyList()
-                        } else {
-                            covered.map { item ->
-                                OverrideReason(
-                                    item.dependency.name,
-                                    item.dependency.version,
-                                    tree(key, overrides)
-                                        .packages
-                                        .filter {
-                                            it.name == item.dependency.name
-                                        }.map { it.version }
-                                        .distinct()
-                                        .joinToString(", ")
-                                        .ifEmpty { "not present" },
-                                    item.dependency.version,
-                                    retained
-                                        .filterKeys { cover ->
-                                            item.vulnerabilities.any { issue ->
-                                                (item.dependency.name to issue.id) in coveredRisks[cover]?.get(key).orEmpty()
-                                            }
-                                        }.map { "${it.key}:${it.value}" },
-                                )
-                            }
-                        }
-                    actual.copy(
-                        status =
-                            if (actual.status == NodeSecurityStatus.OK &&
-                                covered.isNotEmpty()
-                            ) {
-                                NodeSecurityStatus.OK_OVERRIDDEN
+            inferred.map { (key, result) ->
+                val usage =
+                    inferred.values
+                        .filter { consumer ->
+                            consumer.key != key && consumer.relatedTo.any { provides(key, it) }
+                        }.map { TransientDependencyUsage(it.key, it.targetVersion) }
+                if (key !in overrides || result.status in
+                    setOf(
+                        NodeSecurityStatus.VULNERABLE,
+                        NodeSecurityStatus.UNRESOLVED,
+                        NodeSecurityStatus.UNSUPPORTED,
+                    )
+                ) {
+                    if (key in overrides) result.copy(transientUsage = usage) else result
+                } else if (incomplete || (ambiguousCoverage && usage.isEmpty() && combined.targets.getValue(key).isNotEmpty())) {
+                    result.copy(
+                        status = NodeSecurityStatus.UNRESOLVED,
+                        error =
+                            if (incomplete) {
+                                "Incomplete Node targets; override coverage is unknown"
                             } else {
-                                actual.status
+                                "Override coverage cannot be attributed from the combined and solo npm trees"
                             },
-                        relatedTo = reasons,
+                    )
+                } else {
+                    result.copy(
+                        status = if (usage.isNotEmpty()) NodeSecurityStatus.OK_TRANSIENT else NodeSecurityStatus.TRANSIENT_UNUSED,
+                        transientUsage = usage,
                     )
                 }
             },
@@ -356,14 +440,14 @@ class NodeSecurityScanner(
     service: NodeSecurityService,
     executor: ExecutorService = scanExecutor("node-security"),
 ) {
-    private val phases = ConcurrentHashMap<Pair<String, String>, NodeScanPhase>()
+    private val progress = ConcurrentHashMap<Pair<String, String>, NodeScanProgress>()
     private val jobs =
         UserScanJobs(executor) { username: String, state: TargetVersionsState ->
             val key = username to fingerprint(state)
             try {
-                service.scan(state) { phases[key] = it }
+                service.scan(state) { progress[key] = it }
             } finally {
-                phases.remove(key)
+                progress.remove(key)
             }
         }
 
@@ -379,14 +463,18 @@ class NodeSecurityScanner(
 
     fun invalidate(username: String) = jobs.invalidate(username)
 
-    private fun ScanJobSnapshot<NodeSecurityScan>.toNodeSnapshot(username: String) =
-        NodeSecuritySnapshot(
+    private fun ScanJobSnapshot<NodeSecurityScan>.toNodeSnapshot(username: String): NodeSecuritySnapshot {
+        val current = if (status.name == "RUNNING") progress[username to targetFingerprint] else null
+        return NodeSecuritySnapshot(
             SecurityScanStatus.valueOf(status.name),
             targetFingerprint,
             result,
             error,
-            if (status.name == "RUNNING") phases[username to targetFingerprint] ?: NodeScanPhase.RESOLUTION else null,
+            if (status.name == "RUNNING") current?.phase ?: NodeScanPhase.RESOLUTION else null,
+            current?.completedResolutions ?: 0,
+            current?.totalResolutions ?: 0,
         )
+    }
 }
 
 fun nodeSecurityRoutes(scanner: NodeSecurityScanner) =

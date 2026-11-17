@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.targets
 
+import no.nav.platforce.tool.node.NodeCombinedResolution
 import no.nav.platforce.tool.node.NodeSecurityService
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.resolution.TargetResolution
@@ -72,6 +73,17 @@ class UpgradeSecurityScannerTest {
                                         emptyList()
                                     }
                             }
+                    },
+                    { dependencies, overrides ->
+                        assertTrue(overrides.isEmpty())
+                        val roots =
+                            dependencies.mapValues { (name, version) ->
+                                listOf(
+                                    node(name, version).copy(group = "npm"),
+                                    node("transitive", if (version == "2.0.0") "1.0.0" else "2.0.0").copy(group = "npm"),
+                                )
+                            }
+                        NodeCombinedResolution(roots.values.flatten().distinct(), roots)
                     },
                 ),
             )
