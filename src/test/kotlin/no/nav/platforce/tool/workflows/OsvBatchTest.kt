@@ -17,6 +17,36 @@ import org.junit.jupiter.api.Test
 
 class OsvBatchTest {
     @Test
+    fun `npm lookups preserve scoped package names and use npm ecosystem instead of Maven coordinates`() {
+        val client =
+            OkHttpClient
+                .Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val buffer = Buffer()
+                    checkNotNull(request.body).writeTo(buffer)
+                    val queries = JsonParser.parseString(buffer.readUtf8()).asJsonObject["queries"].asJsonArray
+                    val pkg = queries.single().asJsonObject["package"].asJsonObject
+                    assertEquals("@slack/bolt", pkg["name"].asString)
+                    assertEquals("npm", pkg["ecosystem"].asString)
+                    assertEquals("3.22.0", queries.single().asJsonObject["version"].asString)
+                    Response
+                        .Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body("""{"results":[{}]}""".toResponseBody("application/json".toMediaType()))
+                        .build()
+                }.build()
+        val service = OsvVulnerabilityService(client, ecosystem = "npm")
+        assertEquals(
+            mapOf("npm:@slack/bolt:3.22.0" to emptyList<Any>()),
+            service.find(listOf(ResolvedDependency("npm", "@slack/bolt", "3.22.0", "3.22.0", emptyList()))),
+        )
+    }
+
+    @Test
     fun `large BOM catalogs are batched without dropping coordinates`() {
         val sizes = mutableListOf<Int>()
         val service =

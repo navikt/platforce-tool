@@ -95,6 +95,9 @@ document.getElementById("scanBoms")
 document.getElementById("scanPlugins")
     .addEventListener("click", scanPluginSecurity);
 
+document.getElementById("scanNode")
+    .addEventListener("click", scanNodeSecurity);
+
 document.getElementById("upgradeAllDependencies")
     .addEventListener("click", upgradeAllDependencies);
 
@@ -142,6 +145,7 @@ async function init() {
 
     await loadCachedTargetSecurity();
     await loadCachedPluginSecurity();
+    await loadCachedNodeSecurity();
     renderTargetTables();
     if (lastLoadedData?.repos) render(lastLoadedData);
 

@@ -6,7 +6,7 @@ async function renderTargets(data) {
         plugins: data.plugins || {},
         dependencies: data.dependencies || {},
         platformBoms: data.platformBoms || {},
-        nodeDependencies: data.nodeDependencies || {},
+        nodeDependencies: Object.fromEntries(Object.entries(data.nodeDependencies || {}).map(([key, version]) => [key, nodeTargetVersion(version)])),
         gradleVersion: data.gradleVersion || "",
         transientDependencies: new Set(data.transientDependencies || []),
         drafted
@@ -45,7 +45,7 @@ function addDraftTarget(kind, key, version) {
     }
 
     if (kind === "NODE") {
-        targetState.nodeDependencies[key] = version;
+        targetState.nodeDependencies[key] = nodeTargetVersion(version);
     }
 
     if (kind === "GRADLE") {
@@ -61,6 +61,10 @@ function addDraftTarget(kind, key, version) {
     });
 
     renderTargetTables();
+}
+
+function nodeTargetVersion(version) {
+    return version.trim().replace(/^[~^](?=\d)/, "");
 }
 
 function renderGradleVersion(version) {
@@ -90,6 +94,7 @@ function renderTable(containerId, entries, type) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
     entries.forEach(([key, version]) => {
+        if (type === "node") version = nodeTargetVersion(version);
         const drafted =
             targetState.drafted?.has(`${type.toUpperCase()}:${key}`);
         const isTransient =
@@ -103,7 +108,7 @@ function renderTable(containerId, entries, type) {
         
             <input class="key" />
             <input class="version" />
-            ${type === "node" ? "" : securityStatusHtml(securityTarget)}
+            ${securityStatusHtml(securityTarget)}
             ${
             type === "dependency"
                 ? `
@@ -126,7 +131,8 @@ function renderTable(containerId, entries, type) {
                 ? `
                 <div class="target-security-details hidden">
                     ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget)
-                        : type === "plugin" ? pluginSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
+                        : type === "plugin" ? pluginSecurityDetailsHtml(securityTarget)
+                            : type === "node" ? nodeSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
                 </div>
             `
                 : ""
@@ -193,13 +199,13 @@ function renderTable(containerId, entries, type) {
     `;
     if (type === "node") {
         addRow.querySelector(".key").placeholder = "package or @scope/package";
-        addRow.querySelector(".version").placeholder = "version or range";
+        addRow.querySelector(".version").placeholder = "exact version";
     }
     addRow.querySelector(".add-btn").onclick = () => {
         const kInput = addRow.querySelector(".key");
         const vInput = addRow.querySelector(".version");
         const k = kInput.value.trim();
-        const v = vInput.value.trim();
+        const v = type === "node" ? nodeTargetVersion(vInput.value) : vInput.value.trim();
         if (!k || !v) return;
         if (type === "dependency" && ignoredDependencies.includes(k)) {
             showTargetSaveMessage("Remove this dependency from Ignored Dependencies before adding it as a target.", false);
@@ -212,7 +218,7 @@ function renderTable(containerId, entries, type) {
        
             <input class="key" />
             <input class="version" />
-            ${type === "node" ? "" : securityStatusHtml(securityTarget)}
+            ${securityStatusHtml(securityTarget)}
             ${(type === "node" ? "" : targetUpgradeButtonHtml()) + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
@@ -224,7 +230,8 @@ function renderTable(containerId, entries, type) {
                 ? `
                 <div class="target-security-details hidden">
                     ${type === "platform_bom" ? platformBomSecurityDetailsHtml(securityTarget)
-                        : type === "plugin" ? pluginSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
+                        : type === "plugin" ? pluginSecurityDetailsHtml(securityTarget)
+                            : type === "node" ? nodeSecurityDetailsHtml(securityTarget) : targetSecurityDetailsHtml(securityTarget)}
                 </div>
             `
                 : ""
@@ -368,7 +375,7 @@ function readTargetInputs() {
             ...read("depsTable")
         },
         platformBoms: read("platformBomsTable"),
-        nodeDependencies: read("nodeTable"),
+        nodeDependencies: Object.fromEntries(Object.entries(read("nodeTable")).map(([key, version]) => [key, nodeTargetVersion(version)])),
         gradleVersion: readSingleVersion("gradleTable"),
         transientDependencies:
             Array.from(targetState.transientDependencies)
@@ -450,7 +457,9 @@ async function saveTargets() {
         targetScanGeneration++;
         targetSecurityScan = null;
         pluginSecurityScan = null;
+        nodeSecurityScan = null;
         document.getElementById("pluginScanStatus").hidden = true;
+        document.getElementById("nodeScanStatus").hidden = true;
         normalSecurityReady = false;
         bomSecurityReady = false;
         updateBomScanButton();

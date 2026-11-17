@@ -119,6 +119,36 @@ class LocalFrontendTest {
     }
 
     @Test
+    fun `Node targets normalize caret versions and local scan lifecycle stays explicitly synthetic`() {
+        var time = 10_000L
+        val handler = LocalFrontendApi(directory) { time }.handler
+
+        fun get(path: String) = handler(Request(Method.GET, path))
+
+        fun snapshot() = JsonParser.parseString(get("/internal/api/node-security").bodyString()).asJsonObject
+        val targets = JsonParser.parseString(get("/internal/api/target-versions").bodyString()).asJsonObject
+        targets.add("nodeDependencies", JsonParser.parseString("""{"express":"^4.21.2"}"""))
+        assertEquals(Status.OK, handler(Request(Method.POST, "/internal/api/target-versions/update").body(targets.toString())).status)
+        val saved = JsonParser.parseString(get("/internal/api/target-versions").bodyString()).asJsonObject
+        assertEquals("4.21.2", saved["nodeDependencies"].asJsonObject["express"].asString)
+        assertEquals("IDLE", snapshot()["status"].asString)
+        assertEquals(Status.ACCEPTED, get("/internal/api/node-security/start").status)
+        assertEquals("RUNNING", snapshot()["status"].asString)
+        time += 1500
+        assertEquals("READY", snapshot()["status"].asString)
+        val target =
+            snapshot()["result"]
+                .asJsonObject["targets"]
+                .asJsonArray
+                .single()
+                .asJsonObject
+        assertEquals("UNSUPPORTED", target["status"].asString)
+        assertTrue(target["error"].asString.contains("synthetic"))
+        handler(Request(Method.POST, "/internal/api/target-versions/update").body(saved.toString()))
+        assertEquals("IDLE", snapshot()["status"].asString)
+    }
+
+    @Test
     fun `BOM targets start untracked can be saved and accept legacy payloads`() {
         val handler = LocalFrontendApi(directory).handler
 

@@ -1,5 +1,7 @@
 package no.nav.platforce.tool.targets
 
+import no.nav.platforce.tool.node.nodeTargetVersion
+
 data class TargetVersionsState(
     val plugins: MutableMap<String, String>,
     val dependencies: MutableMap<String, String>,
@@ -18,7 +20,8 @@ fun TargetVersionsState.snapshot(): TargetVersionsState =
         // Gson bypasses constructor defaults when reading older JSON payloads.
         platformBoms = (platformBoms as Map<String, String>?)?.toMutableMap() ?: mutableMapOf(),
         ignoredDependencies = (ignoredDependencies as Set<String>?)?.toSet() ?: emptySet(),
-        nodeDependencies = (nodeDependencies as Map<String, String>?)?.toMutableMap() ?: mutableMapOf(),
+        nodeDependencies =
+            (nodeDependencies as Map<String, String>?)?.mapValues { nodeTargetVersion(it.value) }?.toMutableMap() ?: mutableMapOf(),
     )
 
 fun TargetVersionsState.withoutIgnoredDependencies(): TargetVersionsState =

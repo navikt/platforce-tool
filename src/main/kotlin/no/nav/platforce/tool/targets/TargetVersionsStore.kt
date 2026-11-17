@@ -4,6 +4,7 @@ import no.nav.platforce.tool.db.PostgresDatabase
 import no.nav.platforce.tool.db.TargetVersion
 import no.nav.platforce.tool.db.TargetVersionType
 import no.nav.platforce.tool.db.TargetVersionsTable
+import no.nav.platforce.tool.node.nodeTargetVersion
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -52,7 +53,7 @@ class TargetVersionsStore(
                     versions
                         .filter { it.type == TargetVersionType.NODE }
                         .sortedBy { it.key }
-                        .associate { it.key to it.version }
+                        .associate { it.key to nodeTargetVersion(it.version) }
                         .toMutableMap(),
             )
         return if (includeIgnored) state else state.withoutIgnoredDependencies()
@@ -122,7 +123,7 @@ class TargetVersionsStore(
                         team = team,
                         type = TargetVersionType.NODE,
                         key = it.key,
-                        version = it.value,
+                        version = nodeTargetVersion(it.value),
                         transient = false,
                         createdAt = now,
                         updatedAt = now,

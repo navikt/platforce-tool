@@ -151,9 +151,15 @@
                     <div class="target-section node">
                         <div class="target-section-header">
                             <span class="section-pill node-pill">Node</span>
+                            <button id="scanNode" class="btn-danger" type="button"
+                                    title="Resolve exact npm targets and their transitive dependencies, then check OSV">
+                                SCAN
+                            </button>
                         </div>
-                        <p class="node-scan-notice">package.json dependencies and overrides; devDependencies excluded.
-                            Declared versions only. Node security scans and PR/Auto updates are not available yet.</p>
+                        <div id="nodeScanStatus" class="target-scan-details" role="status" aria-live="polite" hidden></div>
+                        <p class="node-scan-notice">Each saved target is scanned independently at its exact version, including transitive dependencies.
+                            Caret and tilde prefixes are removed. Repository lockfiles and override combinations are not scanned.
+                            Node PR/Auto updates are not available yet.</p>
                         <div id="nodeTable"></div>
                     </div>
 

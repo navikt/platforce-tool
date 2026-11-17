@@ -23,6 +23,10 @@ import no.nav.platforce.tool.internal.internalRoutes
 import no.nav.platforce.tool.nais.NaisConsoleClient
 import no.nav.platforce.tool.nais.deploymentRefreshRoutes
 import no.nav.platforce.tool.nais.deploymentsRoutes
+import no.nav.platforce.tool.node.NodeSecurityScanner
+import no.nav.platforce.tool.node.NodeSecurityService
+import no.nav.platforce.tool.node.NodeTargetResolver
+import no.nav.platforce.tool.node.nodeSecurityRoutes
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
 import no.nav.platforce.tool.repositories.DependencyScanCache
@@ -124,6 +128,10 @@ class Application {
     private val targetSecurityScanner = TargetSecurityScanner(targetSecurityService, gradleTargetResolutionScanner)
     private val pluginSecurityScanner =
         PluginSecurityScanner(gradleTargetResolutionService::resolvePlugins, PluginSecurityService(osvVulnerabilityService))
+    private val nodeSecurityScanner =
+        NodeSecurityScanner(
+            NodeSecurityService(NodeTargetResolver()::resolve, OsvVulnerabilityService(httpClient, ecosystem = "npm")),
+        )
 
     private val dependencyScanner = DependencyScanner(githubClient)
 
@@ -159,6 +167,7 @@ class Application {
                         targetSecurityScanner,
                         pluginSecurityScanner,
                         upgradeSecurityScanner,
+                        nodeSecurityScanner,
                     ),
                     targetSecurityScanner,
                     gradleTargetResolutionScanner,
@@ -185,6 +194,7 @@ class Application {
             *targetResolutionRoutes(gradleTargetResolutionScanner).toTypedArray(),
             *targetSecurityRoutes(targetSecurityScanner).toTypedArray(),
             *pluginSecurityRoutes(pluginSecurityScanner).toTypedArray(),
+            *nodeSecurityRoutes(nodeSecurityScanner).toTypedArray(),
             *availableVersionsRoutes(availableVersionsService).toTypedArray(),
             *upgradeSecurityRoutes(upgradeSecurityScanner).toTypedArray(),
             "/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")),
@@ -195,6 +205,7 @@ class Application {
                 targetSecurityScanner,
                 pluginSecurityScanner,
                 upgradeSecurityScanner,
+                nodeSecurityScanner,
             ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
             *autoRepositoriesRoutes(githubClient::listRepositories).toTypedArray(),

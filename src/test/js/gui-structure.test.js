@@ -73,8 +73,9 @@ test("NODE targets follow Platform BOMs and explicitly describe their limited sc
     assert.ok(html.indexOf('id="nodeTable"') > html.indexOf('id="platformBomsTable"'));
     assert.ok(html.indexOf('id="nodeTable"') < html.indexOf('class="target-section dependencies"'));
     assert.match(html, /class="target-section node"/);
-    assert.match(html, /package.json dependencies and overrides; devDependencies excluded/);
-    assert.match(html, /Node security scans and PR\/Auto updates are not available yet/);
+    assert.match(html, /Each saved target is scanned independently at its exact version/);
+    assert.match(html, /Node PR\/Auto updates are not available yet/);
+    assert.match(html, /id="scanNode" class="btn-danger"/);
 });
 
 test("feature files have no startup side effects and bootstrap exposes all inline handlers", () => {
@@ -97,6 +98,7 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
     assert.equal(app.documentListeners.length, 3);
     assert.equal(app.element("saveTargets").listeners.click, app.context.saveTargets);
     assert.equal(app.element("scanTargets").listeners.click, app.context.scanTargetSecurity);
+    assert.equal(app.element("scanNode").listeners.click, app.context.scanNodeSecurity);
     assert.equal(app.element("startAuto").listeners.click, app.context.startAuto);
     assert.equal(app.element("refreshBtn").listeners.click, app.context.refresh);
     assert.equal(typeof app.element("saveIgnored").listeners.click, "function");
@@ -149,7 +151,8 @@ test("bootstrap preserves startup order, selected team, cached security and unca
         "/internal/api/target-resolution/security": {
             status: "READY", normalReady: true, bomReady: true, result: security
         },
-        "/internal/api/plugin-security": { status: "IDLE" }
+        "/internal/api/plugin-security": { status: "IDLE" },
+        "/internal/api/node-security": { status: "IDLE" }
     };
     const app = browser(async (url, options) => {
         assert.ok(Object.hasOwn(data, url), `Unexpected startup request ${url}`);

@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.targets
 
+import no.nav.platforce.tool.node.NodeSecurityScanner
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.security.PluginSecurityScanner
 import no.nav.platforce.tool.security.TargetSecurityScanner
@@ -10,6 +11,7 @@ class TargetVersionsUpdater(
     private val securityScanner: TargetSecurityScanner,
     private val pluginSecurityScanner: PluginSecurityScanner? = null,
     private val upgradeSecurityScanner: UpgradeSecurityScanner? = null,
+    private val nodeSecurityScanner: NodeSecurityScanner? = null,
 ) {
     fun save(
         context: UserContext,
@@ -21,5 +23,6 @@ class TargetVersionsUpdater(
         resolutionScanner.invalidate(context.username)
         pluginSecurityScanner?.invalidate(context.username)
         upgradeSecurityScanner?.invalidate(context.username)
+        nodeSecurityScanner?.invalidate(context.username)
     }
 }

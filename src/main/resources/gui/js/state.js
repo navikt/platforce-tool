@@ -14,6 +14,7 @@ let ignoredDependencies = [];
 
 let targetSecurityScan = null;
 let pluginSecurityScan = null;
+let nodeSecurityScan = null;
 let targetScanGeneration = 0;
 let normalSecurityReady = false;
 let bomSecurityReady = false;

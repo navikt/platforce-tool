@@ -23,7 +23,7 @@ class DependencyScanViewService(
             dependencyScanCache.get(username).singleOrNull { it.repository == repository }
                 ?: error("No scan found for $repository")
         if (inventory.projectType == RepositoryProjectType.NODE) {
-            throw PullRequestReadinessException("Node.js pull request updates and security scans are not supported yet")
+            throw PullRequestReadinessException("Node.js pull request updates are not supported yet")
         }
         if (!targetSecurityScanner.normalReady(username, targetState)) {
             throw PullRequestReadinessException("A matching normal security scan must be READY before creating a pull request")

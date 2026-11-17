@@ -1,4 +1,7 @@
 function findTargetSecurity(type, key, version) {
+    if (type === "node") {
+        return nodeSecurityScan?.targets?.find(target => target.key === key && target.targetVersion === nodeTargetVersion(version)) ?? null;
+    }
     if (type === "plugin") {
         return pluginSecurityScan?.plugins?.find(target => target.key === key && target.targetVersion === version) ?? null;
     }
@@ -15,6 +18,25 @@ function findTargetSecurity(type, key, version) {
         return { ...target, status: "UNUSED" };
     }
     return target;
+}
+
+function nodeSecurityDetailsHtml(security) {
+    return `<div class="finding-details target-security-detail">
+        <h4>${escapeHtml(security.key)} ${escapeHtml(security.targetVersion)}</h4>
+        <p>Exact target and its npm dependency tree, resolved independently.
+            No repository scripts were executed. Repository lockfiles, override combinations and OS packages are not covered.
+            Optional and platform-specific packages present in the lockfile are included.</p>
+        ${security.error ? `<p>${escapeHtml(security.error)}</p>` : ""}
+        ${security.status === "OK" ? `<p>No known vulnerabilities found in ${security.resolvedPackageCount} resolved package versions.</p>` : ""}
+        ${(security.vulnerableDependencies || []).map(item => `<div class="target-security-vulnerability">
+            <strong>${escapeHtml(item.dependency.name)}</strong> ${escapeHtml(item.dependency.version)}
+            <ul>${(item.vulnerabilities || []).map(v => `<li>${escapeHtml(v.id)}:
+                ${escapeHtml(v.summary || "")}
+                ${v.fixedVersions?.length ? `(package fixes: ${v.fixedVersions.map(escapeHtml).join(", ")})` : ""}
+            </li>`).join("")}</ul>
+        </div>`).join("")}
+        ${security.status === "VULNERABLE" ? "<p>Package fix versions are not necessarily upgrade suggestions for this target. Update the target and rescan.</p>" : ""}
+    </div>`;
 }
 
 function pluginSecurityDetailsHtml(security) {

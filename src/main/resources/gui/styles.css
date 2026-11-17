@@ -1940,7 +1940,19 @@ button:hover {
 }
 
 #nodeTable .target-row {
-    grid-template-columns: minmax(0, 300px) 110px 25px 25px;
+    grid-template-columns: var(--target-columns);
+}
+
+.target-section.node {
+    --target-columns: 300px 110px 90px 28px 28px;
+}
+
+#nodeTable .dependency-usage-btn {
+    grid-column: 4;
+}
+
+#nodeTable .remove-btn {
+    grid-column: 5;
 }
 
 #nodeTable .target-row input {

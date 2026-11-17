@@ -587,3 +587,75 @@ async function scanPluginSecurity() {
         button.textContent = "SCAN";
     }
 }
+
+async function fetchNodeSecurity(start = false) {
+    const response = await fetch("/internal/api/node-security" + (start ? "/start" : ""), { cache: "no-store" });
+    const snapshot = await response.json();
+    if (!response.ok || snapshot.status === "FAILED") {
+        throw new Error(snapshot.error || `Node scan failed: HTTP ${response.status}`);
+    }
+    return snapshot;
+}
+
+async function loadCachedNodeSecurity() {
+    const generation = targetScanGeneration;
+    try {
+        const snapshot = await fetchNodeSecurity();
+        if (generation !== targetScanGeneration) return;
+        nodeSecurityScan = snapshot.status === "READY" ? snapshot.result : null;
+        const status = document.getElementById("nodeScanStatus");
+        status.hidden = snapshot.status !== "RUNNING";
+        if (!status.hidden) status.textContent = "Node scan is running. Click SCAN in Node to follow its progress.";
+    } catch (error) {
+        console.error("Could not load Node security", error);
+        if (generation !== targetScanGeneration) return;
+        nodeSecurityScan = null;
+        const status = document.getElementById("nodeScanStatus");
+        status.hidden = false;
+        status.textContent = error.message;
+    }
+}
+
+async function scanNodeSecurity() {
+    const button = document.getElementById("scanNode");
+    if (button.disabled) return;
+    const generation = targetScanGeneration;
+    const status = document.getElementById("nodeScanStatus");
+    button.disabled = true;
+    button.textContent = "SCANNING...";
+    status.hidden = false;
+    status.textContent = "Resolving saved exact npm targets and querying OSV...";
+    nodeSecurityScan = null;
+    captureTargetDrafts();
+    renderTargetTables();
+    try {
+        let snapshot = await fetchNodeSecurity(true);
+        const fingerprint = snapshot.targetFingerprint;
+        while (snapshot.status === "RUNNING") {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (generation !== targetScanGeneration) return;
+            snapshot = await fetchNodeSecurity();
+            if (snapshot.targetFingerprint !== fingerprint) {
+                throw new Error("Target versions changed during Node scanning. Run SCAN in Node again.");
+            }
+        }
+        if (generation !== targetScanGeneration) return;
+        if (snapshot.status !== "READY" || !snapshot.result) {
+            throw new Error(`Node scan did not complete: ${snapshot.status}`);
+        }
+        nodeSecurityScan = snapshot.result;
+        captureTargetDrafts();
+        renderTargetTables();
+        const incomplete = snapshot.result.targets.filter(target =>
+            target.status === "UNRESOLVED" || target.status === "UNSUPPORTED").length;
+        status.textContent = incomplete
+            ? `DONE with ${incomplete} unresolved or unsupported targets. See their details.`
+            : "DONE";
+    } catch (error) {
+        console.error("Node security scan failed", error);
+        if (generation === targetScanGeneration) status.textContent = `FAILED: ${error.message}`;
+    } finally {
+        button.disabled = false;
+        button.textContent = "SCAN";
+    }
+}

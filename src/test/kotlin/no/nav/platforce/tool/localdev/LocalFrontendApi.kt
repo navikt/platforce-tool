@@ -13,6 +13,10 @@ import no.nav.platforce.tool.nais.RunningDeployments
 import no.nav.platforce.tool.nais.RunningImage
 import no.nav.platforce.tool.nais.availableRepositories
 import no.nav.platforce.tool.nais.deploymentRefreshMarkerResponse
+import no.nav.platforce.tool.node.NodeSecurityResult
+import no.nav.platforce.tool.node.NodeSecurityScan
+import no.nav.platforce.tool.node.NodeSecuritySnapshot
+import no.nav.platforce.tool.node.NodeSecurityStatus
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.RepositoryViewService
 import no.nav.platforce.tool.repositories.withoutIgnoredDependencies
@@ -65,6 +69,7 @@ class LocalFrontendApi(
     private var securityReadyAt: Long? = 0L
     private var bomSecurityReadyAt: Long? = null
     private var pluginSecurityReadyAt: Long? = null
+    private var nodeSecurityReadyAt: Long? = null
     private val upgradeScans = mutableMapOf<String, Long>()
     private var deploymentRefreshAfter: Instant? = null
     private val autoRepositories = mutableSetOf<String>()
@@ -86,6 +91,33 @@ class LocalFrontendApi(
                 } else {
                     null
                 },
+        )
+    }
+
+    private fun nodeSecurity(): NodeSecuritySnapshot {
+        val status =
+            when {
+                nodeSecurityReadyAt == null -> SecurityScanStatus.IDLE
+                now() < checkNotNull(nodeSecurityReadyAt) -> SecurityScanStatus.RUNNING
+                else -> SecurityScanStatus.READY
+            }
+        return NodeSecuritySnapshot(
+            status,
+            fingerprint(targets),
+            if (status == SecurityScanStatus.READY) {
+                NodeSecurityScan(
+                    targets.nodeDependencies.map { (key, version) ->
+                        NodeSecurityResult(
+                            key,
+                            version,
+                            NodeSecurityStatus.UNSUPPORTED,
+                            error = "The synthetic local frontend does not execute npm or query OSV",
+                        )
+                    },
+                )
+            } else {
+                null
+            },
         )
     }
 
@@ -377,7 +409,16 @@ class LocalFrontendApi(
                 securityReadyAt = null
                 bomSecurityReadyAt = null
                 pluginSecurityReadyAt = null
+                nodeSecurityReadyAt = null
                 Response(Status.OK).body("updated")
+            },
+            "/internal/api/node-security/start" bind Method.GET to {
+                if (nodeSecurity().status != SecurityScanStatus.RUNNING) nodeSecurityReadyAt = now() + 1200
+                json(nodeSecurity(), Status.ACCEPTED)
+            },
+            "/internal/api/node-security" bind Method.GET to {
+                val snapshot = nodeSecurity()
+                json(snapshot, if (snapshot.status == SecurityScanStatus.RUNNING) Status.ACCEPTED else Status.OK)
             },
             "/internal/api/plugin-security/start" bind Method.GET to {
                 if (pluginSecurity().status != SecurityScanStatus.RUNNING) pluginSecurityReadyAt = now() + 2400
