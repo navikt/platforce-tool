@@ -18,14 +18,23 @@ async function fetchAvailableUpgrades(key, currentVersion, type = "dependency") 
 }
 
 async function upgradeAllDependencies() {
-    const button = document.getElementById("upgradeAllDependencies");
+    return upgradeAllTargets("dependency");
+}
+
+async function upgradeAllNodeDependencies() {
+    return upgradeAllTargets("node");
+}
+
+async function upgradeAllTargets(type) {
+    const node = type === "node";
+    const button = document.getElementById(node ? "upgradeAllNodeDependencies" : "upgradeAllDependencies");
     if (button.disabled) return;
     const original = button.innerHTML;
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
     button.innerHTML = '<span class="spinner" aria-hidden="true"></span>';
     const generation = targetScanGeneration;
-    const rows = Array.from(document.querySelectorAll("#depsTable .target-row"))
+    const rows = Array.from(document.querySelectorAll(node ? "#nodeTable .target-row" : "#depsTable .target-row"))
         .map(row => ({
             row,
             key: row.querySelector(".key")?.value.trim(),
@@ -42,8 +51,9 @@ async function upgradeAllDependencies() {
                 return;
             }
             try {
-                const result = await fetchAvailableUpgrades(target.key, target.version);
-                const major = target.version.match(/^\d+/)?.[0].replace(/^0+(?=\d)/, "");
+                const result = await fetchAvailableUpgrades(target.key, target.version, type);
+                const currentVersion = node ? nodeTargetVersion(target.version) : target.version;
+                const major = currentVersion.match(/^\d+/)?.[0].replace(/^0+(?=\d)/, "");
                 const eligible = result.versions.filter(version =>
                     !version.prerelease && !version.majorUpgrade && !version.young && major !== undefined &&
                     version.version.match(/^\d+/)?.[0].replace(/^0+(?=\d)/, "") === major);
@@ -54,7 +64,7 @@ async function upgradeAllDependencies() {
                 }
                 if (candidate) upgrades.push({ ...target, next: candidate.version });
             } catch (error) {
-                console.error("Bulk dependency upgrade lookup failed", error);
+                console.error(`Bulk ${type} upgrade lookup failed`, error);
                 errors.push(`${target.key}: ${error.message}`);
             }
         }
@@ -71,8 +81,9 @@ async function upgradeAllDependencies() {
                 errors.push(`${target.key}: changed during lookup; skipped.`);
                 continue;
             }
-            targetState.dependencies[target.key] = target.next;
-            targetState.drafted.add(`DEPENDENCY:${target.key}`);
+            const targets = node ? targetState.nodeDependencies : targetState.dependencies;
+            targets[target.key] = target.next;
+            targetState.drafted.add(`${type.toUpperCase()}:${target.key}`);
             changes.push(`${target.key} ${target.version} -> ${target.next}`);
         }
         if (changes.length) renderTargetTables();

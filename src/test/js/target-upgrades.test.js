@@ -213,8 +213,11 @@ test("repository usage reuses the security details box and shows GitHub icons in
     }
 });
 
-function bulkApp(dependencies) {
+function bulkApp(dependencies, type = "dependency") {
     const ui = app();
+    if (type === "node") {
+        vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/targets.js"), "utf8"), ui.context);
+    }
     const button = element("button");
     const rows = Object.entries(dependencies).map(([key, version]) => {
         const row = element();
@@ -225,10 +228,22 @@ function bulkApp(dependencies) {
     });
     const messages = [];
     let renders = 0;
-    ui.context.document.getElementById = () => button;
-    ui.context.document.querySelectorAll = () => rows;
+    ui.context.document.getElementById = id => {
+        assert.equal(id, type === "node" ? "upgradeAllNodeDependencies" : "upgradeAllDependencies");
+        return button;
+    };
+    ui.context.document.querySelectorAll = selector => {
+        assert.equal(selector, type === "node" ? "#nodeTable .target-row" : "#depsTable .target-row");
+        return rows;
+    };
     ui.context.targetScanGeneration = 0;
-    ui.context.targetState = { dependencies: { ...dependencies }, drafted: new Set(), plugins: { plugin: "1.0" } };
+    ui.context.targetState = {
+        dependencies: type === "node" ? { "example:untouched": "1.0" } : { ...dependencies },
+        nodeDependencies: type === "node" ? { ...dependencies } : {},
+        nodeTransientDependencies: new Set(),
+        drafted: new Set(),
+        plugins: { plugin: "1.0" }
+    };
     ui.context.captureTargetDrafts = () => {};
     ui.context.closeTargetSaveMessage = () => {};
     ui.context.showTargetSaveMessage = (...args) => messages.push(args);
@@ -257,6 +272,97 @@ test("Upgrade all drafts only the latest mature stable same-major dependency upg
     assert.match(ui.messages[0][0], /example:first 1.0 -> 1.9\nexample:second 2.0 -> 2.9/);
     assert.deepEqual(ui.messages[0].slice(1), [true, false]);
     assert.equal(ui.button.disabled, false);
+});
+
+test("Node Upgrade all uses npm metadata and drafts scoped packages and overrides without changing their roles or saving", async () => {
+    const ui = bulkApp({ "@slack/bolt": "^3.22.0", "ws": "~7.5.11", "small": "0.1.0" }, "node");
+    ui.context.targetState.nodeTransientDependencies.add("ws");
+    const calls = [];
+    ui.context.fetch = async (url, options) => {
+        calls.push(url);
+        assert.equal(options.cache, "no-store");
+        const query = new URL(url, "http://localhost").searchParams;
+        assert.equal(query.get("kind"), "node");
+        const key = query.get("key");
+        const current = { "@slack/bolt": "^3.22.0", ws: "~7.5.11", small: "0.1.0" };
+        assert.equal(query.get("currentVersion"), current[key]);
+        const mature = { "@slack/bolt": "3.23.0", ws: "7.6.0", small: "0.2.0" }[key];
+        const major = mature.split(".")[0];
+        return { ok: true, json: async () => ({
+            versions: [
+                { version: `${Number(major) + 1}.0.0`, majorUpgrade: true, releaseDate: "2024-01-01T00:00:00Z" },
+                { version: `${major}.99.0`, young: true, releaseDate: "2026-11-17T00:00:00Z" },
+                { version: `${major}.98.0-beta.1`, prerelease: true, releaseDate: "2024-01-01T00:00:00Z" },
+                { version: mature, young: false, releaseDate: "2024-01-01T00:00:00Z" }
+            ]
+        }) };
+    };
+    await ui.context.upgradeAllNodeDependencies();
+    assert.equal(calls.length, 3);
+    assert.deepEqual(ui.context.targetState.nodeDependencies, { "@slack/bolt": "3.23.0", ws: "7.6.0", small: "0.2.0" });
+    assert.deepEqual([...ui.context.targetState.nodeTransientDependencies], ["ws"]);
+    assert.deepEqual([...ui.context.targetState.drafted], ["NODE:@slack/bolt", "NODE:ws", "NODE:small"]);
+    assert.deepEqual(ui.context.targetState.dependencies, { "example:untouched": "1.0" });
+    assert.equal(ui.context.targetState.plugins.plugin, "1.0");
+    assert.equal(ui.renders(), 1);
+    assert.match(ui.messages[0][0], /@slack\/bolt \^3.22.0 -> 3.23.0/);
+    assert.equal(ui.messages[0][1], true);
+});
+
+test("Node Upgrade all skips ignored packages, reports unknown dates and failures, and retains successful drafts", async () => {
+    const ui = bulkApp({ ignored: "1.0.0", unknown: "1.0.0", failed: "1.0.0", good: "1.0.0" }, "node");
+    ui.context.ignoredDependencies = ["ignored"];
+    const calls = [];
+    ui.context.fetchAvailableUpgrades = async (key, version, type) => {
+        calls.push(key);
+        assert.equal(type, "node");
+        if (key === "failed") throw new Error("npm metadata unavailable");
+        return { versions: [
+            ...(key === "unknown" ? [{ version: "1.9.0" }] : []),
+            { version: "1.8.0", releaseDate: "2024-01-01T00:00:00Z", young: false }
+        ] };
+    };
+    await ui.context.upgradeAllNodeDependencies();
+    assert.deepEqual(calls, ["unknown", "failed", "good"]);
+    assert.deepEqual(ui.context.targetState.nodeDependencies, {
+        ignored: "1.0.0", unknown: "1.8.0", failed: "1.0.0", good: "1.8.0"
+    });
+    assert.match(ui.messages[0][0], /unknown 1.9.0: skipped because its release date is unknown/);
+    assert.match(ui.messages[0][0], /failed: npm metadata unavailable/);
+    assert.equal(ui.messages[0][1], false);
+});
+
+test("Node Upgrade all protects concurrent edits, removals and saves and prevents duplicate starts", async () => {
+    for (const change of ["edit", "save", "remove"]) {
+        const ui = bulkApp({ package: "1.0.0" }, "node");
+        ui.button.innerHTML = "<svg>upgrade icon</svg>";
+        let finish;
+        let calls = 0;
+        ui.context.fetchAvailableUpgrades = () => {
+            calls++;
+            return new Promise(resolve => {
+                finish = () => resolve({ versions: [{ version: "1.1.0", releaseDate: "2024-01-01T00:00:00Z", young: false }] });
+            });
+        };
+        const pending = ui.context.upgradeAllNodeDependencies();
+        assert.equal(ui.button.disabled, true);
+        assert.equal(ui.button.getAttribute("aria-busy"), "true");
+        assert.match(ui.button.innerHTML, /class="spinner"/);
+        await ui.context.upgradeAllNodeDependencies();
+        assert.equal(calls, 1);
+        if (change === "save") ui.context.targetScanGeneration++;
+        if (change === "edit") ui.rows[0].querySelector(".version").value = "1.5.0";
+        if (change === "remove") ui.rows[0].isConnected = false;
+        finish();
+        await pending;
+        assert.equal(ui.context.targetState.drafted.size, 0);
+        assert.equal(ui.context.targetState.nodeDependencies.package, "1.0.0");
+        assert.equal(ui.renders(), 0);
+        assert.equal(ui.messages[0][1], false);
+        assert.equal(ui.button.innerHTML, "<svg>upgrade icon</svg>");
+        assert.equal(ui.button.disabled, false);
+        assert.equal(ui.button.getAttribute("aria-busy"), "false");
+    }
 });
 
 test("Upgrade all reports no eligible updates and does not draft major, prerelease or young results", async () => {

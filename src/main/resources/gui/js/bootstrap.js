@@ -101,6 +101,9 @@ document.getElementById("scanNode")
 document.getElementById("upgradeAllDependencies")
     .addEventListener("click", upgradeAllDependencies);
 
+document.getElementById("upgradeAllNodeDependencies")
+    .addEventListener("click", upgradeAllNodeDependencies);
+
 document
     .getElementById("saveIgnored")
     .addEventListener("click", async () => {

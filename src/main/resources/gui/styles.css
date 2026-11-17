@@ -636,12 +636,12 @@ body {
     grid-row: 2;
 }
 
-#upgradeAllDependencies {
+.target-upgrade-all {
     grid-column: 5;
     grid-row: 1;
 }
 
-#upgradeAllDependencies .spinner {
+.target-upgrade-all .spinner {
     margin-right: 0;
 }
 

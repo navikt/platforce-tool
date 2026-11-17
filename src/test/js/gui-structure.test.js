@@ -75,6 +75,7 @@ test("NODE targets follow Platform BOMs with scan controls and no explanatory bl
     assert.match(html, /class="target-section node"/);
     assert.doesNotMatch(html, /Each saved target is scanned independently|Caret and tilde prefixes|Node PR\/Auto updates are not available yet/);
     assert.match(html, /id="scanNode" class="btn-danger"/);
+    assert.match(html, /id="upgradeAllNodeDependencies" class="icon-btn target-upgrade-all"/);
 });
 
 test("Node target rows share the Plugins and Platform BOMs grid and button columns", () => {
@@ -93,6 +94,8 @@ test("Node target rows share the Plugins and Platform BOMs grid and button colum
     }
     assert.match(css, /#depsTable \.transient-btn,\s*#nodeTable \.transient-btn\s*\{\s*grid-column:\s*4;/);
     assert.match(css, /grid-template-columns:\s*minmax\(700px, 705px\) minmax\(700px, 705px\) auto;/);
+    assert.match(css, /\.target-upgrade-all\s*\{\s*grid-column:\s*5;\s*grid-row:\s*1;/);
+    assert.match(css, /\.target-upgrade-all \.spinner\s*\{\s*margin-right:\s*0;/);
 });
 
 test("repository draft clicks pass the Node override role through to target drafts", () => {
@@ -132,6 +135,7 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
     assert.equal(app.element("saveTargets").listeners.click, app.context.saveTargets);
     assert.equal(app.element("scanTargets").listeners.click, app.context.scanTargetSecurity);
     assert.equal(app.element("scanNode").listeners.click, app.context.scanNodeSecurity);
+    assert.equal(app.element("upgradeAllNodeDependencies").listeners.click, app.context.upgradeAllNodeDependencies);
     assert.equal(app.element("startAuto").listeners.click, app.context.startAuto);
     assert.equal(app.element("refreshBtn").listeners.click, app.context.refresh);
     assert.equal(typeof app.element("saveIgnored").listeners.click, "function");

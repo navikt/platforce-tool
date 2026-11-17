@@ -155,6 +155,14 @@
                                     title="Resolve exact npm targets and their transitive dependencies, then check OSV">
                                 SCAN
                             </button>
+                            <button id="upgradeAllNodeDependencies" class="icon-btn target-upgrade-all" type="button"
+                                    aria-label="Upgrade all Node dependencies within the current major version, released at least one week ago"
+                                    title="Draft the latest stable upgrades within the current major version, released at least one week ago; skip unknown release dates">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M8 20h8V11h5L12 3 3 11h5z"/>
+                                </svg>
+                            </button>
                         </div>
                         <div id="nodeScanStatus" class="target-scan-details" role="status" aria-live="polite" hidden></div>
                         <div id="nodeTable"></div>
@@ -178,7 +186,7 @@
                               class="target-scan-status"
                               style="display:none">
                         </span>
-                        <button id="upgradeAllDependencies" class="icon-btn" type="button"
+                        <button id="upgradeAllDependencies" class="icon-btn target-upgrade-all" type="button"
                                 aria-label="Upgrade all dependencies within the current major version, released at least one week ago"
                                 title="Draft the latest stable upgrades within the current major version, released at least one week ago; skip unknown release dates">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
