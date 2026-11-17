@@ -5,6 +5,8 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -55,8 +57,42 @@ class ResolutionDebugFiles(
         mode: Mode,
     ) {
         val directory = inspectionDirectory(username)
+        publishArtifacts(runDirectory, directory, artifactNames.associateWith { inspectionName(it, mode) })
+    }
+
+    @OptIn(ExperimentalPathApi::class)
+    @Synchronized
+    fun startNodeInspection(username: String) {
+        val directory = inspectionDirectory(username).resolve("node")
+        if (directory.exists()) directory.deleteRecursively()
         Files.createDirectories(directory)
-        artifactNames.forEach { name ->
+    }
+
+    @Synchronized
+    fun publishNodeInspection(
+        username: String,
+        runDirectory: Path,
+        packageName: String? = null,
+    ) {
+        val directory =
+            inspectionDirectory(username).resolve("node").resolve(
+                if (packageName == null) {
+                    "combined"
+                } else {
+                    "solo/${packageName.substringAfterLast('/').take(50)}-${identifier(packageName)}"
+                },
+            )
+        val names = listOf("package.json", "package-lock.json", "npm-output.txt")
+        publishArtifacts(runDirectory, directory, names.associateWith { it })
+    }
+
+    private fun publishArtifacts(
+        runDirectory: Path,
+        directory: Path,
+        names: Map<String, String>,
+    ) {
+        Files.createDirectories(directory)
+        names.forEach { (name, destination) ->
             val source = runDirectory.resolve(name)
             if (source.exists()) {
                 val temporary = Files.createTempFile(directory, ".publishing-", ".tmp")
@@ -64,7 +100,7 @@ class ResolutionDebugFiles(
                     Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING)
                     Files.move(
                         temporary,
-                        directory.resolve(inspectionName(name, mode)),
+                        directory.resolve(destination),
                         StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING,
                     )
@@ -109,12 +145,11 @@ class ResolutionDebugFiles(
         return userDir.resolve(id)
     }
 
-    private fun userDirectory(username: String): Path {
-        val key =
-            MessageDigest
-                .getInstance("SHA-256")
-                .digest(username.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
-        return baseDir.resolve(key)
-    }
+    private fun userDirectory(username: String): Path = baseDir.resolve(identifier(username))
+
+    private fun identifier(value: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 }

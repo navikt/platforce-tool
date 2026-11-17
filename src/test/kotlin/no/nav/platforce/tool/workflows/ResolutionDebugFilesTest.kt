@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -86,6 +87,37 @@ class ResolutionDebugFilesTest {
         assertEquals(secondAlice, store.latestDirectory("alice"))
         assertFalse(secondAlice.resolve("build.gradle").exists())
         assertEquals(bob, store.latestDirectory("bob"))
+    }
+
+    @Test
+    fun `Node artifacts remain user scoped and replace only the previous Node inspection`() {
+        val store = ResolutionDebugFiles(directory)
+        val run = store.start("alice")
+        run.resolve("build.gradle").writeText("Gradle")
+        store.publishInspection("alice", run, false)
+        store.startNodeInspection("alice")
+        run.resolve("package.json").writeText("Alice's combined project")
+        run.resolve("package-lock.json").writeText("Alice's lockfile")
+        run.resolve("npm-output.txt").writeText("Alice's output")
+        store.publishNodeInspection("alice", run)
+        store.publishNodeInspection("alice", run, "@first/root")
+        store.publishNodeInspection("alice", run, "@second/root")
+        store.startNodeInspection("bob")
+        run.resolve("package.json").writeText("Bob's project")
+        store.publishNodeInspection("bob", run)
+        val alice = store.inspectionDirectory("alice")
+        val handler = filesHandler(alice.toFile())
+        val response = handler(Request(Method.GET, "/internal/files/node/combined/package.json"))
+        assertEquals(Status.OK, response.status)
+        assertTrue(response.bodyString().contains("Alice's combined project"))
+        assertFalse(response.bodyString().contains("Bob's project"))
+        assertEquals("Alice's lockfile", alice.resolve("node/combined/package-lock.json").readText())
+        assertEquals(2L, Files.list(alice.resolve("node/solo")).use { it.count() })
+        store.startNodeInspection("alice")
+        assertFalse(alice.resolve("node/combined/package.json").exists())
+        assertFalse(alice.resolve("node/solo").exists())
+        assertEquals("Gradle", alice.resolve("build.gradle").readText())
+        assertEquals("Bob's project", store.inspectionDirectory("bob").resolve("node/combined/package.json").readText())
     }
 
     @Test

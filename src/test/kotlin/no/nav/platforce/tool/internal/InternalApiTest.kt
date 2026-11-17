@@ -28,6 +28,19 @@ class InternalApiTest {
     }
 
     @Test
+    fun `file browser shows an empty user directory before any resolution but missing files remain not found`() {
+        val handler = routes(*internalRoutes(ResolutionDebugFiles(directory)) { "files-test" }.toTypedArray())
+
+        fun get(path: String) = handler(Request(Method.GET, path))
+        val response = get("/internal/files")
+        assertEquals(Status.OK, response.status)
+        assertTrue(response.bodyString().contains("Index of /internal/files"))
+        assertEquals("no-store", response.header("Cache-Control"))
+        assertEquals(Status.NOT_FOUND, get("/internal/files/missing.json").status)
+        assertEquals(Status.OK, get("/internal/files/").status)
+    }
+
+    @Test
     fun `every split GUI script is served through the existing static route`() {
         val handler = routes("/internal/gui" bind Method.GET to static(ResourceLoader.Classpath("gui")))
         val page = handler(Request(Method.GET, "/internal/gui/index.html"))

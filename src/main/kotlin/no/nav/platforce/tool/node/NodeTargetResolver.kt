@@ -1,7 +1,8 @@
 package no.nav.platforce.tool.node
 
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
+import no.nav.platforce.tool.resolution.ResolutionDebugFiles
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import java.net.URI
 import java.nio.file.Files
@@ -59,17 +60,24 @@ class NodeTargetResolver private constructor(
     private val nodeHome: Path,
     private val timeoutSeconds: Long,
     private val cacheDirectory: Path?,
+    private val debugFiles: ResolutionDebugFiles?,
+    private val username: String?,
 ) {
     constructor(
         nodeHome: Path = Path.of(System.getenv("PLATFORCE_NODE_HOME") ?: "/opt/node"),
         timeoutSeconds: Long = 120,
-    ) : this(nodeHome, timeoutSeconds, null)
+        debugFiles: ResolutionDebugFiles? = null,
+    ) : this(nodeHome, timeoutSeconds, null, debugFiles, null)
 
     @OptIn(ExperimentalPathApi::class)
-    fun <T> withSession(action: (NodeTargetResolver) -> T): T {
+    fun <T> withSession(
+        username: String? = null,
+        action: (NodeTargetResolver) -> T,
+    ): T {
+        if (username != null) debugFiles?.startNodeInspection(username)
         val cache = Files.createTempDirectory("platforce-npm-cache-")
         try {
-            return action(NodeTargetResolver(nodeHome, timeoutSeconds, cache))
+            return action(NodeTargetResolver(nodeHome, timeoutSeconds, cache, debugFiles, username))
         } finally {
             cache.deleteRecursively()
         }
@@ -86,7 +94,7 @@ class NodeTargetResolver private constructor(
         key: String,
         version: String,
         overrides: Map<String, String>,
-    ): List<ResolvedDependency> = resolveProject(mapOf(key to version), overrides).packages
+    ): List<ResolvedDependency> = resolveProject(mapOf(key to version), overrides, key).packages
 
     fun resolveCombined(
         dependencies: Map<String, String>,
@@ -97,6 +105,7 @@ class NodeTargetResolver private constructor(
     private fun resolveProject(
         dependencies: Map<String, String>,
         overrides: Map<String, String>,
+        packageName: String? = null,
     ): NodeCombinedResolution {
         require(dependencies.all { (key, version) -> validNodePackage(key) && validNodeVersion(version) }) {
             "Expected exact public npm dependencies"
@@ -109,7 +118,7 @@ class NodeTargetResolver private constructor(
         val directory = Files.createTempDirectory("platforce-npm-resolution-")
         try {
             directory.resolve("package.json").writeText(
-                Gson().toJson(
+                GsonBuilder().setPrettyPrinting().create().toJson(
                     mapOf(
                         "name" to "platforce-target-resolution",
                         "version" to "1.0.0",
@@ -119,6 +128,7 @@ class NodeTargetResolver private constructor(
                     ),
                 ),
             )
+            if (username != null) debugFiles?.publishNodeInspection(username, directory, packageName)
             val output = directory.resolve("npm-output.txt")
             val processBuilder =
                 ProcessBuilder(
@@ -168,7 +178,11 @@ class NodeTargetResolver private constructor(
             }
             return parseCombinedLockfile(directory.resolve("package-lock.json").readText(), dependencies, overrides)
         } finally {
-            directory.deleteRecursively()
+            try {
+                if (username != null) debugFiles?.publishNodeInspection(username, directory, packageName)
+            } finally {
+                directory.deleteRecursively()
+            }
         }
     }
 

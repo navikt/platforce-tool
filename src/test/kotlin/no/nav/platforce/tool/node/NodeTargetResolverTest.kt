@@ -1,9 +1,13 @@
 package no.nav.platforce.tool.node
 
+import com.google.gson.JsonParser
+import no.nav.platforce.tool.resolution.ResolutionDebugFiles
 import no.nav.platforce.tool.resolution.ResolvedDependency
+import no.nav.platforce.tool.security.SecurityScanStatus
 import no.nav.platforce.tool.security.Vulnerability
 import no.nav.platforce.tool.security.VulnerabilityService
 import no.nav.platforce.tool.targets.TargetVersionsState
+import no.nav.platforce.tool.workflows.QueuedExecutor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -165,8 +169,9 @@ class NodeTargetResolverTest {
             )
         val result = NodeTargetResolver(home).resolveWithOverrides("@scope/root", "1.0.0", mapOf("@scope/transitive" to "2.0.0"))
         assertEquals(5, result.size)
-        assertTrue(recorded.resolve("package.json").readText().contains("\"@scope/root\":\"1.0.0\""))
-        assertTrue(recorded.resolve("package.json").readText().contains("\"overrides\":{\"@scope/transitive\":\"2.0.0\"}"))
+        val manifest = JsonParser.parseString(recorded.resolve("package.json").readText()).asJsonObject
+        assertEquals("1.0.0", manifest["dependencies"].asJsonObject["@scope/root"].asString)
+        assertEquals("2.0.0", manifest["overrides"].asJsonObject["@scope/transitive"].asString)
         val arguments = recorded.resolve("arguments").readText()
         assertTrue(arguments.contains("--package-lock-only"))
         assertTrue(arguments.contains("--ignore-scripts"))
@@ -258,6 +263,62 @@ class NodeTargetResolverTest {
     }
 
     @Test
+    fun `user scans retain combined and solo npm artifacts even after a later resolution failure`() {
+        val home = fakeNode("echo synthetic-output\n/bin/cat > package-lock.json <<'LOCK'\n$lock\nLOCK")
+        val debug = ResolutionDebugFiles(directory.resolve("debug"))
+        val resolver = NodeTargetResolver(home, debugFiles = debug)
+        val osv =
+            object : VulnerabilityService {
+                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
+                    dependencies.associate { "${it.key}:${it.version}" to emptyList() }
+            }
+        val queue = QueuedExecutor()
+        val scanner = NodeSecurityScanner(NodeSecurityService(resolver, osv), queue)
+        val state =
+            TargetVersionsState(
+                mutableMapOf(),
+                mutableMapOf(),
+                "9.0",
+                nodeDependencies = mutableMapOf("@scope/root" to "1.0.0"),
+            )
+        scanner.start("alice", state)
+        queue.runNext()
+        assertEquals(SecurityScanStatus.READY, scanner.get("alice", state).status)
+        val node = debug.inspectionDirectory("alice").resolve("node")
+        assertTrue(node.resolve("combined/package.json").readText().contains("\n"))
+        assertEquals(lock, node.resolve("combined/package-lock.json").readText().trim())
+        assertTrue(node.resolve("combined/npm-output.txt").readText().contains("synthetic-output"))
+        val solo = Files.list(node.resolve("solo")).use { it.toList().single() }
+        assertTrue(solo.resolve("package.json").exists())
+        assertTrue(solo.resolve("package-lock.json").exists())
+        assertTrue(solo.resolve("npm-output.txt").exists())
+
+        fakeNode("echo synthetic-EOVERRIDE\nexit 1")
+        val changed = state.copy(nodeDependencies = mutableMapOf("@scope/root" to "2.0.0"))
+        scanner.start("alice", changed)
+        queue.runNext()
+        assertEquals(
+            NodeSecurityStatus.UNRESOLVED,
+            scanner
+                .get("alice", changed)
+                .result!!
+                .targets
+                .single()
+                .status,
+        )
+        val manifest = JsonParser.parseString(node.resolve("combined/package.json").readText()).asJsonObject
+        assertEquals("2.0.0", manifest["dependencies"].asJsonObject["@scope/root"].asString)
+        assertFalse(node.resolve("combined/package-lock.json").exists())
+        assertFalse(solo.resolve("package-lock.json").exists())
+        assertTrue(node.resolve("combined/npm-output.txt").readText().contains("synthetic-EOVERRIDE"))
+
+        fakeNode("/bin/cat > package-lock.json <<'LOCK'\n$lock\nLOCK")
+        resolver.withSession { it.resolve("@scope/root", "1.0.0") }
+        assertTrue(node.resolve("combined/npm-output.txt").readText().contains("synthetic-EOVERRIDE"))
+        assertFalse(debug.inspectionDirectory("bob").exists())
+    }
+
+    @Test
     fun `real npm resolves pinned public targets without installing node modules`() {
         val home = System.getenv("PLATFORCE_TEST_NODE_HOME")?.let(Path::of)
         assumeTrue(home != null, "Set PLATFORCE_TEST_NODE_HOME to run the public registry integration test")
@@ -325,6 +386,25 @@ class NodeTargetResolverTest {
                 .map { it.version }
                 .toSet(),
         )
+    }
+
+    @Test
+    fun `real Bull keeps UUID eight alongside a newer direct target but uses a global override`() {
+        val home = System.getenv("PLATFORCE_TEST_NODE_HOME")?.let(Path::of)
+        assumeTrue(home != null, "Set PLATFORCE_TEST_NODE_HOME to run the public registry integration test")
+        NodeTargetResolver(checkNotNull(home)).withSession { resolver ->
+            val normal = resolver.resolveCombined(mapOf("bull" to "4.16.5", "uuid" to "11.1.1"), emptyMap())
+            assertTrue(normal.targets.getValue("bull").any { it.name == "uuid" && it.version.startsWith("8.") })
+            assertEquals(listOf("11.1.1"), normal.targets.getValue("uuid").map { it.version })
+            val overridden = resolver.resolveCombined(mapOf("bull" to "4.16.5"), mapOf("uuid" to "11.1.1"))
+            val versions =
+                overridden.targets
+                    .getValue("bull")
+                    .filter { it.name == "uuid" }
+                    .map { it.version }
+                    .toSet()
+            assertEquals(setOf("11.1.1"), versions)
+        }
     }
 
     private fun fakeNode(body: String): Path {

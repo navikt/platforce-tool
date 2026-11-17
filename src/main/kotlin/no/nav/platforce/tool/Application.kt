@@ -116,7 +116,7 @@ class Application {
 
     private val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
     private val availableVersionsService = AvailableVersionsService(httpClient)
-    private val nodeTargetResolver = NodeTargetResolver()
+    private val nodeTargetResolver = NodeTargetResolver(debugFiles = resolutionDebugFiles)
     private val nodeSecurityService =
         NodeSecurityService(
             nodeTargetResolver,

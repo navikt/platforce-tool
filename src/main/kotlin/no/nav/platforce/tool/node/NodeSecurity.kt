@@ -98,9 +98,21 @@ class NodeSecurityService(
     fun scan(
         state: TargetVersionsState,
         onProgress: (NodeScanProgress) -> Unit = {},
+    ): NodeSecurityScan = scanWithSession(state, null, onProgress)
+
+    fun scan(
+        username: String,
+        state: TargetVersionsState,
+        onProgress: (NodeScanProgress) -> Unit = {},
+    ): NodeSecurityScan = scanWithSession(state, username, onProgress)
+
+    private fun scanWithSession(
+        state: TargetVersionsState,
+        username: String?,
+        onProgress: (NodeScanProgress) -> Unit,
     ): NodeSecurityScan =
         if (resolver != null) {
-            resolver.withSession { session ->
+            resolver.withSession(username) { session ->
                 NodeSecurityService(session::resolve, vulnerabilities, session::resolveCombined).scan(state, onProgress)
             }
         } else {
@@ -445,7 +457,7 @@ class NodeSecurityScanner(
         UserScanJobs(executor) { username: String, state: TargetVersionsState ->
             val key = username to fingerprint(state)
             try {
-                service.scan(state) { progress[key] = it }
+                service.scan(username, state) { progress[key] = it }
             } finally {
                 progress.remove(key)
             }
