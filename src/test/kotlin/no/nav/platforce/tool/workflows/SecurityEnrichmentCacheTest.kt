@@ -1,9 +1,14 @@
 package no.nav.platforce.tool.workflows
 
+import no.nav.platforce.tool.node.NodeCombinedResolution
+import no.nav.platforce.tool.node.NodeDependencyDeclaration
+import no.nav.platforce.tool.node.NodeSecurityScanner
+import no.nav.platforce.tool.node.NodeSecurityService
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.DependencyStatus
+import no.nav.platforce.tool.repositories.RepositoryProjectType
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.resolution.ResolutionStatus
 import no.nav.platforce.tool.resolution.ResolvedDependency
@@ -174,6 +179,75 @@ class SecurityEnrichmentCacheTest {
         securityExecutor.runNext()
         assertEquals(2, vulnerabilityQueries)
         assertEquals(SecurityScanStatus.READY, securityScanner.get("alice", targets).status)
+    }
+
+    @Test
+    fun `Node security enriches cached inventories only for the matching user and target fingerprint`() {
+        val executor = QueuedExecutor()
+        val nodeScanner =
+            NodeSecurityScanner(
+                NodeSecurityService(
+                    { key, version -> listOf(ResolvedDependency("npm", key, version, version, emptyList())) },
+                    object : VulnerabilityService {
+                        override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
+                            dependencies.associate { "${it.key}:${it.version}" to emptyList() }
+                    },
+                    { _, _ -> NodeCombinedResolution(emptyList(), mapOf("uuid" to emptyList())) },
+                ),
+                executor,
+            )
+        val nodeTargets =
+            targets.copy(nodeDependencies = mutableMapOf("uuid" to "11.1.1"), nodeTransientDependencies = setOf("uuid"))
+        val nodeInventory =
+            inventory("example:library" to "1.0.0").copy(
+                projectType = RepositoryProjectType.NODE,
+                nodeDependencies = listOf(NodeDependencyDeclaration("uuid", "^11.1.1", "overrides > uuid")),
+            )
+        cache.update("alice", listOf(nodeInventory))
+        cache.update("bob", listOf(nodeInventory))
+        val nodeView = DependencyScanViewService(cache, securityScanner, scanner, nodeScanner)
+        assertEquals(
+            DependencyStatus.OK,
+            nodeView
+                .get("alice", nodeTargets)
+                .single()
+                .findings
+                .single()
+                .status,
+        )
+        nodeScanner.start("alice", nodeTargets)
+        executor.runNext()
+        assertEquals(SecurityScanStatus.READY, nodeScanner.get("alice", nodeTargets).status)
+        assertEquals(
+            DependencyStatus.REMOVE,
+            nodeView
+                .get("alice", nodeTargets)
+                .single()
+                .findings
+                .single()
+                .status,
+        )
+        assertEquals(
+            DependencyStatus.OK,
+            nodeView
+                .get("bob", nodeTargets)
+                .single()
+                .findings
+                .single()
+                .status,
+        )
+        val changed = nodeTargets.copy(nodeTransientDependencies = emptySet())
+        assertEquals(
+            DependencyStatus.OK,
+            nodeView
+                .get("alice", changed)
+                .single()
+                .findings
+                .single()
+                .status,
+        )
+        assertEquals(nodeInventory, cache.get("alice").single())
+        assertTrue(github.calls.isEmpty())
     }
 
     private fun completeSecurityScan(username: String) {

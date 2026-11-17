@@ -262,12 +262,13 @@ function renderRepo(repoView, scanMap, container) {
             <div class="table">
                 ${findings.map(f => {
                     const kind = (f.kind || "UNKNOWN").toLowerCase();
-                    const status = (f.status || "UNKNOWN");
+                    const nodeOverride = f.kind === "NODE" && f.declaration?.startsWith("overrides") === true;
+                    const status = f.status === "OK" && nodeOverride ? "OK_TRANSIENT" : f.status || "UNKNOWN";
+                    const currentVersion = f.kind === "NODE" ? nodeTargetVersion(f.currentVersion || "") : f.currentVersion || "";
+                    const targetVersion = f.kind === "NODE" ? nodeTargetVersion(f.targetVersion || "") : f.targetVersion || "";
 
                     const displayStatus =
-                        f.kind === "NODE"
-                            ? ({ OK: "MATCH", UPDATE: "OLDER", AHEAD: "NEWER", UNRESOLVED: "REVIEW" }[status] || status)
-                        : status === "OK_OVERRIDDEN"
+                        status === "OK_OVERRIDDEN"
                             ? "OK *"
                             : status === "OK_TRANSIENT"
                                 ? `OK ${BANDAGE_SVG}`
@@ -306,7 +307,7 @@ function renderRepo(repoView, scanMap, container) {
                                 <strong>Vulnerability overridden by:</strong>
                                 <ul>
                                     ${f.relatedTo.map(r =>
-                                    `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                    `<li>${escapeHtml(r.key)} ${r.version ? `(${escapeHtml(r.version)})` : ""}</li>`
                                 ).join("")}
                                 </ul>
                               `
@@ -315,7 +316,7 @@ function renderRepo(repoView, scanMap, container) {
                                     <strong>Required dependency overrides:</strong>
                                     <ul>
                                         ${f.relatedTo.filter(r => r.kind !== "PLATFORM_BOM").map(r =>
-                                        `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                        `<li>${escapeHtml(r.key)} ${r.version ? `(${escapeHtml(r.version)})` : ""}</li>`
                                     ).join("")}
                                     </ul>
                                   `
@@ -324,7 +325,7 @@ function renderRepo(repoView, scanMap, container) {
                                         <strong>Transitive override for:</strong>
                                         <ul>
                                             ${f.relatedTo.map(r =>
-                                            `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                            `<li>${escapeHtml(r.key)} ${r.version ? `(${escapeHtml(r.version)})` : ""}</li>`
                                         ).join("")}
                                         </ul>
                                       `
@@ -333,7 +334,7 @@ function renderRepo(repoView, scanMap, container) {
                                                         <strong>Transitive override for:</strong>
                                                         <ul>
                                                             ${f.relatedTo.map(r =>
-                                    `<li>${r.key} ${r.version ? `(${r.version})` : ""}</li>`
+                                    `<li>${escapeHtml(r.key)} ${r.version ? `(${escapeHtml(r.version)})` : ""}</li>`
                                     ).join("")}
                                                         </ul>
                                                       `
@@ -350,19 +351,19 @@ function renderRepo(repoView, scanMap, container) {
                     return `
                         <div class="finding-container">
                             <div class="row ${kind}-row">
-                                <div class="pill">${f.kind === "PLATFORM_BOM" ? "PLATFORM BOM" : f.kind}</div>
-                                <div>${escapeHtml(f.key || "")}${f.declaration ? `<small class="node-declaration">${escapeHtml(f.declaration)}</small>` : ""}</div>
+                                <div class="pill">${f.kind === "PLATFORM_BOM" ? "PLATFORM BOM" : f.kind === "NODE" ? "DEPENDENCY" : f.kind}</div>
+                                <div>${escapeHtml(f.key || "")}</div>
                 
                                 <div class="version-cell">
                                     <span class="current-version">
-                                        ${escapeHtml(f.currentVersion || "")}
+                                        ${escapeHtml(currentVersion)}
                                     </span>
                 
                                     ${
-                                    (status === "UPDATE" || status === "AHEAD" || status === "ADD") && f.targetVersion
-                                        ? `<span class="target-version-pill">→ ${escapeHtml(f.targetVersion)}</span>`
+                                    (status === "UPDATE" || status === "AHEAD" || status === "ADD") && targetVersion
+                                        ? `<span class="target-version-pill">→ ${escapeHtml(targetVersion)}</span>`
                                         : status === "UNRESOLVED"
-                                            ? `<span class="target-version-pill">Target: ${escapeHtml(f.targetVersion)}</span>`
+                                            ? `<span class="target-version-pill">Target: ${escapeHtml(targetVersion)}</span>`
                                         : ""
                                 }
                                 </div>
@@ -371,9 +372,9 @@ function renderRepo(repoView, scanMap, container) {
                                     <span
                                         class="status-pill ${statusClass} ${status === "AHEAD" ? "target-draft-pill" : ""}"
                                         data-kind="${f.kind}"
-                                        ${f.kind === "NODE" ? `data-node-transient="${f.declaration?.startsWith("overrides") === true}"` : ""}
+                                        ${f.kind === "NODE" ? `data-node-transient="${nodeOverride}"` : ""}
                                         data-key="${escapeHtml(f.key)}"
-                                        data-version="${escapeHtml(f.currentVersion || "")}"
+                                        data-version="${escapeHtml(currentVersion)}"
                                         ${hasDetails ? 'data-toggle-details="true"' : ""}>
                                         ${displayStatus}
                                     </span>
@@ -393,8 +394,7 @@ function renderRepo(repoView, scanMap, container) {
                     ? `
                         <div class="untracked-section">
                             <div class="untracked-toggle">
-                                ${isNode ? `Untracked Node declarations (${untrackedNodeDependencies.length})`
-                                    : `Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length}), platform BOMs (${untrackedPlatformBoms.length})`}
+                                Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length + untrackedNodeDependencies.length}), platform BOMs (${untrackedPlatformBoms.length})
                             </div>
                         
                             <div class="untracked-content">
@@ -461,15 +461,15 @@ function renderRepo(repoView, scanMap, container) {
                                 `).join("")}
                                 ${untrackedNodeDependencies.map(dep => `
                                     <div class="row untracked-row node-row">
-                                        <div class="pill">NODE</div>
-                                        <div>${escapeHtml(dep.key)}<small class="node-declaration">${escapeHtml(dep.declaration)}</small></div>
-                                        <div class="version-cell"><span class="current-version">${escapeHtml(dep.version)}</span></div>
+                                        <div class="pill">DEPENDENCY</div>
+                                        <div>${escapeHtml(dep.key)}</div>
+                                        <div class="version-cell"><span class="current-version">${escapeHtml(nodeTargetVersion(dep.version))}</span></div>
                                         <div>
                                             <span class="status-pill status-unknown target-draft-pill"
                                                 data-kind="NODE"
                                                 data-node-transient="${dep.declaration.startsWith("overrides")}"
                                                 data-key="${escapeHtml(dep.key)}"
-                                                data-version="${escapeHtml(dep.version)}">UNTRACKED</span>
+                                                data-version="${escapeHtml(nodeTargetVersion(dep.version))}">UNTRACKED</span>
                                         </div>
                                     </div>
                                 `).join("")}

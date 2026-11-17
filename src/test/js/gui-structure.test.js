@@ -98,6 +98,45 @@ test("Node target rows share the Plugins and Platform BOMs grid and button colum
     assert.match(css, /\.target-upgrade-all \.spinner\s*\{\s*margin-right:\s*0;/);
 });
 
+test("Node repository rows use the shared dependency layout with only a background tint override", () => {
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    const sharedRow = rules.find(([, selector]) => selector.trim() === ".row")[2];
+    assert.match(sharedRow, /grid-template-columns:\s*120px 1fr 160px 120px;/);
+    assert.match(sharedRow, /padding:\s*6px 10px;/);
+    const nodeRows = rules.filter(([, selector]) => selector.includes(".node-row"));
+    assert.ok(nodeRows.length > 0);
+    for (const [, , body] of nodeRows) {
+        assert.match(body, /^\s*background:\s*#[a-f\d]+;\s*$/i);
+    }
+});
+
+test("Node status pills expand and collapse the same repository details as Gradle", () => {
+    const app = browser(() => new Promise(() => {}));
+    loadGuiScripts(app.context);
+    let toggles = 0;
+    const details = { classList: { toggle: name => {
+        assert.equal(name, "hidden");
+        toggles++;
+    } } };
+    const status = { closest: selector => {
+        assert.equal(selector, ".finding-container");
+        return { querySelector: selector => {
+            assert.equal(selector, ".finding-details");
+            return details;
+        } };
+    } };
+    const event = {
+        target: { closest: selector => selector === "[data-toggle-details='true']" ? status : null },
+        stopPropagation() {},
+        preventDefault() {}
+    };
+    for (let click = 0; click < 2; click++) {
+        app.documentListeners.filter(([name]) => name === "click").forEach(([, listener]) => listener(event));
+    }
+    assert.equal(toggles, 2);
+});
+
 test("repository draft clicks pass the Node override role through to target drafts", () => {
     const app = browser(() => new Promise(() => {}));
     loadGuiScripts(app.context);

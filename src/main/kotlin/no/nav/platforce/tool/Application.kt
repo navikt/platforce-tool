@@ -142,7 +142,8 @@ class Application {
 
     private val dependencyScanner = DependencyScanner(githubClient)
 
-    private val dependencyScanViewService = DependencyScanViewService(dependencyScanCache, targetSecurityScanner, dependencyScanner)
+    private val dependencyScanViewService =
+        DependencyScanViewService(dependencyScanCache, targetSecurityScanner, dependencyScanner, nodeSecurityScanner)
 
     private val pullRequestService = DependencyPullRequestService(githubClient, dependencyScanViewService)
 

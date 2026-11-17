@@ -695,6 +695,7 @@ async function scanNodeSecurity() {
         updateScanStep("nodeStepCoverage", "DONE");
         captureTargetDrafts();
         renderTargetTables();
+        await loadData();
         updateScanStep("nodeStepDone", "DONE");
         const incomplete = snapshot.result.targets.filter(target =>
             target.status === "UNRESOLVED" || target.status === "UNSUPPORTED").length;

@@ -397,7 +397,7 @@ test("Node targets load, draft, capture and save independently of Maven and BOM 
     assert.deepEqual([...app.context.dependencyUsageRepositories("ws")], ["example/gradle"]);
 });
 
-test("Node repository renders declaration contexts, escaped ranges and explicit unsupported PR state", () => {
+test("Node repository uses dependency rows and statuses without declaration subtitles or version prefixes", () => {
     const app = gui();
     const card = {
         querySelector: selector => selector === ".repo-header" ? { addEventListener() {} }
@@ -410,7 +410,7 @@ test("Node repository renders declaration contexts, escaped ranges and explicit 
         projectType: "NODE",
         findings: [{
             kind: "NODE", key: "@slack/bolt", declaration: "dependencies",
-            currentVersion: "^3.22.0", targetVersion: "3.23.0", status: "UPDATE"
+            currentVersion: "^3.22.0", targetVersion: "^3.23.0", status: "UPDATE"
         }, {
             kind: "NODE", key: "glob", declaration: "overrides > glob",
             currentVersion: ">=10.0.0", targetVersion: "10.5.0", status: "UNRESOLVED"
@@ -423,9 +423,11 @@ test("Node repository renders declaration contexts, escaped ranges and explicit 
         { appendChild() {} }
     );
     assert.match(card.innerHTML, /row node-row/);
-    assert.match(card.innerHTML, /node-declaration">overrides &gt; glob/);
-    assert.match(card.innerHTML, /OLDER/);
-    assert.match(card.innerHTML, /REVIEW/);
+    assert.match(card.innerHTML, /class="pill">DEPENDENCY/);
+    assert.doesNotMatch(card.innerHTML, /class="pill">NODE|node-declaration|overrides &gt; glob|\^3\.|OLDER|REVIEW/);
+    assert.match(card.innerHTML, />\s*UPDATE\s*</);
+    assert.match(card.innerHTML, />\s*UNRESOLVED\s*</);
+    assert.match(card.innerHTML, /data-version="3.22.0"/);
     assert.match(card.innerHTML, /Target: 10.5.0/);
     assert.doesNotMatch(card.innerHTML, /node-scan-notice|Repository lockfiles|Comparisons use the lower version/);
     assert.match(card.innerHTML, /Node.js PR\/Auto updates are not supported yet" disabled>Create PR/);
@@ -436,7 +438,55 @@ test("Node repository renders declaration contexts, escaped ranges and explicit 
     assert.match(card.innerHTML, /data-kind="NODE"\s+data-node-transient="true"\s+data-key="ws"/);
     assert.match(card.innerHTML, /&lt;script&gt;/);
     assert.doesNotMatch(card.innerHTML, /<script>/);
-    assert.match(card.innerHTML, /Untracked Node declarations \(1\)/);
+    assert.match(card.innerHTML, /Untracked plugins \(0\), dependencies \(1\), platform BOMs \(0\)/);
+});
+
+test("Node repository statuses share Gradle details and keep override bandages and drafting roles", () => {
+    const app = gui();
+    const card = {
+        querySelector: selector => selector === ".repo-header" ? { addEventListener() {} }
+            : selector === ".repo-actions" ? { prepend() {} } : null
+    };
+    app.context.createAutoToggle = () => ({});
+    app.context.document.createElement = () => card;
+    for (const kind of ["NODE", "DEPENDENCY"]) {
+        app.context.renderRepo(
+            { name: "example/repo", state: "SCANNED" },
+            { "example/repo": {
+                projectType: kind === "NODE" ? "NODE" : "GRADLE",
+                findings: ["OK_OVERRIDDEN", "OK_TRANSIENT", "OK_WITH_ADD", "ADD", "REMOVE", "AHEAD"].map(status => ({
+                    kind, key: status, currentVersion: "1.0.0", targetVersion: "1.0.0", status,
+                    declaration: status === "OK_TRANSIENT" ? "overrides > cover" : "dependencies",
+                    relatedTo: [{ kind, key: "provider<&>", version: "2.0.0" }]
+                }))
+            } },
+            { appendChild() {} }
+        );
+        assert.match(card.innerHTML, /data-toggle-details="true">\s*OK \*/);
+        assert.match(card.innerHTML, /data-toggle-details="true">\s*OK\s+<svg/);
+        assert.match(card.innerHTML, /Vulnerability overridden by:/);
+        assert.match(card.innerHTML, /Required dependency overrides:/);
+        assert.match(card.innerHTML, /Transitive override for:/);
+        assert.match(card.innerHTML, /provider&lt;&amp;&gt; \(2.0.0\)/);
+        assert.match(card.innerHTML, /class="finding-details hidden"/);
+        assert.match(card.innerHTML, /status-ahead target-draft-pill/);
+        assert.match(card.innerHTML, />\s*REMOVE\s*</);
+    }
+    app.context.renderRepo(
+        { name: "example/repo", state: "SCANNED" },
+        { "example/repo": {
+            projectType: "NODE",
+            findings: [{ kind: "NODE", key: "ws", declaration: "overrides > ws",
+                currentVersion: "~8.0.0", targetVersion: "8.0.0", status: "OK" }],
+            untrackedNodeDependencies: [{ key: "uuid", version: "^11.1.1", declaration: "overrides > uuid" }]
+        } },
+        { appendChild() {} }
+    );
+    assert.match(card.innerHTML, /data-node-transient="true"[\s\S]*?>\s*OK\s+<svg/);
+    assert.match(card.innerHTML, /data-version="8.0.0"/);
+    assert.match(card.innerHTML, /data-version="11.1.1"/);
+    assert.doesNotMatch(card.innerHTML, /node-declaration|<small|\^11|~8/);
+    assert.doesNotMatch(card.innerHTML, /<script>/);
 });
 
 test("Node table binds the shared upgrade button on saved and newly added targets", () => {
@@ -517,13 +567,18 @@ test("Node scan polls its own job and shows results only at matching normalized 
     const target = { key: "@slack/bolt", targetVersion: "3.22.0", status: "VULNERABLE" };
     app.value('pluginSecurityScan = { plugins: [] }; normalSecurityReady = true; bomSecurityReady = true');
     app.responses(url => {
-        assert.ok(url.startsWith("/internal/api/node-security"));
+        if (!url.startsWith("/internal/api/node-security")) return repositoryResponse(url);
         return url.endsWith("/start")
             ? { status: "RUNNING", targetFingerprint: "node" }
             : { status: "READY", targetFingerprint: "node", result: { targets: [target] } };
     });
     await app.context.scanNodeSecurity();
-    assert.deepEqual(app.calls.map(([url]) => url), ["/internal/api/node-security/start", "/internal/api/node-security"]);
+    assert.deepEqual(app.calls.map(([url]) => url), [
+        "/internal/api/node-security/start", "/internal/api/node-security",
+        "/internal/repos/view", "/internal/api/dependency-scan",
+        "/internal/api/repository-notes", "/internal/api/ignored-repositories"
+    ]);
+    assert.equal(app.rendered.length, 1);
     assert.equal(app.element("scanNode").disabled, false);
     assert.equal(app.element("scanNode").textContent, "SCAN");
     assert.equal(app.element("nodeScanMessage").textContent, "DONE");
@@ -572,7 +627,8 @@ test("Node override checks keep completed phases done and expose concise resolut
         { status: "READY", result: { targets: [] } }
     ];
     const messages = [];
-    app.responses(() => {
+    app.responses(url => {
+        if (!url.startsWith("/internal/api/node-security")) return repositoryResponse(url);
         const snapshot = snapshots.shift();
         if (snapshot.phase === "COVERAGE" && snapshot.completedResolutions === 4) {
             assert.equal(app.steps.filter(([id]) => id === "nodeStepResolution").at(-1)[1], "DONE");
@@ -653,10 +709,10 @@ test("saving targets invalidates Node badges and hides old scan feedback", async
 
 test("Node reports share the Gradle layout with collapsed advisories and clickable fix pills", async () => {
     const app = gui();
-    app.responses(() => ({
+    app.responses(url => url.startsWith("/internal/api/node-security") ? ({
         status: "READY",
         result: { targets: [{ key: "express", targetVersion: "latest", status: "UNSUPPORTED" }] }
-    }));
+    }) : repositoryResponse(url));
     await app.context.scanNodeSecurity();
     assert.match(app.element("nodeScanMessage").textContent, /1 unresolved or unsupported targets/);
     const details = app.context.nodeSecurityDetailsHtml({

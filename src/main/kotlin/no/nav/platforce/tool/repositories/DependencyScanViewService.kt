@@ -1,5 +1,7 @@
 package no.nav.platforce.tool.repositories
 
+import no.nav.platforce.tool.node.NodeSecurityScanner
+import no.nav.platforce.tool.node.enrichNodeRepositorySecurity
 import no.nav.platforce.tool.security.SecurityScanStatus
 import no.nav.platforce.tool.security.TargetSecurityScanner
 import no.nav.platforce.tool.targets.TargetVersionsState
@@ -13,6 +15,7 @@ class DependencyScanViewService(
     private val dependencyScanCache: DependencyScanCache,
     private val targetSecurityScanner: TargetSecurityScanner,
     private val dependencyScanner: DependencyScanner,
+    private val nodeSecurityScanner: NodeSecurityScanner? = null,
 ) {
     fun requirePullRequestReady(
         username: String,
@@ -46,11 +49,18 @@ class DependencyScanViewService(
                 .get(username, targetState)
                 .takeIf { it.status == SecurityScanStatus.READY }
                 ?.result
+        val nodeSecurityResult =
+            nodeSecurityScanner
+                ?.get(username, targetState)
+                ?.takeIf { it.status == SecurityScanStatus.READY }
+                ?.result
 
         return dependencyScanCache.get(username).map { cached ->
             val inventory = cached.withoutIgnoredDependencies(targetState.ignoredDependencies)
             val scan = dependencyScanner.compare(inventory, targetState.withoutIgnoredDependencies())
-            if (securityResult != null && inventory.projectType != RepositoryProjectType.NODE) {
+            if (inventory.projectType == RepositoryProjectType.NODE && nodeSecurityResult != null) {
+                enrichNodeRepositorySecurity(scan, nodeSecurityResult, targetState.withoutIgnoredDependencies())
+            } else if (securityResult != null && inventory.projectType != RepositoryProjectType.NODE) {
                 dependencyScanner.enrichSecurityScan(
                     scan = scan,
                     securityResult = securityResult,
