@@ -140,7 +140,12 @@ class Application {
             nodeSecurityService,
         )
 
-    private val dependencyScanner = DependencyScanner(githubClient)
+    private val dependencyScanner =
+        DependencyScanner(
+            githubClient,
+            includeNodeDevDependencies =
+                System.getenv("PLATFORCE_NODE_INCLUDE_DEV_DEPENDENCIES")?.toBooleanStrict() ?: true,
+        )
 
     private val dependencyScanViewService =
         DependencyScanViewService(dependencyScanCache, targetSecurityScanner, dependencyScanner, nodeSecurityScanner)

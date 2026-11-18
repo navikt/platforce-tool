@@ -11,6 +11,7 @@ fun enrichNodeRepositorySecurity(
     scan: RepositoryDependencyScan,
     security: NodeSecurityScan,
     state: TargetVersionsState,
+    excludedDevDependencies: Set<String> = emptySet(),
 ): RepositoryDependencyScan {
     val targets =
         security.targets
@@ -103,7 +104,10 @@ fun enrichNodeRepositorySecurity(
             if (finding.declaration != "devDependencies" &&
                 missing.any { provider ->
                     provider.key !in state.nodeTransientDependencies &&
-                        scan.findings.any { it.key == provider.key && it.declaration == "devDependencies" } &&
+                        (
+                            provider.key in excludedDevDependencies ||
+                                scan.findings.any { it.key == provider.key && it.declaration == "devDependencies" }
+                        ) &&
                         scan.findings.none { it.key == provider.key && it.declaration == "dependencies" }
                 }
             ) {

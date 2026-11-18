@@ -69,5 +69,7 @@ spec:
   envFrom:
     - secret: platforce-tool
   env:
+    - name: PLATFORCE_NODE_INCLUDE_DEV_DEPENDENCIES
+      value: "false"
     - name: AN_ENV
       value: "a value in dev"

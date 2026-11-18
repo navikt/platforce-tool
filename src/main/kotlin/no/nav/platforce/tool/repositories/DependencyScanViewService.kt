@@ -65,7 +65,16 @@ class DependencyScanViewService(
             val inventory = cached.withoutIgnoredDependencies(targetState.ignoredDependencies)
             val scan = dependencyScanner.compare(inventory, targetState.withoutIgnoredDependencies())
             if (inventory.projectType == RepositoryProjectType.NODE && nodeSecurityResult != null) {
-                enrichNodeRepositorySecurity(scan, nodeSecurityResult, targetState.withoutIgnoredDependencies())
+                enrichNodeRepositorySecurity(
+                    scan,
+                    nodeSecurityResult,
+                    targetState.withoutIgnoredDependencies(),
+                    excludedDevDependencies =
+                        inventory.nodeDependencies
+                            .filter { it.declaration == "devDependencies" && it.key !in scan.declaredNodeDependencyKeys.orEmpty() }
+                            .map { it.key }
+                            .toSet(),
+                )
             } else if (securityResult != null && inventory.projectType != RepositoryProjectType.NODE) {
                 dependencyScanner.enrichSecurityScan(
                     scan = scan,

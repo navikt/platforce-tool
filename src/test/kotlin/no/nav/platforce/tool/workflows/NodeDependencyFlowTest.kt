@@ -73,6 +73,47 @@ class NodeDependencyFlowTest {
     }
 
     @Test
+    fun `development dependency flag filters tracked and untracked declarations without losing cached metadata`() {
+        val github = RecordingGithubClient(mapOf("package.json" to source))
+        val enabled = DependencyScanner(github, includeNodeDevDependencies = true)
+        val disabled = DependencyScanner(github, includeNodeDevDependencies = false)
+        val inventory = checkNotNull(enabled.scanRepository("example/node"))
+        assertEquals(inventory.nodeDependencies, checkNotNull(disabled.scanRepository("example/node")).nodeDependencies)
+        listOf(targets(), targets().copy(nodeDependencies = mutableMapOf("jest" to "30.0.0", "glob" to "10.6.0"))).forEach { state ->
+            val scan = disabled.compare(inventory, state)
+            assertFalse(scan.declaredNodeDependencyKeys.orEmpty().contains("jest"))
+            assertTrue(scan.findings.none { it.key == "jest" || it.declaration == "devDependencies" })
+            assertTrue(scan.untrackedNodeDependencies.none { it.key == "jest" })
+            assertEquals(
+                enabled.compare(inventory, state).findings.filterNot { it.declaration == "devDependencies" },
+                scan.findings,
+            )
+            assertTrue(
+                enabled
+                    .compare(inventory, state)
+                    .declaredNodeDependencyKeys
+                    .orEmpty()
+                    .contains("jest"),
+            )
+        }
+    }
+
+    @Test
+    fun `disabling development inventory preserves production duplicates and override references to dev packages`() {
+        val manifest =
+            """
+            {"dependencies":{"shared":"1.0.0"},"devDependencies":{"shared":"2.0.0","jest":"29.5.0"},
+             "overrides":{"jest":"${'$'}jest"}}
+            """.trimIndent()
+        val scanner = DependencyScanner(RecordingGithubClient(mapOf("package.json" to manifest)), includeNodeDevDependencies = false)
+        val inventory = checkNotNull(scanner.scanRepository("example/node"))
+        val scan = scanner.compare(inventory, targets().copy(nodeDependencies = mutableMapOf("shared" to "1.0.0", "jest" to "29.5.0")))
+        assertEquals(listOf("dependencies", "overrides > jest"), scan.findings.map { it.declaration })
+        assertEquals(listOf("1.0.0", "29.5.0"), scan.findings.map { it.currentVersion })
+        assertTrue(scan.findings.all { it.status == DependencyStatus.OK })
+    }
+
+    @Test
     fun `shared saved targets retain each repository production or development declaration through upgrades`() {
         val state = targets().copy(nodeDependencies = mutableMapOf("tool" to "1.1.0"))
         val saved = Gson().fromJson(Gson().toJson(state), TargetVersionsState::class.java).snapshot()

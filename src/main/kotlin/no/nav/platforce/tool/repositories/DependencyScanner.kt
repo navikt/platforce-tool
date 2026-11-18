@@ -14,6 +14,7 @@ import java.time.Instant
 
 class DependencyScanner(
     private val githubClient: GithubClient,
+    private val includeNodeDevDependencies: Boolean = true,
 ) {
     private val gradleDependencyParser = GradleDependencyParser()
     private val gradleWrapperParser = GradleWrapperParser()
@@ -151,6 +152,8 @@ class DependencyScanner(
         targetState: TargetVersionsState,
     ): RepositoryDependencyScan {
         if (inventory.projectType == RepositoryProjectType.NODE) {
+            val declarations =
+                inventory.nodeDependencies.filter { includeNodeDevDependencies || it.declaration != "devDependencies" }
             return RepositoryDependencyScan(
                 repository = inventory.repository,
                 scannedAt = inventory.scannedAt,
@@ -159,12 +162,12 @@ class DependencyScanner(
                 declaredPlatformBomKeys = emptyList(),
                 declaredPluginKeys = emptyList(),
                 declaredNodeDependencyKeys =
-                    inventory.nodeDependencies
+                    declarations
                         .map { it.key }
                         .distinct()
                         .sorted(),
                 findings =
-                    inventory.nodeDependencies.mapNotNull { dependency ->
+                    declarations.mapNotNull { dependency ->
                         targetState.nodeDependencies[dependency.key]?.let { target ->
                             DependencyFinding(
                                 kind = DependencyKind.NODE,
@@ -176,7 +179,7 @@ class DependencyScanner(
                             )
                         }
                     },
-                untrackedNodeDependencies = inventory.nodeDependencies.filter { it.key !in targetState.nodeDependencies },
+                untrackedNodeDependencies = declarations.filter { it.key !in targetState.nodeDependencies },
             )
         }
         val findings = mutableListOf<DependencyFinding>()

@@ -137,6 +137,43 @@ class NodePullRequestFlowTest {
     }
 
     @Test
+    fun `disabled development dependencies remain untouched in PRs even with saved targets and cached inventory`() {
+        files["package.json"] = source.dropLast(1) + ""","devDependencies":{"unused":"^2.0.0"}}"""
+        ready()
+        val disabledView =
+            DependencyScanViewService(
+                cache,
+                gradle,
+                DependencyScanner(github, includeNodeDevDependencies = false),
+                nodeScanner,
+            )
+        val scan = disabledView.get("alice", state).single()
+        assertTrue(scan.findings.none { it.declaration == "devDependencies" })
+        DependencyPullRequestService(github, disabledView).createPullRequest("example", "repository", "alice", state)
+        val updated = JsonParser.parseString(github.updatedFiles.getValue("package.json")).asJsonObject
+        assertEquals("^2.0.0", updated.getAsJsonObject("devDependencies")["unused"].asString)
+        assertEquals("^1.1.0", updated.getAsJsonObject("dependencies")["parent"].asString)
+    }
+
+    @Test
+    fun `excluded dev only providers are not silently added as production dependencies`() {
+        files["package.json"] = source.dropLast(1) + ""","devDependencies":{"cover":"2.0.0"}}"""
+        val targets = state.copy(nodeTransientDependencies = setOf("unused"))
+        ready(targets)
+        val disabledView =
+            DependencyScanViewService(
+                cache,
+                gradle,
+                DependencyScanner(github, includeNodeDevDependencies = false),
+                nodeScanner,
+            )
+        val findings = disabledView.get("alice", targets).single().findings
+        assertEquals(DependencyStatus.UNRESOLVED, findings.single { it.key == "parent" }.status)
+        assertTrue(findings.none { it.key == "cover" })
+        assertTrue(findings.none { it.status == DependencyStatus.ADD })
+    }
+
+    @Test
     fun `development PR updates and required additions keep their section through a repository refresh`() {
         files["package.json"] = source.replace("\"dependencies\"", "\"devDependencies\"")
         files["package-lock.json"] = "original-lock"
