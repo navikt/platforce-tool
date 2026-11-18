@@ -273,16 +273,33 @@ function dependencyUsageButtonHtml(type = "dependency") {
     return `<button type="button" class="icon-btn dependency-usage-btn" data-usage-type="${type}" aria-label="${label}"
         aria-expanded="false" title="${available ? label : "Run Dependency Scanner first"}"
         ${available ? "" : "disabled"}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/>
-            <path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
-        </svg>
+        ${dependencyUsageIconHtml(false)}
     </button>`;
+}
+
+function dependencyUsageIconHtml(unused) {
+    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="7"/>${unused ? "" : '<circle cx="12" cy="12" r="2"/>'}
+            <path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+        </svg>`;
+}
+
+function updateDependencyUsageButton(button, key, type) {
+    const available = dependencyUsageAvailable(type);
+    const unused = available && !!key && dependencyUsageRepositories(key, type).length === 0;
+    button.disabled = !available;
+    button.title = !available ? "Run Dependency Scanner first"
+        : unused ? "No scanned repositories declare this target" : button.getAttribute("aria-label");
+    button.innerHTML = dependencyUsageIconHtml(unused);
 }
 
 function bindDependencyUsage(row, type = "dependency") {
     const button = row.querySelector(".dependency-usage-btn");
+    const keyInput = row.querySelector(".key");
+    const update = () => updateDependencyUsageButton(button, keyInput.value.trim(), type);
+    update();
+    keyInput.addEventListener("input", update);
     const details = document.createElement("div");
     details.className = "dependency-usage-details target-security-details hidden";
     const content = document.createElement("div");
@@ -326,9 +343,7 @@ function bindDependencyUsage(row, type = "dependency") {
 function refreshDependencyUsageButtons() {
     document.querySelectorAll(".dependency-usage-btn").forEach(button => {
         const type = button.dataset.usageType;
-        const available = dependencyUsageAvailable(type);
-        button.disabled = !available;
-        button.title = available ? button.getAttribute("aria-label") : "Run Dependency Scanner first";
+        updateDependencyUsageButton(button, button.closest(".target-row").querySelector(".key").value.trim(), type);
         button.setAttribute("aria-expanded", "false");
         button.closest(".target-row").querySelector(".dependency-usage-details").classList.add("hidden");
     });

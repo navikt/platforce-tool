@@ -187,6 +187,7 @@ test("repository usage reuses the security details box and shows GitHub icons in
     for (const type of ["dependency", "platform_bom", "plugin"]) {
         const ui = app();
         vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/targets.js"), "utf8"), ui.context);
+        ui.context.lastLoadedData = null;
         ui.context.dependencyUsageRepositories = (key, usageType) => {
             assert.equal(key, "example:library");
             assert.equal(usageType, type);
@@ -210,6 +211,51 @@ test("repository usage reuses the security details box and shows GitHub icons in
         assert.equal(link.rel, "noopener noreferrer");
         ui.button.onclick();
         assert.equal(wrapper.classList.contains("hidden"), true);
+    }
+});
+
+test("usage crosshair loses only its center circle for undeclared targets after a scan and refreshes on edits", () => {
+    for (const type of ["dependency", "platform_bom", "plugin", "node"]) {
+        const ui = app();
+        vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/targets.js"), "utf8"), ui.context);
+        ui.context.lastLoadedData = null;
+        ui.button.setAttribute("aria-label", "Show repositories using this target");
+        ui.row.querySelector = selector => selector === ".dependency-usage-btn" ? ui.button
+            : selector === ".key" ? ui.key : ui.row.children[0];
+        ui.button.closest = () => ui.row;
+        ui.button.dataset.usageType = type;
+        ui.context.document.querySelectorAll = () => [ui.button];
+        ui.context.bindDependencyUsage(ui.row, type);
+        assert.equal(ui.button.disabled, true);
+        assert.match(ui.button.innerHTML, /r="2"/);
+
+        const field = ui.context.declaredTargetKeysField(type);
+        ui.context.lastLoadedData = { scans: [{ repository: "example/repo", [field]: ["example:library"] }] };
+        ui.context.refreshDependencyUsageButtons();
+        assert.equal(ui.button.disabled, false);
+        assert.match(ui.button.innerHTML, /r="2"/);
+
+        ui.key.value = "example:absent";
+        ui.key.input();
+        assert.doesNotMatch(ui.button.innerHTML, /r="2"/);
+        assert.match(ui.button.innerHTML, /r="7"/);
+        assert.match(ui.button.innerHTML, /M12 2v4m0 12v4M2 12h4m12 0h4/);
+        assert.equal(ui.button.title, "No scanned repositories declare this target");
+        ui.button.onclick();
+        assert.equal(ui.row.children[0].children[0].children[0].textContent,
+            "0 scanned repositories declare example:absent.");
+
+        ui.context.lastLoadedData.scans[0][field].push("example:absent");
+        ui.context.refreshDependencyUsageButtons();
+        assert.match(ui.button.innerHTML, /r="2"/);
+        assert.equal(ui.button.title, "Show repositories using this target");
+
+        for (const scans of [[], [{ repository: "unknown/repo" }]]) {
+            ui.context.lastLoadedData = { scans };
+            ui.context.refreshDependencyUsageButtons();
+            assert.equal(ui.button.disabled, true);
+            assert.match(ui.button.innerHTML, /r="2"/);
+        }
     }
 });
 
