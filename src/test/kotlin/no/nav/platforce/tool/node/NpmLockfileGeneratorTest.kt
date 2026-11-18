@@ -90,7 +90,9 @@ class NpmLockfileGeneratorTest {
         NpmLockfileGenerator(home).generate(manifest, exact, lock(3, "6.0.0"), "package-lock.json")
         val arguments = args.readText().lines()
         assertTrue(
-            arguments.containsAll(listOf("--ignore-scripts", "--package-lock-only", "--no-audit", "--no-fund", "--lockfile-version=3")),
+            arguments.containsAll(
+                listOf("update", "--ignore-scripts", "--package-lock-only", "--no-audit", "--no-fund", "--lockfile-version=3"),
+            ),
         )
         assertTrue(arguments.contains("--registry=https://registry.npmjs.org"))
         assertTrue(arguments.any { it.startsWith("--userconfig=") })
@@ -153,6 +155,45 @@ class NpmLockfileGeneratorTest {
                 }
             assertTrue(failure.message!!.contains("npm did not lock is-number at the scanned target 7.0.0"))
         }
+    }
+
+    @Test
+    fun `real npm refreshes stale transitive packages without moving unchanged pinned roots`() {
+        val home = System.getenv("PLATFORCE_TEST_NODE_HOME")?.let(Path::of)
+        assumeTrue(home != null, "Set PLATFORCE_TEST_NODE_HOME to run npm integration tests")
+        val node = checkNotNull(home)
+        val project = directory.resolve("transitive-project").createDirectories()
+        val pinned =
+            """
+            {"name":"example","version":"1.0.0","dependencies":{"js-beautify":"1.15.4"},
+             "overrides":{"js-cookie":"3.0.5"}}
+            """.trimIndent()
+        project.resolve("package.json").writeText(pinned)
+        NpmInstaller(node, 120).install(project, lockfileVersion = 3)
+        val original = project.resolve("package-lock.json").readText()
+        assertEquals(
+            "3.0.5",
+            JsonParser
+                .parseString(
+                    original,
+                ).asJsonObject
+                .getAsJsonObject("packages")
+                .getAsJsonObject("node_modules/js-cookie")["version"]
+                .asString,
+        )
+        val finalManifest = """{"name":"example","version":"1.0.0","dependencies":{"js-beautify":"^1.15.4"}}"""
+        val result =
+            NpmLockfileGenerator(node).generate(
+                finalManifest,
+                finalManifest.replace("^1.15.4", "1.15.4"),
+                original,
+                "package-lock.json",
+            )
+        val packages = JsonParser.parseString(result).asJsonObject.getAsJsonObject("packages")
+        assertTrue(compareNodeVersions(packages.getAsJsonObject("node_modules/js-cookie")["version"].asString, "3.0.7") >= 0)
+        assertEquals("1.15.4", packages.getAsJsonObject("node_modules/js-beautify")["version"].asString)
+        assertEquals("^1.15.4", packages.getAsJsonObject("").getAsJsonObject("dependencies")["js-beautify"].asString)
+        assertFalse(project.resolve("node_modules").exists())
     }
 
     @Test

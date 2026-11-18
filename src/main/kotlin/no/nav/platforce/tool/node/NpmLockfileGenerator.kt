@@ -34,7 +34,7 @@ class NpmLockfileGenerator(
         try {
             directory.resolve("package.json").writeText(resolutionManifest)
             directory.resolve(filename).writeText(lockfile)
-            NpmInstaller(nodeHome, timeoutSeconds).install(directory, lockfileVersion = version)
+            NpmInstaller(nodeHome, timeoutSeconds).install(directory, lockfileVersion = version, updateLockfile = true)
             val generated = JsonParser.parseString(directory.resolve(filename).readText()).asJsonObject
             check(generated["lockfileVersion"].asInt == version) { "npm changed the lockfile format unexpectedly" }
             validateLockfile(generated)

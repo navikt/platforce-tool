@@ -12,13 +12,14 @@ internal class NpmInstaller(
         directory: Path,
         cacheDirectory: Path = directory.resolve("cache"),
         lockfileVersion: Int? = null,
+        updateLockfile: Boolean = false,
     ) {
         val output = directory.resolve("npm-output.txt")
         val command =
             listOf(
                 nodeHome.resolve("bin/node").toString(),
                 nodeHome.resolve("lib/node_modules/npm/bin/npm-cli.js").toString(),
-                "install",
+                if (updateLockfile) "update" else "install",
                 "--package-lock-only",
                 "--ignore-scripts",
                 "--no-audit",

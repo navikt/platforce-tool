@@ -81,7 +81,7 @@ class DependencyPullRequestService(
                 baseBranch,
             )
 
-        val nodeFiles = if (isNode) prepareNodeFiles(owner, repo, branchSha, actionable) else emptyList()
+        val nodeFiles = if (isNode) prepareNodeFiles(owner, repo, branchSha, scan.findings) else emptyList()
 
         checkBeforeWrite()
         githubClient.createBranch(

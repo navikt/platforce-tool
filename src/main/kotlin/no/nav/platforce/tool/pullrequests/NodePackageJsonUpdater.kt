@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.node.PackageJsonParser
 import no.nav.platforce.tool.node.nodeDependencySections
+import no.nav.platforce.tool.node.nodeDependencyStatus
 import no.nav.platforce.tool.node.nodeJson
 import no.nav.platforce.tool.node.nodeTargetVersion
 import no.nav.platforce.tool.node.validNodePackage
@@ -102,6 +103,26 @@ class NodePackageJsonUpdater {
                     if (finding.status == DependencyStatus.ADD && owner.has(key) && path !in changed) stale()
                     owner.addProperty(key, specification)
                     changed[path] = version
+                }
+            }
+        findings
+            .filter { it.kind == DependencyKind.NODE && it.status != DependencyStatus.REMOVE && it.currentVersion != null }
+            .filter { nodeDependencyStatus(checkNotNull(it.currentVersion), it.targetVersion) != DependencyStatus.UNRESOLVED }
+            .forEach { finding ->
+                val declaration = declarations.singleOrNull { it.key == finding.key && it.declaration == finding.declaration } ?: stale()
+                if (declaration.version != finding.currentVersion) stale()
+                val version = nodeTargetVersion(finding.targetVersion)
+                changed.putIfAbsent(declaration.path, version)
+                val specification = parent(declaration.path)[declaration.path.last()].asString
+                if (specification.startsWith('$')) {
+                    val reference = specification.drop(1)
+                    val section =
+                        nodeDependencySections.asReversed().firstOrNull { root.getAsJsonObject(it)?.has(reference) == true }
+                            ?: stale()
+                    val path = listOf(section, reference)
+                    check(changed.putIfAbsent(path, version) in setOf(null, version)) {
+                        "Override reference $reference must match its scanned target version. Refresh and align its targets."
+                    }
                 }
             }
         val resolution = root.deepCopy()

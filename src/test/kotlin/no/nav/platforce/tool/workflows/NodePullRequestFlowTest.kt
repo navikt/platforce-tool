@@ -137,6 +137,40 @@ class NodePullRequestFlowTest {
     }
 
     @Test
+    fun `lock refresh receives matching target findings as exact pins without adding another Node scan`() {
+        files["package.json"] = source.replace("^1.0.0", "^1.1.0")
+        files["package-lock.json"] = "old-lock"
+        ready()
+        val snapshot = nodeScanner.get("alice", state)
+        var refreshes = 0
+        val service =
+            DependencyPullRequestService(github, view) { manifest, resolution, _, _ ->
+                refreshes++
+                assertEquals(
+                    "^1.1.0",
+                    JsonParser
+                        .parseString(manifest)
+                        .asJsonObject
+                        .getAsJsonObject("dependencies")["parent"]
+                        .asString,
+                )
+                assertEquals(
+                    "1.1.0",
+                    JsonParser
+                        .parseString(resolution)
+                        .asJsonObject
+                        .getAsJsonObject("dependencies")["parent"]
+                        .asString,
+                )
+                "refreshed-lock"
+            }
+        service.createPullRequest("example", "repository", "alice", state)
+        assertEquals(1, refreshes)
+        assertEquals("refreshed-lock", github.updatedFiles["package-lock.json"])
+        assertEquals(snapshot, nodeScanner.get("alice", state))
+    }
+
+    @Test
     fun `disabled development dependencies remain untouched in PRs even with saved targets and cached inventory`() {
         files["package.json"] = source.dropLast(1) + ""","devDependencies":{"unused":"^2.0.0"}}"""
         ready()

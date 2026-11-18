@@ -56,6 +56,45 @@ class NodePackageJsonUpdaterTest {
     }
 
     @Test
+    fun `matching targets are pinned for lock refresh without changing their saved manifest ranges`() {
+        val source = """{"dependencies":{"app":"^1.0.0","other":"~2.0.0"},"overrides":{"leaf":"^3.0.0"}}"""
+        val update =
+            updater.apply(
+                source,
+                listOf(
+                    finding("app", "^1.0.0", "1.1.0"),
+                    finding("other", "~2.0.0", "2.0.0", status = DependencyStatus.OK),
+                    finding("leaf", "^3.0.0", "3.0.0", "overrides > leaf", DependencyStatus.OK_TRANSIENT),
+                ),
+            )
+        val final = JsonParser.parseString(update.manifest).asJsonObject
+        assertEquals("~2.0.0", final.getAsJsonObject("dependencies")["other"].asString)
+        assertEquals("^3.0.0", final.getAsJsonObject("overrides")["leaf"].asString)
+        val resolution = JsonParser.parseString(update.resolutionManifest).asJsonObject
+        assertEquals("1.1.0", resolution.getAsJsonObject("dependencies")["app"].asString)
+        assertEquals("2.0.0", resolution.getAsJsonObject("dependencies")["other"].asString)
+        assertEquals("3.0.0", resolution.getAsJsonObject("overrides")["leaf"].asString)
+    }
+
+    @Test
+    fun `unchanged override references pin their direct dependency even when it is excluded from repository findings`() {
+        val source = """{"dependencies":{"app":"1.0.0"},"devDependencies":{"uuid":"^11.1.1"},"overrides":{"uuid":"${'$'}uuid"}}"""
+        val update =
+            updater.apply(
+                source,
+                listOf(
+                    finding("app", "1.0.0", "1.1.0"),
+                    finding("uuid", "^11.1.1", "11.1.1", "overrides > uuid", DependencyStatus.OK_TRANSIENT),
+                ),
+            )
+        val final = JsonParser.parseString(update.manifest).asJsonObject
+        assertEquals("^11.1.1", final.getAsJsonObject("devDependencies")["uuid"].asString)
+        val resolution = JsonParser.parseString(update.resolutionManifest).asJsonObject
+        assertEquals("11.1.1", resolution.getAsJsonObject("devDependencies")["uuid"].asString)
+        assertEquals("\$uuid", resolution.getAsJsonObject("overrides")["uuid"].asString)
+    }
+
+    @Test
     fun `nested and versioned scoped overrides retain their scopes and sibling entries`() {
         val source = """{"overrides":{"@scope/parent@^1":{".":"1.0.0","leaf":"2.0.0"},"other":"3.0.0"}}"""
         val update =
