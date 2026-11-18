@@ -111,6 +111,15 @@ test("Node repository rows use the shared dependency layout with only a backgrou
     }
 });
 
+test("Node resolution progress paints behind the existing message without adding layout space", () => {
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    const rule = css.match(/#nodeScanMessage\.node-resolution-progress\s*\{([^}]*)\}/)?.[1];
+    assert.ok(rule);
+    assert.match(rule, /background:\s*linear-gradient\(/);
+    assert.match(rule, /var\(--node-resolution-progress\)/);
+    assert.doesNotMatch(rule, /(?:height|width|padding|margin|display)\s*:/);
+});
+
 test("Node status pills expand and collapse the same repository details as Gradle", () => {
     const app = browser(() => new Promise(() => {}));
     loadGuiScripts(app.context);

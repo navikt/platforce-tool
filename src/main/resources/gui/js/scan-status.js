@@ -624,20 +624,38 @@ function showNodeScanDetails(message = "") {
     showNodeScanMessage(message);
 }
 
-function showNodeScanMessage(message) {
+function showNodeScanMessage(message, completedResolutions = 0, totalResolutions = 0) {
     const element = document.getElementById("nodeScanMessage");
     element.textContent = message;
     element.hidden = !message;
+    const progress = totalResolutions > 0;
+    element.classList.toggle("node-resolution-progress", progress);
+    element.style.setProperty("--node-resolution-progress", progress ? `${completedResolutions / totalResolutions * 100}%` : "0%");
+    if (progress) {
+        element.setAttribute("role", "progressbar");
+        element.setAttribute("aria-label", "npm resolutions");
+        element.setAttribute("aria-valuemin", "0");
+        element.setAttribute("aria-valuemax", String(totalResolutions));
+        element.setAttribute("aria-valuenow", String(completedResolutions));
+        element.setAttribute("aria-valuetext", message);
+    } else {
+        for (const attribute of ["role", "aria-label", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-valuetext"]) {
+            element.removeAttribute(attribute);
+        }
+    }
 }
 
-function updateNodeScanSteps(phase, completedResolutions = 0) {
+function updateNodeScanSteps(phase, completedResolutions = 0, totalResolutions) {
     const coverage = phase === "COVERAGE";
     updateScanStep("nodeStepResolution", phase === "OSV" || coverage ? "DONE" : "RUNNING");
     updateScanStep("nodeStepOsv", coverage ? "DONE" : phase === "OSV" ? "RUNNING" : "WAITING");
     updateScanStep("nodeStepCoverage", coverage ? "RUNNING" : "WAITING");
-    showNodeScanMessage(completedResolutions
-        ? `Scan in progress: ${completedResolutions} npm resolution${completedResolutions === 1 ? "" : "s"} completed`
-        : "Scan in progress...");
+    const targetCount = Object.keys(targetState?.nodeDependencies || {}).length;
+    const total = totalResolutions ?? (targetCount ? targetCount + 1 : 0);
+    const completed = Math.min(total, Math.max(0, completedResolutions));
+    showNodeScanMessage(total
+        ? `${completed} / ${total} npm resolutions completed`
+        : "Scan in progress...", completed, total);
 }
 
 async function loadCachedNodeSecurity() {
@@ -650,7 +668,7 @@ async function loadCachedNodeSecurity() {
         status.hidden = snapshot.status !== "RUNNING";
         if (!status.hidden) {
             showNodeScanDetails();
-            updateNodeScanSteps(snapshot.phase, snapshot.completedResolutions);
+            updateNodeScanSteps(snapshot.phase, snapshot.completedResolutions, snapshot.totalResolutions);
         }
     } catch (error) {
         console.error("Could not load Node security", error);
@@ -678,7 +696,7 @@ async function scanNodeSecurity() {
         let snapshot = await fetchNodeSecurity(true);
         const fingerprint = snapshot.targetFingerprint;
         while (snapshot.status === "RUNNING") {
-            updateNodeScanSteps(snapshot.phase, snapshot.completedResolutions);
+            updateNodeScanSteps(snapshot.phase, snapshot.completedResolutions, snapshot.totalResolutions);
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (generation !== targetScanGeneration) return;
             snapshot = await fetchNodeSecurity();

@@ -16,10 +16,20 @@ function gui() {
 
     function element(id) {
         if (!elements.has(id)) {
+            const attributes = new Map();
+            const classes = new Set();
             elements.set(id, {
                 listeners: {},
-                style: { setProperty() {} },
-                classList: { add() {}, remove() {}, toggle() {} },
+                style: { setProperty(name, value) { this[name] = value; } },
+                classList: {
+                    add(value) { classes.add(value); },
+                    remove(value) { classes.delete(value); },
+                    toggle(value, force) { if (force) classes.add(value); else classes.delete(value); },
+                    contains(value) { return classes.has(value); }
+                },
+                setAttribute(name, value) { attributes.set(name, value); },
+                getAttribute(name) { return attributes.get(name) ?? null; },
+                removeAttribute(name) { attributes.delete(name); },
                 addEventListener(event, listener) { this.listeners[event] = listener; },
                 insertAdjacentHTML() {}
             });
@@ -415,7 +425,7 @@ test("Node repository uses dependency rows and statuses without declaration subt
             kind: "NODE", key: "glob", declaration: "overrides > glob",
             currentVersion: ">=10.0.0", targetVersion: "10.5.0", status: "UNRESOLVED"
         }],
-        untrackedNodeDependencies: [{ key: "ws", version: "<script>", declaration: "overrides > ws" }]
+        untrackedNodeDependencies: [{ key: "ws", version: "<ScRiPt src=x>", declaration: "overrides > ws" }]
     };
     app.context.renderRepo(
         { name: "example/node", state: "SCANNED" },
@@ -436,8 +446,8 @@ test("Node repository uses dependency rows and statuses without declaration subt
     assert.match(card.innerHTML, /data-kind="NODE"/);
     assert.match(card.innerHTML, /data-node-transient="false"/);
     assert.match(card.innerHTML, /data-kind="NODE"\s+data-node-transient="true"\s+data-key="ws"/);
-    assert.match(card.innerHTML, /&lt;script&gt;/);
-    assert.doesNotMatch(card.innerHTML, /<script>/);
+    assert.match(card.innerHTML, /&lt;ScRiPt src=x&gt;/);
+    assert.doesNotMatch(card.innerHTML, /<script\b/i);
     assert.match(card.innerHTML, /Untracked plugins \(0\), dependencies \(1\), platform BOMs \(0\)/);
 });
 
@@ -548,7 +558,7 @@ test("Node repository statuses share Gradle details and keep override bandages a
     assert.match(card.innerHTML, /data-version="8.0.0"/);
     assert.match(card.innerHTML, /data-version="11.1.1"/);
     assert.doesNotMatch(card.innerHTML, /node-declaration|<small|\^11|~8/);
-    assert.doesNotMatch(card.innerHTML, /<script>/);
+    assert.doesNotMatch(card.innerHTML, /<script\b/i);
 });
 
 test("Node table binds the shared upgrade button on saved and newly added targets", () => {
@@ -682,10 +692,10 @@ test("Node scan disables repeated starts and restores controls after lookup fail
 test("Node override checks keep completed phases done and expose concise resolution progress", async () => {
     const app = gui();
     const snapshots = [
-        { status: "RUNNING", phase: "RESOLUTION", completedResolutions: 1 },
-        { status: "RUNNING", phase: "OSV", completedResolutions: 2 },
-        { status: "RUNNING", phase: "COVERAGE", completedResolutions: 3 },
-        { status: "RUNNING", phase: "COVERAGE", completedResolutions: 4 },
+        { status: "RUNNING", phase: "RESOLUTION", completedResolutions: 1, totalResolutions: 4 },
+        { status: "RUNNING", phase: "OSV", completedResolutions: 2, totalResolutions: 4 },
+        { status: "RUNNING", phase: "COVERAGE", completedResolutions: 3, totalResolutions: 4 },
+        { status: "RUNNING", phase: "COVERAGE", completedResolutions: 4, totalResolutions: 4 },
         { status: "READY", result: { targets: [] } }
     ];
     const messages = [];
@@ -701,11 +711,63 @@ test("Node override checks keep completed phases done and expose concise resolut
         return { targetFingerprint: "node", ...snapshot };
     });
     await app.context.scanNodeSecurity();
-    assert.ok(messages.includes("Scan in progress: 1 npm resolution completed"));
-    assert.ok(messages.includes("Scan in progress: 4 npm resolutions completed"));
+    assert.ok(messages.includes("1 / 4 npm resolutions completed"));
+    assert.ok(messages.includes("4 / 4 npm resolutions completed"));
     assert.match(app.element("nodeScanStatus").innerHTML, /Check override coverage/);
     assert.equal(app.steps.filter(([id]) => id === "nodeStepCoverage").at(-1)[1], "DONE");
     assert.equal(app.element("nodeScanMessage").textContent, "DONE");
+    assert.equal(app.element("nodeScanMessage").classList.contains("node-resolution-progress"), false);
+    assert.equal(app.element("nodeScanMessage").getAttribute("role"), null);
+});
+
+test("Node resolution progress uses the existing message line with target totals and accessible progress values", () => {
+    const app = gui();
+    app.value('targetState = { nodeDependencies: { express: "4.22.3", uuid: "11.1.1", glob: "14.0.2" } }');
+    app.context.updateNodeScanSteps("RESOLUTION");
+    const message = app.element("nodeScanMessage");
+    assert.equal(message.textContent, "0 / 4 npm resolutions completed");
+    assert.equal(message.style["--node-resolution-progress"], "0%");
+    assert.equal(message.getAttribute("role"), "progressbar");
+    assert.equal(message.getAttribute("aria-label"), "npm resolutions");
+    assert.equal(message.getAttribute("aria-valuemin"), "0");
+    assert.equal(message.getAttribute("aria-valuemax"), "4");
+    assert.equal(message.getAttribute("aria-valuenow"), "0");
+
+    app.context.updateNodeScanSteps("RESOLUTION", 2, 4);
+    assert.equal(message.textContent, "2 / 4 npm resolutions completed");
+    assert.equal(message.style["--node-resolution-progress"], "50%");
+    assert.equal(message.getAttribute("aria-valuenow"), "2");
+    assert.equal(message.getAttribute("aria-valuetext"), message.textContent);
+    assert.equal(message.classList.contains("node-resolution-progress"), true);
+
+    app.context.updateNodeScanSteps("OSV", 4, 4);
+    assert.equal(message.style["--node-resolution-progress"], "100%");
+    app.context.updateNodeScanSteps("RESOLUTION", 1, 2);
+    assert.equal(message.textContent, "1 / 2 npm resolutions completed", "Backend totals override the initial estimate");
+    app.context.updateNodeScanSteps("RESOLUTION", 0, 0);
+    assert.equal(message.textContent, "Scan in progress...");
+    assert.equal(message.getAttribute("role"), null);
+
+    app.context.updateNodeScanSteps("RESOLUTION", 2, 4);
+    app.context.showNodeScanMessage("FAILED: Registry unavailable");
+    assert.equal(message.style["--node-resolution-progress"], "0%");
+    assert.equal(message.classList.contains("node-resolution-progress"), false);
+    assert.equal(message.getAttribute("role"), null);
+    assert.equal(message.getAttribute("aria-valuenow"), null);
+});
+
+test("cached running Node scans restore the backend resolution count and progress backdrop", async () => {
+    const app = gui();
+    app.responses(() => ({
+        status: "RUNNING", targetFingerprint: "node", phase: "RESOLUTION",
+        completedResolutions: 3, totalResolutions: 12
+    }));
+    await app.context.loadCachedNodeSecurity();
+    const message = app.element("nodeScanMessage");
+    assert.equal(message.textContent, "3 / 12 npm resolutions completed");
+    assert.equal(message.style["--node-resolution-progress"], "25%");
+    assert.equal(message.getAttribute("aria-valuemax"), "12");
+    assert.equal(app.element("nodeScanStatus").hidden, false);
 });
 
 test("Node scanning rejects stale fingerprints and results invalidated by saving", async () => {
@@ -750,7 +812,7 @@ test("Node cached scans restore independently and clear stale badges on idle or 
     assert.equal(app.steps.filter(([id]) => id === "nodeStepResolution").at(-1)[1], "DONE");
     assert.equal(app.steps.filter(([id]) => id === "nodeStepOsv").at(-1)[1], "DONE");
     assert.equal(app.steps.filter(([id]) => id === "nodeStepCoverage").at(-1)[1], "RUNNING");
-    assert.equal(app.element("nodeScanMessage").textContent, "Scan in progress: 12 npm resolutions completed");
+    assert.equal(app.element("nodeScanMessage").textContent, "12 / 18 npm resolutions completed");
     snapshot = { status: "IDLE" };
     await app.context.loadCachedNodeSecurity();
     assert.equal(app.element("nodeScanStatus").hidden, true);
@@ -784,7 +846,7 @@ test("Node reports share the Gradle layout with collapsed advisories and clickab
         vulnerableDependencies: [{
             dependency: { group: "npm", name: "transitive", version: "1.0.0" },
             suggestedVersion: { dependency: "transitive", version: "2.0.0" },
-            vulnerabilities: [{ id: "NPM-TEST", summary: "<script>", fixedVersions: ["2.0.0"] }]
+            vulnerabilities: [{ id: "NPM-TEST", summary: "<script><SCRIPT><ScRiPt src=x>", fixedVersions: ["2.0.0"] }]
         }]
     });
     assert.match(details, /transitive/);
@@ -795,7 +857,10 @@ test("Node reports share the Gradle layout with collapsed advisories and clickab
     assert.match(details, /applySecurityUpgrade\(\s*this,\s*'transitive',\s*'2.0.0', 'NODE'/);
     assert.doesNotMatch(details, /npm:transitive|independently|Repository lockfiles|Package fix versions/);
     assert.match(details, /&lt;script&gt;/);
-    assert.doesNotMatch(details, /No known vulnerabilities|<script>/);
+    assert.match(details, /&lt;SCRIPT&gt;/);
+    assert.match(details, /&lt;ScRiPt src=x&gt;/);
+    assert.doesNotMatch(details, /No known vulnerabilities/);
+    assert.doesNotMatch(details, /<script\b/i);
     const safe = app.context.nodeSecurityDetailsHtml({ key: "safe", targetVersion: "1.0.0", status: "OK", resolvedPackageCount: 7 });
     assert.match(safe, /No vulnerabilities found in the resolved dependency tree/);
     const unresolved = app.context.nodeSecurityDetailsHtml({

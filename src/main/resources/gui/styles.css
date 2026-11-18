@@ -1739,6 +1739,11 @@ button:hover {
     color: #c62828;
 }
 
+#nodeScanMessage.node-resolution-progress {
+    background: linear-gradient(to right, #dcedc8 var(--node-resolution-progress), transparent var(--node-resolution-progress));
+    border-radius: 3px;
+}
+
 /* Security statuses and details */
 
 .target-status-pill {
