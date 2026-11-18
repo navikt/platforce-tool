@@ -112,6 +112,13 @@ class Application {
         GradleTargetResolutionScanner(
             gradleTargetResolutionService::resolve,
             coverageResolve = gradleTargetResolutionService::resolveCoverage,
+            progress = { username, state, includeBoms ->
+                gradleTargetResolutionService.progress(
+                    username,
+                    state,
+                    if (includeBoms) ResolutionDebugFiles.Mode.BOM else ResolutionDebugFiles.Mode.NORMAL,
+                )
+            },
         )
 
     private val osvVulnerabilityService = OsvVulnerabilityService(httpClient)
@@ -134,7 +141,13 @@ class Application {
 
     private val targetSecurityScanner = TargetSecurityScanner(targetSecurityService, gradleTargetResolutionScanner)
     private val pluginSecurityScanner =
-        PluginSecurityScanner(gradleTargetResolutionService::resolvePlugins, PluginSecurityService(osvVulnerabilityService))
+        PluginSecurityScanner(
+            gradleTargetResolutionService::resolvePlugins,
+            PluginSecurityService(osvVulnerabilityService),
+            progress = { username, state ->
+                gradleTargetResolutionService.progress(username, state, ResolutionDebugFiles.Mode.PLUGINS)
+            },
+        )
     private val nodeSecurityScanner =
         NodeSecurityScanner(
             nodeSecurityService,

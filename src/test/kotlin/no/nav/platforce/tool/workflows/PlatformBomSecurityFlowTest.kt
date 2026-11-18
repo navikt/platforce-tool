@@ -8,6 +8,7 @@ import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.DependencyStatus
 import no.nav.platforce.tool.repositories.RepositoryDependencyInventory
+import no.nav.platforce.tool.resolution.GradleResolutionProgress
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.resolution.PlatformBomDependencyResolution
 import no.nav.platforce.tool.resolution.PlatformBomResolution
@@ -277,11 +278,19 @@ class PlatformBomSecurityFlowTest {
                     assertEquals(setOf(libraryKey), relevant)
                     resolution().copy(roots = baseline.roots, individual = baseline.individual)
                 },
+                progress = { _, state, includeBoms ->
+                    assertEquals(includeBoms, state.platformBoms.isNotEmpty())
+                    GradleResolutionProgress(1, if (includeBoms) 1 else 4)
+                },
             )
         val securityScanner = TargetSecurityScanner(service, resolutionScanner, securityExecutor)
 
         securityScanner.start("alice", targets)
+        assertEquals(1, resolutionScanner.get("alice", targets).completedResolutions)
+        assertEquals(4, resolutionScanner.get("alice", targets).totalResolutions)
+        assertEquals(0, resolutionScanner.get("bob", targets).totalResolutions)
         resolutionExecutor.runNext()
+        assertEquals(4, resolutionScanner.get("alice", targets).completedResolutions)
         securityExecutor.runNext()
         assertTrue(inputs.single().platformBoms.isEmpty())
         assertTrue(
@@ -294,7 +303,9 @@ class PlatformBomSecurityFlowTest {
         assertEquals(SecurityScanStatus.IDLE, securityScanner.get("alice", targets, includeBoms = true).status)
 
         securityScanner.start("alice", targets, includeBoms = true)
+        assertEquals(1, resolutionScanner.get("alice", targets, includeBoms = true).totalResolutions)
         resolutionExecutor.runNext()
+        assertEquals(1, resolutionScanner.get("alice", targets, includeBoms = true).completedResolutions)
         securityExecutor.runNext()
         assertEquals(targets.platformBoms, inputs.last().platformBoms)
         assertEquals(

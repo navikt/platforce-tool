@@ -243,6 +243,7 @@ class GradleResolutionBuildFile {
                                     status: configurationStatus
                                 ]
                                 writeTimings()
+                                file('gradle-resolution-progress.txt') << 'DONE\n'
                             }
                         }
 

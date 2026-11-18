@@ -9,6 +9,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectories
@@ -27,6 +28,13 @@ class GradleTargetResolutionService(
     private val debugFiles: ResolutionDebugFiles = ResolutionDebugFiles(),
 ) {
     private val log = KotlinLogging.logger { }
+    private val progress = ConcurrentHashMap<Triple<String, String, ResolutionDebugFiles.Mode>, GradleResolutionProgress>()
+
+    fun progress(
+        username: String,
+        state: TargetVersionsState,
+        mode: ResolutionDebugFiles.Mode,
+    ): GradleResolutionProgress? = progress[Triple(username, fingerprint(state), mode)]
 
     @OptIn(ExperimentalPathApi::class)
     fun resolve(
@@ -40,7 +48,13 @@ class GradleTargetResolutionService(
         baseline: TargetResolution,
         relevantTargets: Set<String>,
     ): TargetResolution =
-        execute(username, state, GradleResolutionBuildFile().createCoverage(state, relevantTargets), bom = true).copy(
+        execute(
+            username,
+            state,
+            GradleResolutionBuildFile().createCoverage(state, relevantTargets),
+            bom = true,
+            totalResolutions = state.platformBoms.size * state.dependencies.keys.count { it in relevantTargets },
+        ).copy(
             roots = baseline.roots,
             individual = baseline.individual,
         )
@@ -58,13 +72,21 @@ class GradleTargetResolutionService(
                 },
             ),
             mode = ResolutionDebugFiles.Mode.PLUGINS,
+            totalResolutions = state.plugins.count { (id, version) -> unsupportedPluginReason(id, version) == null },
         )
 
     fun resolveUpgradeCandidates(
         username: String,
         state: TargetVersionsState,
         modules: Map<String, String>,
-    ): TargetResolution = execute(username, state, GradlePluginResolutionBuildFile().createModules(modules), bom = false)
+    ): TargetResolution =
+        execute(
+            username,
+            state,
+            GradlePluginResolutionBuildFile().createModules(modules),
+            bom = false,
+            totalResolutions = modules.size,
+        )
 
     @OptIn(ExperimentalPathApi::class)
     private fun execute(
@@ -73,6 +95,7 @@ class GradleTargetResolutionService(
         buildFile: String,
         bom: Boolean = state.platformBoms.isNotEmpty(),
         mode: ResolutionDebugFiles.Mode = if (bom) ResolutionDebugFiles.Mode.BOM else ResolutionDebugFiles.Mode.NORMAL,
+        totalResolutions: Int = state.dependencies.size + 1 + state.platformBoms.size * state.dependencies.size,
     ): TargetResolution {
         val startedAt = Instant.now()
         val started = System.nanoTime()
@@ -87,6 +110,8 @@ class GradleTargetResolutionService(
             }
         var failure: Exception? = null
         var status = "RUNNING"
+        val progressKey = Triple(username, fingerprint(state), mode)
+        progress[progressKey] = GradleResolutionProgress(0, totalResolutions)
 
         fun <T> timed(
             name: String,
@@ -120,6 +145,7 @@ class GradleTargetResolutionService(
             projectDir.resolve("gradle-unresolved-dependencies.txt").writeText(
                 "Gradle resolution task has not started. See gradle-output.txt and gradle-resolution-report.json if execution fails.\n",
             )
+            projectDir.resolve("gradle-resolution-progress.txt").writeText("")
 
             val gradleHome =
                 timed("gradleDistributionCheckMs") { ensureGradleDistribution() }
@@ -153,6 +179,9 @@ class GradleTargetResolutionService(
                     gradleHome = gradleHome,
                     projectDir = projectDir,
                     publishProgress = {
+                        val completed =
+                            Files.readAllLines(projectDir.resolve("gradle-resolution-progress.txt")).count { it == "DONE" }
+                        progress[progressKey] = GradleResolutionProgress(completed.coerceAtMost(totalResolutions), totalResolutions)
                         for (name in listOf(
                             "gradle-output.txt",
                             "gradle-unresolved-dependencies.txt",
@@ -239,6 +268,7 @@ class GradleTargetResolutionService(
                 log.error(e) { "Could not publish Gradle debug artifacts" }
                 if (failure != null) failure.addSuppressed(e) else throw e
             } finally {
+                progress.remove(progressKey)
                 log.info { "Deleting temporary Gradle project $projectDir" }
                 projectDir.deleteRecursively()
             }

@@ -44,4 +44,11 @@ data class TargetResolutionSnapshot(
     val targetFingerprint: String?,
     val result: TargetResolution?,
     val error: String?,
+    val completedResolutions: Int = 0,
+    val totalResolutions: Int = 0,
+)
+
+data class GradleResolutionProgress(
+    val completedResolutions: Int,
+    val totalResolutions: Int,
 )

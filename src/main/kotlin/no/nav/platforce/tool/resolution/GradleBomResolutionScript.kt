@@ -66,6 +66,7 @@ object GradleBomResolutionScript {
                         status: 'READY'
                     ]
                     timingFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(timing))
+                    file('gradle-resolution-progress.txt') << 'DONE\n'
                     return [roots: roots]
                 }
                 def resolutionFile = file('resolution.json')

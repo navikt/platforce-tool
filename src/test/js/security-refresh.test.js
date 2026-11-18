@@ -30,6 +30,7 @@ function gui() {
                 setAttribute(name, value) { attributes.set(name, value); },
                 getAttribute(name) { return attributes.get(name) ?? null; },
                 removeAttribute(name) { attributes.delete(name); },
+                focus() { this.focused = true; },
                 addEventListener(event, listener) { this.listeners[event] = listener; },
                 insertAdjacentHTML() {}
             });
@@ -67,7 +68,6 @@ function gui() {
     context.renderTargetTables = () => targetRenders++;
     context.render = data => rendered.push(data);
     context.renderIgnoredRepositories = () => {};
-    context.showScanDetails = () => {};
     context.updateScanStep = (id, status) => steps.push([id, status]);
 
     function responses(handler) {
@@ -100,6 +100,75 @@ function repositoryResponse(url) {
     if (url === "/internal/api/repository-notes") return {};
     if (url === "/internal/api/ignored-repositories") return { repositories: [] };
     throw new Error(`Unexpected API call: ${url}`);
+}
+
+for (const { name, id, scanButtonId, run, start } of [
+    { name: "Dependencies", id: "targetScanDetails", scanButtonId: "scanTargets",
+        run: app => app.context.scanTargetSecurity(), start: app => app.context.showScanDetails() },
+    { name: "Platform BOMs", id: "targetScanDetails", scanButtonId: "scanBoms",
+        run: app => app.context.scanTargetSecurity(true), start: app => app.context.showScanDetails(true) },
+    { name: "Plugins", id: "pluginScanStatus", scanButtonId: "scanPlugins",
+        run: app => app.context.scanPluginSecurity(), start: app => app.context.showPluginScanDetails() },
+    { name: "Node", id: "nodeScanStatus", scanButtonId: "scanNode",
+        run: app => app.context.scanNodeSecurity(), start: app => app.context.showNodeScanDetails() }
+]) {
+    for (const failed of [false, true]) {
+        test(`${name} status can be cleared after ${failed ? "failure" : "completion"}, but not while scanning`, async () => {
+            const app = gui();
+            app.value("normalSecurityReady = true");
+            const container = app.element(id);
+            const close = app.element(`${id}Close`);
+            app.responses(url => {
+                if (url.includes("/target-resolution") || url.includes("/plugin-security") || url.includes("/node-security")) {
+                    assert.equal(close.disabled, true);
+                    assert.match(container.innerHTML, /class="save-banner-close scan-status-close"/);
+                    assert.match(container.innerHTML, /aria-label="Dismiss scan status"/);
+                    const markup = container.innerHTML;
+                    app.context.dismissScanStatus(id, scanButtonId);
+                    assert.equal(container.innerHTML, markup);
+                    assert.equal(container.hidden, false);
+                    return failed
+                        ? { status: "FAILED", error: "Synthetic scan failure" }
+                        : { status: "READY", targetFingerprint: "targets", normalReady: true, result: { targets: [], plugins: [] } };
+                }
+                return repositoryResponse(url);
+            });
+            await run(app);
+            assert.equal(close.disabled, false);
+            const results = app.value("[targetSecurityScan, pluginSecurityScan, nodeSecurityScan]");
+            const calls = app.calls.length;
+            const handler = container.innerHTML.match(/onclick="([^"]+)"/)[1];
+            app.value(handler);
+            assert.equal(container.hidden, true);
+            assert.equal(container.style.display, "none");
+            assert.equal(container.innerHTML, "");
+            assert.equal(app.element(scanButtonId).focused, true);
+            assert.equal(app.calls.length, calls);
+            assert.deepEqual(app.value("[targetSecurityScan, pluginSecurityScan, nodeSecurityScan]"), results);
+
+            start(app);
+            assert.equal(container.hidden, false);
+            assert.equal(container.style.display, id === "targetScanDetails" ? "block" : "");
+            assert.equal(close.disabled, true);
+            assert.match(container.innerHTML, /scan-status-close/);
+        });
+    }
+}
+
+for (const [id, scanButtonId, load] of [
+    ["pluginScanStatus", "scanPlugins", app => app.context.loadCachedPluginSecurity()],
+    ["nodeScanStatus", "scanNode", app => app.context.loadCachedNodeSecurity()]
+]) {
+    test(`${id} cached scan errors can also be dismissed`, async () => {
+        const app = gui();
+        app.responses(() => ({ status: "FAILED", error: "<Lookup failed>" }));
+        await load(app);
+        assert.equal(app.element(id).textContent, "<Lookup failed>");
+        assert.equal(app.element(`${id}Close`).disabled, false);
+        app.context.dismissScanStatus(id, scanButtonId);
+        assert.equal(app.element(id).hidden, true);
+        assert.equal(app.element(id).innerHTML, "");
+    });
 }
 
 test("completed security polling reloads and renders enriched repository data without Refresh Scan", async () => {
@@ -135,6 +204,56 @@ test("immediately ready security result also reloads repository data", async () 
             return { status: "READY", targetFingerprint: "targets", result: { targets: [] } };
         }
         return repositoryResponse(url);
+    });
+
+    for (const includeBoms of [false, true]) {
+        test(`${includeBoms ? "BOM coverage" : "Gradle dependency"} scan shows inline resolution progress through OSV and clears it on completion`, async () => {
+            const app = gui();
+            app.value("normalSecurityReady = true");
+            const total = includeBoms ? 6 : 4;
+            const type = includeBoms ? "BOM coverage" : "Gradle";
+            const observed = [];
+            let polls = 0;
+            app.responses(url => {
+                const message = app.element("targetScanMessage");
+                if (url.includes("/target-resolution/security/start")) {
+                    assert.equal(message.textContent, `${total} / ${total} ${type} resolutions completed`);
+                    assert.equal(message.style["--scan-resolution-progress"], "100%");
+                    return { status: "READY", targetFingerprint: "targets", result: { targets: [] } };
+                }
+                if (url.includes("/target-resolution")) {
+                    observed.push([message.textContent, message.style["--scan-resolution-progress"]]);
+                    if (url.includes("/start")) {
+                        return { status: "RUNNING", targetFingerprint: "targets", completedResolutions: 0, totalResolutions: total };
+                    }
+                    return ++polls === 1
+                        ? { status: "RUNNING", targetFingerprint: "targets", completedResolutions: total / 2, totalResolutions: total }
+                        : { status: "READY", targetFingerprint: "targets", completedResolutions: total, totalResolutions: total };
+                }
+                return repositoryResponse(url);
+            });
+            await app.context.scanTargetSecurity(includeBoms);
+            assert.deepEqual(observed.slice(1), [
+                [`0 / ${total} ${type} resolutions completed`, "0%"],
+                [`${total / 2} / ${total} ${type} resolutions completed`, "50%"]
+            ]);
+            assert.equal(app.element("targetScanMessage").textContent, "DONE");
+            assert.equal(app.element("targetScanMessage").getAttribute("role"), null);
+            assert.equal(app.element("targetScanMessage").classList.contains("scan-resolution-progress"), false);
+            assert.equal((app.element("targetScanDetails").innerHTML.match(/id="targetScanMessage"/g) || []).length, 1);
+        });
+    }
+
+    test("Gradle failures clear the resolution backdrop and report errors in the same message", async () => {
+        const app = gui();
+        app.responses(url => url.endsWith("/start")
+            ? { status: "RUNNING", targetFingerprint: "targets", completedResolutions: 1, totalResolutions: 4 }
+            : { status: "FAILED", targetFingerprint: "targets", error: "Gradle <unavailable>" });
+        await app.context.scanTargetSecurity();
+        const message = app.element("targetScanMessage");
+        assert.equal(message.textContent, "FAILED: Gradle <unavailable>");
+        assert.equal(message.getAttribute("role"), null);
+        assert.equal(message.style["--scan-resolution-progress"], "0%");
     });
 
     await app.context.scanTargetSecurity();
@@ -716,7 +835,7 @@ test("Node override checks keep completed phases done and expose concise resolut
     assert.match(app.element("nodeScanStatus").innerHTML, /Check override coverage/);
     assert.equal(app.steps.filter(([id]) => id === "nodeStepCoverage").at(-1)[1], "DONE");
     assert.equal(app.element("nodeScanMessage").textContent, "DONE");
-    assert.equal(app.element("nodeScanMessage").classList.contains("node-resolution-progress"), false);
+    assert.equal(app.element("nodeScanMessage").classList.contains("scan-resolution-progress"), false);
     assert.equal(app.element("nodeScanMessage").getAttribute("role"), null);
 });
 
@@ -726,7 +845,7 @@ test("Node resolution progress uses the existing message line with target totals
     app.context.updateNodeScanSteps("RESOLUTION");
     const message = app.element("nodeScanMessage");
     assert.equal(message.textContent, "0 / 4 npm resolutions completed");
-    assert.equal(message.style["--node-resolution-progress"], "0%");
+    assert.equal(message.style["--scan-resolution-progress"], "0%");
     assert.equal(message.getAttribute("role"), "progressbar");
     assert.equal(message.getAttribute("aria-label"), "npm resolutions");
     assert.equal(message.getAttribute("aria-valuemin"), "0");
@@ -735,13 +854,13 @@ test("Node resolution progress uses the existing message line with target totals
 
     app.context.updateNodeScanSteps("RESOLUTION", 2, 4);
     assert.equal(message.textContent, "2 / 4 npm resolutions completed");
-    assert.equal(message.style["--node-resolution-progress"], "50%");
+    assert.equal(message.style["--scan-resolution-progress"], "50%");
     assert.equal(message.getAttribute("aria-valuenow"), "2");
     assert.equal(message.getAttribute("aria-valuetext"), message.textContent);
-    assert.equal(message.classList.contains("node-resolution-progress"), true);
+    assert.equal(message.classList.contains("scan-resolution-progress"), true);
 
     app.context.updateNodeScanSteps("OSV", 4, 4);
-    assert.equal(message.style["--node-resolution-progress"], "100%");
+    assert.equal(message.style["--scan-resolution-progress"], "100%");
     app.context.updateNodeScanSteps("RESOLUTION", 1, 2);
     assert.equal(message.textContent, "1 / 2 npm resolutions completed", "Backend totals override the initial estimate");
     app.context.updateNodeScanSteps("RESOLUTION", 0, 0);
@@ -750,8 +869,8 @@ test("Node resolution progress uses the existing message line with target totals
 
     app.context.updateNodeScanSteps("RESOLUTION", 2, 4);
     app.context.showNodeScanMessage("FAILED: Registry unavailable");
-    assert.equal(message.style["--node-resolution-progress"], "0%");
-    assert.equal(message.classList.contains("node-resolution-progress"), false);
+    assert.equal(message.style["--scan-resolution-progress"], "0%");
+    assert.equal(message.classList.contains("scan-resolution-progress"), false);
     assert.equal(message.getAttribute("role"), null);
     assert.equal(message.getAttribute("aria-valuenow"), null);
 });
@@ -765,7 +884,7 @@ test("cached running Node scans restore the backend resolution count and progres
     await app.context.loadCachedNodeSecurity();
     const message = app.element("nodeScanMessage");
     assert.equal(message.textContent, "3 / 12 npm resolutions completed");
-    assert.equal(message.style["--node-resolution-progress"], "25%");
+    assert.equal(message.style["--scan-resolution-progress"], "25%");
     assert.equal(message.getAttribute("aria-valuemax"), "12");
     assert.equal(app.element("nodeScanStatus").hidden, false);
 });
@@ -1088,10 +1207,15 @@ test("plugin scan uses a separate job and shows results only at matching saved v
     let polls = 0;
     app.responses(url => {
         assert.match(url, /^\/internal\/api\/plugin-security/);
-        if (url.endsWith("/start")) return { status: "RUNNING", targetFingerprint: "plugins", phase: "RESOLUTION" };
+        if (url.endsWith("/start")) return {
+            status: "RUNNING", targetFingerprint: "plugins", phase: "RESOLUTION", completedResolutions: 1, totalResolutions: 2
+        };
+        const message = app.element("pluginScanMessage");
+        assert.equal(message.textContent, `${polls ? 2 : 1} / 2 plugin resolutions completed`);
+        assert.equal(message.style["--scan-resolution-progress"], polls ? "100%" : "50%");
         // The backend reports when Gradle resolution is finished and OSV lookup has started.
         return ++polls === 1
-            ? { status: "RUNNING", targetFingerprint: "plugins", phase: "OSV" }
+            ? { status: "RUNNING", targetFingerprint: "plugins", phase: "OSV", completedResolutions: 2, totalResolutions: 2 }
             : { status: "READY", targetFingerprint: "plugins", result: { plugins: [plugin] } };
     });
     await app.context.scanPluginSecurity();
@@ -1105,12 +1229,31 @@ test("plugin scan uses a separate job and shows results only at matching saved v
     assert.ok(pluginSteps.indexOf("pluginStepResolution DONE") < pluginSteps.indexOf("pluginStepOsv RUNNING"));
     assert.equal(pluginSteps.at(-1), "pluginStepDone DONE");
     assert.equal(app.element("pluginScanMessage").textContent, "DONE");
+    assert.equal(app.element("pluginScanMessage").getAttribute("role"), null);
+    assert.equal(app.element("pluginScanMessage").classList.contains("scan-resolution-progress"), false);
     assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "1.0").status, "OK");
     assert.equal(app.context.findTargetSecurity("plugin", "example.plugin", "2.0"), null);
     assert.equal(app.context.findTargetSecurity("dependency", "example.plugin", "1.0"), null);
     assert.equal(app.value("normalSecurityReady"), false);
     assert.equal(app.value("bomSecurityReady"), false);
     assert.equal(app.element("scanPlugins").disabled, false);
+});
+
+test("cached plugin scans restore resolution totals and reset their backdrop on failure", async () => {
+    const app = gui();
+    app.responses(() => ({
+        status: "RUNNING", phase: "RESOLUTION", completedResolutions: 3, totalResolutions: 12
+    }));
+    await app.context.loadCachedPluginSecurity();
+    const message = app.element("pluginScanMessage");
+    assert.equal(message.textContent, "3 / 12 plugin resolutions completed");
+    assert.equal(message.style["--scan-resolution-progress"], "25%");
+    assert.equal(message.getAttribute("aria-valuemax"), "12");
+    app.responses(() => ({ status: "FAILED", error: "Gradle unavailable" }));
+    await app.context.scanPluginSecurity();
+    assert.equal(message.textContent, "FAILED: Gradle unavailable");
+    assert.equal(message.getAttribute("role"), null);
+    assert.equal(message.style["--scan-resolution-progress"], "0%");
 });
 
 test("plugin scan rejects stale jobs and reports errors explicitly", async () => {

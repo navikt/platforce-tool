@@ -2,6 +2,7 @@ package no.nav.platforce.tool.workflows
 
 import com.google.gson.JsonParser
 import no.nav.platforce.tool.resolution.GradlePluginResolutionBuildFile
+import no.nav.platforce.tool.resolution.GradleResolutionProgress
 import no.nav.platforce.tool.resolution.GradleTargetResolutionService
 import no.nav.platforce.tool.resolution.ResolutionDebugFiles
 import no.nav.platforce.tool.resolution.ResolvedDependency
@@ -112,7 +113,13 @@ class PluginSecurityFlowTest {
         )
         val launcher = directory.resolve("gradle/bin/gradle")
         Files.createDirectories(launcher.parent)
-        launcher.writeText("#!/bin/sh\nexec '${gradleHome.resolve("bin/gradle")}' --offline --init-script '$initScript' \"${'$'}@\"\n")
+        launcher.writeText(
+            """
+            #!/bin/sh
+            '${gradleHome.resolve("bin/gradle")}' --offline --init-script '$initScript' "${'$'}@" || exit ${'$'}?
+            test "${'$'}(grep -c DONE gradle-resolution-progress.txt)" -eq 6
+            """.trimIndent() + "\n",
+        )
         check(launcher.toFile().setExecutable(true))
         val debug = ResolutionDebugFiles(directory.resolve("files"))
         val inspection = debug.inspectionDirectory("alice")
@@ -284,14 +291,20 @@ class PluginSecurityFlowTest {
         val osv =
             object : VulnerabilityService {
                 override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
-                    observed += scanner.get("alice", state).phase
+                    val snapshot = scanner.get("alice", state)
+                    observed += snapshot.phase
+                    assertEquals(2, snapshot.completedResolutions)
+                    assertEquals(2, snapshot.totalResolutions)
                     return vulnerabilityService.find(dependencies)
                 }
             }
         scanner =
             PluginSecurityScanner(
                 { username, targets ->
-                    observed += scanner.get(username, targets).phase
+                    val snapshot = scanner.get(username, targets)
+                    observed += snapshot.phase
+                    assertEquals(1, snapshot.completedResolutions)
+                    assertEquals(2, snapshot.totalResolutions)
                     TargetResolution(
                         "8.14.4",
                         emptyList(),
@@ -303,6 +316,7 @@ class PluginSecurityFlowTest {
                 },
                 PluginSecurityService(osv),
                 executor,
+                progress = { _, _ -> GradleResolutionProgress(1, 2) },
             )
 
         assertEquals(PluginScanPhase.RESOLUTION, scanner.start("alice", state).phase, "A queued job starts with resolution")
@@ -312,6 +326,8 @@ class PluginSecurityFlowTest {
         assertTrue(observed.drop(1).isNotEmpty() && observed.drop(1).all { it == PluginScanPhase.OSV })
         assertEquals(SecurityScanStatus.READY, scanner.get("alice", state).status)
         assertNull(scanner.get("alice", state).phase, "Finished jobs have no running phase")
+        assertEquals(2, scanner.get("alice", state).completedResolutions)
+        assertEquals(0, scanner.get("bob", state).totalResolutions)
     }
 
     @Test
@@ -323,11 +339,13 @@ class PluginSecurityFlowTest {
         val failed = scanner.get("alice", state)
         assertEquals(SecurityScanStatus.FAILED, failed.status)
         assertEquals("Synthetic Gradle process failure", failed.error)
+        assertEquals(0, failed.totalResolutions)
         assertNull(failed.result)
         val core = state.copy(plugins = mutableMapOf("java" to "", "example.unversioned" to ""))
         scanner.start("alice", core)
         executor.runNext()
         assertEquals(SecurityScanStatus.READY, scanner.get("alice", core).status)
+        assertEquals(0, scanner.get("alice", core).totalResolutions)
         assertTrue(
             scanner
                 .get("alice", core)

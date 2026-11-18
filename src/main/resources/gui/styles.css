@@ -1706,13 +1706,26 @@ button:hover {
 }
 
 .target-scan-details {
+    position: relative;
     margin-top: 8px;
-    padding: 12px 14px;
+    padding: 12px 40px 12px 14px;
     border-radius: 6px;
     background: #f5f5f5;
     border: 1px solid #ddd;
     font-family: monospace;
     font-size: 13px;
+}
+
+.scan-status-close {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+}
+
+.scan-status-close:disabled {
+    background: transparent;
+    opacity: 0.4;
+    cursor: default;
 }
 
 .target-scan-step {
@@ -1739,8 +1752,8 @@ button:hover {
     color: #c62828;
 }
 
-#nodeScanMessage.node-resolution-progress {
-    background: linear-gradient(to right, #dcedc8 var(--node-resolution-progress), transparent var(--node-resolution-progress));
+.scan-resolution-progress {
+    background: linear-gradient(to right, #dcedc8 var(--scan-resolution-progress), transparent var(--scan-resolution-progress));
     border-radius: 3px;
 }
 

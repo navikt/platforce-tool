@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.security
 
 import com.google.gson.Gson
+import no.nav.platforce.tool.resolution.GradleResolutionProgress
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.resolution.unsupportedPluginReason
@@ -49,6 +50,8 @@ data class PluginSecuritySnapshot(
     val result: PluginSecurityScan? = null,
     val error: String? = null,
     val phase: PluginScanPhase? = null,
+    val completedResolutions: Int = 0,
+    val totalResolutions: Int = 0,
 )
 
 class PluginSecurityService(
@@ -126,6 +129,7 @@ class PluginSecurityScanner(
     resolve: (String, TargetVersionsState) -> TargetResolution,
     service: PluginSecurityService,
     executor: ExecutorService = scanExecutor("plugin-security"),
+    private val progress: (String, TargetVersionsState) -> GradleResolutionProgress? = { _, _ -> null },
 ) {
     private val phases = ConcurrentHashMap<String, PluginScanPhase>()
     private val jobs =
@@ -145,23 +149,33 @@ class PluginSecurityScanner(
     fun start(
         username: String,
         targetState: TargetVersionsState,
-    ): PluginSecuritySnapshot = jobs.start(username, targetState, refreshReady = true).toPluginSnapshot(username)
+    ): PluginSecuritySnapshot = jobs.start(username, targetState, refreshReady = true).toPluginSnapshot(username, targetState)
 
     fun get(
         username: String,
         targetState: TargetVersionsState,
-    ): PluginSecuritySnapshot = jobs.get(username, targetState).toPluginSnapshot(username)
+    ): PluginSecuritySnapshot = jobs.get(username, targetState).toPluginSnapshot(username, targetState)
 
     fun invalidate(username: String) = jobs.invalidate(username)
 
-    private fun ScanJobSnapshot<PluginSecurityScan>.toPluginSnapshot(username: String) =
-        PluginSecuritySnapshot(
+    private fun ScanJobSnapshot<PluginSecurityScan>.toPluginSnapshot(
+        username: String,
+        state: TargetVersionsState,
+    ): PluginSecuritySnapshot {
+        val phase = if (status == ScanJobStatus.RUNNING) phases[username] ?: PluginScanPhase.RESOLUTION else null
+        val current = if (phase == PluginScanPhase.RESOLUTION) progress(username, state) else null
+        val total = state.plugins.count { (id, version) -> unsupportedPluginReason(id, version) == null }
+        return PluginSecuritySnapshot(
             SecurityScanStatus.valueOf(status.name),
             targetFingerprint,
             result,
             error,
-            phase = if (status == ScanJobStatus.RUNNING) phases[username] ?: PluginScanPhase.RESOLUTION else null,
+            phase = phase,
+            completedResolutions =
+                if (phase == PluginScanPhase.OSV || status == ScanJobStatus.READY) total else current?.completedResolutions ?: 0,
+            totalResolutions = if (status in setOf(ScanJobStatus.RUNNING, ScanJobStatus.READY)) total else 0,
         )
+    }
 }
 
 fun pluginSecurityRoutes(scanner: PluginSecurityScanner) =

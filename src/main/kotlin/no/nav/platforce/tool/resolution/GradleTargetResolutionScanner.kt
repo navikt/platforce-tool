@@ -15,6 +15,7 @@ class GradleTargetResolutionScanner(
     resolve: (String, TargetVersionsState) -> TargetResolution,
     executor: ExecutorService = scanExecutor("gradle-target-resolution"),
     coverageResolve: ((String, TargetVersionsState, TargetResolution, Set<String>) -> TargetResolution)? = null,
+    private val progress: (String, TargetVersionsState, Boolean) -> GradleResolutionProgress? = { _, _, _ -> null },
 ) {
     private val jobs = UserScanJobs(executor, resolve)
     private var securityBaseline: (String, TargetVersionsState) -> TargetSecurityScan? = { _, _ -> null }
@@ -48,12 +49,13 @@ class GradleTargetResolutionScanner(
     ): TargetResolutionSnapshot =
         if (includeBoms) {
             if (canScanCoverage(username, targetState)) {
-                bomJobs.start(username, targetState).toResolutionSnapshot()
+                bomJobs.start(username, targetState).toResolutionSnapshot(username, targetState, true)
             } else {
-                bomJobs.fail(username, targetState, BOM_PREREQUISITE).toResolutionSnapshot()
+                bomJobs.fail(username, targetState, BOM_PREREQUISITE).toResolutionSnapshot(username, targetState, true)
             }
         } else {
-            jobs.start(username, targetState.copy(platformBoms = mutableMapOf())).toResolutionSnapshot()
+            val state = targetState.copy(platformBoms = mutableMapOf())
+            jobs.start(username, state).toResolutionSnapshot(username, state, false)
         }
 
     fun get(
@@ -62,9 +64,10 @@ class GradleTargetResolutionScanner(
         includeBoms: Boolean = false,
     ): TargetResolutionSnapshot =
         if (includeBoms) {
-            bomJobs.get(username, targetState).toResolutionSnapshot()
+            bomJobs.get(username, targetState).toResolutionSnapshot(username, targetState, true)
         } else {
-            jobs.get(username, targetState.copy(platformBoms = mutableMapOf())).toResolutionSnapshot()
+            val state = targetState.copy(platformBoms = mutableMapOf())
+            jobs.get(username, state).toResolutionSnapshot(username, state, false)
         }
 
     fun invalidate(username: String) {
@@ -105,8 +108,23 @@ class GradleTargetResolutionScanner(
         }
     }
 
-    private fun ScanJobSnapshot<TargetResolution>.toResolutionSnapshot() =
-        TargetResolutionSnapshot(
+    private fun ScanJobSnapshot<TargetResolution>.toResolutionSnapshot(
+        username: String,
+        state: TargetVersionsState,
+        includeBoms: Boolean,
+    ): TargetResolutionSnapshot {
+        val current = if (status == ScanJobStatus.RUNNING) progress(username, state, includeBoms) else null
+        val total =
+            current?.totalResolutions ?: if (includeBoms) {
+                result?.platformBoms?.values?.sumOf { it.coverage.size }
+                    ?: (
+                        state.platformBoms.size *
+                            securityBaseline(username, state)?.targets.orEmpty().count { it.vulnerableDependencies.isNotEmpty() }
+                    )
+            } else {
+                state.dependencies.size + 1
+            }
+        return TargetResolutionSnapshot(
             status =
                 when (status) {
                     ScanJobStatus.IDLE -> ResolutionStatus.IDLE
@@ -117,5 +135,8 @@ class GradleTargetResolutionScanner(
             targetFingerprint = targetFingerprint,
             result = result,
             error = error,
+            completedResolutions = if (status == ScanJobStatus.READY) total else current?.completedResolutions ?: 0,
+            totalResolutions = if (status in setOf(ScanJobStatus.RUNNING, ScanJobStatus.READY)) total else 0,
         )
+    }
 }

@@ -111,13 +111,23 @@ test("Node repository rows use the shared dependency layout with only a backgrou
     }
 });
 
-test("Node resolution progress paints behind the existing message without adding layout space", () => {
+test("scan resolution progress paints behind existing messages without adding layout space", () => {
     const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
-    const rule = css.match(/#nodeScanMessage\.node-resolution-progress\s*\{([^}]*)\}/)?.[1];
+    const rule = css.match(/\.scan-resolution-progress\s*\{([^}]*)\}/)?.[1];
     assert.ok(rule);
     assert.match(rule, /background:\s*linear-gradient\(/);
-    assert.match(rule, /var\(--node-resolution-progress\)/);
+    assert.match(rule, /var\(--scan-resolution-progress\)/);
     assert.doesNotMatch(rule, /(?:height|width|padding|margin|display)\s*:/);
+});
+
+test("scan dismissal controls stay in the top right without adding a status row", () => {
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    const details = css.match(/\.target-scan-details\s*\{([^}]*)\}/)?.[1];
+    const close = css.match(/\.scan-status-close\s*\{([^}]*)\}/)?.[1];
+    assert.match(details, /position:\s*relative/);
+    assert.match(close, /position:\s*absolute/);
+    assert.match(close, /top:\s*4px/);
+    assert.match(close, /right:\s*4px/);
 });
 
 test("Node status pills expand and collapse the same repository details as Gradle", () => {
@@ -199,7 +209,7 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
         }
     }
     assert.deepEqual([...handlers].sort(), [
-        "applySecurityUpgrade", "createPr", "ignoreRepository", "refreshRepository"
+        "applySecurityUpgrade", "createPr", "dismissScanStatus", "ignoreRepository", "refreshRepository"
     ]);
 
     let deploymentLoads = 0;

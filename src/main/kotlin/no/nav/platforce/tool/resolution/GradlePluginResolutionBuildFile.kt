@@ -98,6 +98,7 @@ class GradlePluginResolutionBuildFile {
                         timing.durationMs = (System.nanoTime() - configurationStarted) / 1000000.0
                         timing.status = 'READY'
                         writeTimings()
+                        file('gradle-resolution-progress.txt') << 'DONE\n'
                         println("Finished plugin metadata: " + id + ':' + configuredPlugins[id])
                     }
                     file('resolution.json').text = groovy.json.JsonOutput.toJson([roots: [], individual: individual])

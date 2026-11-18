@@ -156,6 +156,7 @@ class BomMetadataTest {
                 .start()
         val generatedOutput = generated.inputStream.bufferedReader().use { it.readText() }
         assertEquals(0, generated.waitFor(), generatedOutput)
+        assertEquals(List(4) { "DONE" }, Files.readAllLines(directory.resolve("gradle-resolution-progress.txt")))
         val result = JsonParser.parseString(directory.resolve("resolution.json").readText()).asJsonObject
         val bom = result["platformBoms"].asJsonObject["example:bom"].asJsonObject
         assertTrue(bom["managed"].asJsonArray.isEmpty)

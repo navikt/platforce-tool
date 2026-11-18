@@ -7,6 +7,7 @@ import no.nav.platforce.tool.resolution.TargetResolution
 import no.nav.platforce.tool.targets.TargetVersionsState
 import no.nav.platforce.tool.targets.fingerprint
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -34,7 +35,13 @@ class GradleResolutionReportTest {
     fun `real offline Gradle run publishes generated build unresolved findings and measured configuration durations`() {
         val gradleHome = Path.of(checkNotNull(System.getProperty("platforce.tests.gradleHome")))
         // Use the project's existing Gradle distribution offline: no downloads or external services.
-        val launcher = launcher("exec '${gradleHome.resolve("bin/gradle")}' --offline \"${'$'}@\"")
+        val launcher =
+            launcher(
+                """
+                '${gradleHome.resolve("bin/gradle")}' --offline "${'$'}@" || exit ${'$'}?
+                test "${'$'}(grep -c DONE gradle-resolution-progress.txt)" -eq 3
+                """.trimIndent(),
+            )
         val store = ResolutionDebugFiles(directory.resolve("files"))
         val service = GradleTargetResolutionService(launcher, debugFiles = store)
         val result = service.resolve("alice", targets)
@@ -97,6 +104,72 @@ class GradleResolutionReportTest {
             "99.1",
             service.resolveCoverage("alice", state, TargetResolution("old", emptyList(), emptyMap()), emptySet()).gradleVersion,
         )
+    }
+
+    @Test
+    fun `live resolution counts use actual configurations and are isolated by user fingerprint and mode`() {
+        val state =
+            targets.copy(
+                plugins = mutableMapOf("example.first" to "1.0", "example.second" to "1.0", "java" to ""),
+                platformBoms = mutableMapOf("example:bom" to "1.0", "example:other-bom" to "1.0"),
+            )
+        for (mode in ResolutionDebugFiles.Mode.entries) {
+            val release = directory.resolve("release-${mode.name}")
+            val launcher =
+                launcher(
+                    """
+                    echo DONE >> gradle-resolution-progress.txt
+                    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                        if [ -f '$release' ]; then break; fi
+                        sleep 1
+                    done
+                    exit 19
+                    """.trimIndent(),
+                )
+            val service = GradleTargetResolutionService(launcher, debugFiles = ResolutionDebugFiles(directory.resolve("files")))
+            val input = if (mode == ResolutionDebugFiles.Mode.NORMAL) state.copy(platformBoms = mutableMapOf()) else state
+            val running =
+                CompletableFuture.runAsync {
+                    assertThrows(IllegalStateException::class.java) {
+                        when (mode) {
+                            ResolutionDebugFiles.Mode.NORMAL -> {
+                                service.resolve("alice", input)
+                            }
+
+                            ResolutionDebugFiles.Mode.BOM -> {
+                                service.resolveCoverage(
+                                    "alice",
+                                    input,
+                                    TargetResolution("old", emptyList(), emptyMap()),
+                                    setOf(input.dependencies.keys.first()),
+                                )
+                            }
+
+                            ResolutionDebugFiles.Mode.PLUGINS -> {
+                                service.resolvePlugins("alice", input)
+                            }
+                        }
+                    }
+                }
+            try {
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (service.progress("alice", input, mode)?.completedResolutions != 1 && System.nanoTime() < deadline) {
+                    Thread.sleep(25)
+                }
+                val progress = checkNotNull(service.progress("alice", input, mode))
+                assertEquals(1, progress.completedResolutions)
+                assertEquals(if (mode == ResolutionDebugFiles.Mode.NORMAL) 3 else 2, progress.totalResolutions)
+                assertNull(service.progress("bob", input, mode))
+                assertNull(service.progress("alice", input.copy(gradleVersion = "changed"), mode))
+                val otherMode = ResolutionDebugFiles.Mode.entries.first { it != mode }
+                assertNull(service.progress("alice", input, otherMode))
+                assertTrue(!running.isDone)
+            } finally {
+                release.writeText("continue")
+                running.get(20, TimeUnit.SECONDS)
+            }
+            assertNull(service.progress("alice", input, mode))
+        }
     }
 
     @Test

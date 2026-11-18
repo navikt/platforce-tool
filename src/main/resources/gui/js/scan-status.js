@@ -78,13 +78,43 @@ function startProgressPolling() {
     progressInterval = setInterval(pollProgress, 500);
 }
 
+function scanStatusCloseButtonHtml(id, scanButtonId) {
+    return `<button id="${id}Close" class="save-banner-close scan-status-close" type="button"
+        aria-label="Dismiss scan status" title="Dismiss scan status"
+        onclick="dismissScanStatus('${id}', '${scanButtonId}')" disabled>&times;</button>`;
+}
+
+function setScanStatusDismissible(id, dismissible) {
+    document.getElementById(`${id}Close`).disabled = !dismissible;
+}
+
+function dismissScanStatus(id, scanButtonId) {
+    if (document.getElementById(`${id}Close`).disabled) return;
+    const container = document.getElementById(id);
+    container.hidden = true;
+    container.style.display = "none";
+    container.innerHTML = "";
+    document.getElementById(scanButtonId).focus();
+}
+
+function showScanStatusError(id, scanButtonId, message) {
+    const container = document.getElementById(id);
+    container.textContent = message;
+    container.insertAdjacentHTML("afterbegin", scanStatusCloseButtonHtml(id, scanButtonId));
+    container.hidden = false;
+    container.style.display = "";
+    setScanStatusDismissible(id, true);
+}
+
 function showScanDetails(includeBoms = false) {
     const container =
         document.getElementById("targetScanDetails");
 
+    container.hidden = false;
     container.style.display = "block";
 
     container.innerHTML = `
+        ${scanStatusCloseButtonHtml("targetScanDetails", includeBoms ? "scanBoms" : "scanTargets")}
         <div id="targetScanSteps">
             <div
                 id="scanStepResolution"
@@ -110,7 +140,12 @@ function showScanDetails(includeBoms = false) {
                 <span>Update security status</span>
             </div>
         </div>
+        <div id="targetScanMessage" style="margin-top:8px"></div>
     `;
+    setScanStatusDismissible("targetScanDetails", false);
+    showResolutionProgress("targetScanMessage", 0,
+        includeBoms ? 0 : Object.keys(targetState?.dependencies || {}).length + 1,
+        includeBoms ? "BOM coverage" : "Gradle");
 }
 
 function updateScanStep(
@@ -287,16 +322,7 @@ async function scanTargetSecurity(includeBoms = false) {
             "DONE",
         );
 
-        document.getElementById(
-            "targetScanDetails"
-        ).insertAdjacentHTML(
-            "beforeend",
-            `
-                <div style="margin-top:8px">
-                    DONE
-                </div>
-            `
-        );
+        showScanMessage("targetScanMessage", "DONE");
     } catch (error) {
         console.error(error);
 
@@ -315,18 +341,9 @@ async function scanTargetSecurity(includeBoms = false) {
             "FAILED",
         );
 
-        document.getElementById(
-            "targetScanDetails"
-        ).insertAdjacentHTML(
-            "beforeend",
-            `
-                <div style="margin-top:8px">
-                    FAILED:
-                    ${escapeHtml(error.message)}
-                </div>
-            `
-        );
+        showScanMessage("targetScanMessage", `FAILED: ${error.message}`);
     } finally {
+        setScanStatusDismissible("targetScanDetails", true);
         button.disabled = false;
         document.getElementById(includeBoms ? "scanTargets" : "scanBoms").disabled = false;
         button.textContent = "SCAN";
@@ -351,6 +368,8 @@ async function startOrWaitForResolution(includeBoms = false) {
     let snapshot = await startResponse.json();
     const expectedFingerprint = snapshot.targetFingerprint;
 
+    showResolutionProgress("targetScanMessage", snapshot.completedResolutions, snapshot.totalResolutions,
+        includeBoms ? "BOM coverage" : "Gradle");
     if (snapshot.status === "READY") {
         return snapshot;
     }
@@ -383,6 +402,8 @@ async function startOrWaitForResolution(includeBoms = false) {
         if (snapshot.targetFingerprint !== expectedFingerprint) {
             throw new Error("Target versions changed during resolution. Run SCAN again.");
         }
+        showResolutionProgress("targetScanMessage", snapshot.completedResolutions, snapshot.totalResolutions,
+            includeBoms ? "BOM coverage" : "Gradle");
     }
 
     if (snapshot.status === "READY") {
@@ -481,7 +502,9 @@ async function fetchPluginSecurity(start = false) {
 function showPluginScanDetails(message = "") {
     const container = document.getElementById("pluginScanStatus");
     container.hidden = false;
+    container.style.display = "";
     container.innerHTML = `
+        ${scanStatusCloseButtonHtml("pluginScanStatus", "scanPlugins")}
         <div id="pluginScanSteps">
             <div id="pluginStepResolution" class="target-scan-step">
                 <span class="step-status">WAITING</span>
@@ -498,22 +521,22 @@ function showPluginScanDetails(message = "") {
         </div>
         <div id="pluginScanMessage" style="margin-top:8px"></div>
     `;
+    setScanStatusDismissible("pluginScanStatus", false);
     showPluginScanMessage(message);
 }
 
 function showPluginScanMessage(message) {
-    const element = document.getElementById("pluginScanMessage");
-    element.textContent = message;
-    element.hidden = !message;
+    showScanMessage("pluginScanMessage", message);
 }
 
-function updatePluginScanSteps(phase) {
+function updatePluginScanSteps(phase, completedResolutions, totalResolutions) {
     if (phase === "OSV") {
         updateScanStep("pluginStepResolution", "DONE");
         updateScanStep("pluginStepOsv", "RUNNING");
     } else {
         updateScanStep("pluginStepResolution", "RUNNING");
     }
+    showResolutionProgress("pluginScanMessage", completedResolutions, totalResolutions, "plugin");
 }
 
 async function loadCachedPluginSecurity() {
@@ -523,16 +546,14 @@ async function loadCachedPluginSecurity() {
         if (generation === targetScanGeneration) {
             pluginSecurityScan = snapshot.status === "READY" ? snapshot.result : null;
             if (snapshot.status === "RUNNING") {
-                showPluginScanDetails("Plugin scan is running. Click SCAN in Plugins to follow its progress.");
-                updatePluginScanSteps(snapshot.phase);
+                showPluginScanDetails();
+                updatePluginScanSteps(snapshot.phase, snapshot.completedResolutions, snapshot.totalResolutions);
             }
         }
     } catch (error) {
         console.error("Could not load plugin security", error);
         if (generation !== targetScanGeneration) return;
-        const status = document.getElementById("pluginScanStatus");
-        status.hidden = false;
-        status.textContent = error.message;
+        showScanStatusError("pluginScanStatus", "scanPlugins", error.message);
     }
 }
 
@@ -551,7 +572,7 @@ async function scanPluginSecurity() {
         let snapshot = await fetchPluginSecurity(true);
         const fingerprint = snapshot.targetFingerprint;
         while (snapshot.status === "RUNNING") {
-            updatePluginScanSteps(snapshot.phase);
+            updatePluginScanSteps(snapshot.phase, snapshot.completedResolutions, snapshot.totalResolutions);
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (generation !== targetScanGeneration) return;
             snapshot = await fetchPluginSecurity();
@@ -583,6 +604,7 @@ async function scanPluginSecurity() {
             showPluginScanMessage(`FAILED: ${error.message}`);
         }
     } finally {
+        if (generation === targetScanGeneration) setScanStatusDismissible("pluginScanStatus", true);
         button.disabled = false;
         button.textContent = "SCAN";
     }
@@ -600,7 +622,9 @@ async function fetchNodeSecurity(start = false) {
 function showNodeScanDetails(message = "") {
     const container = document.getElementById("nodeScanStatus");
     container.hidden = false;
+    container.style.display = "";
     container.innerHTML = `
+        ${scanStatusCloseButtonHtml("nodeScanStatus", "scanNode")}
         <div id="nodeScanSteps">
             <div id="nodeStepResolution" class="target-scan-step">
                 <span class="step-status">WAITING</span>
@@ -621,19 +645,25 @@ function showNodeScanDetails(message = "") {
         </div>
         <div id="nodeScanMessage" style="margin-top:8px"></div>
     `;
+    setScanStatusDismissible("nodeScanStatus", false);
     showNodeScanMessage(message);
 }
 
 function showNodeScanMessage(message, completedResolutions = 0, totalResolutions = 0) {
-    const element = document.getElementById("nodeScanMessage");
+    showScanMessage("nodeScanMessage", message, completedResolutions, totalResolutions, "npm resolutions");
+}
+
+function showScanMessage(id, message, completedResolutions = 0, totalResolutions = 0, label = "Gradle resolutions") {
+    const element = document.getElementById(id);
+    if (!element) return;
     element.textContent = message;
     element.hidden = !message;
     const progress = totalResolutions > 0;
-    element.classList.toggle("node-resolution-progress", progress);
-    element.style.setProperty("--node-resolution-progress", progress ? `${completedResolutions / totalResolutions * 100}%` : "0%");
+    element.classList.toggle("scan-resolution-progress", progress);
+    element.style.setProperty("--scan-resolution-progress", progress ? `${completedResolutions / totalResolutions * 100}%` : "0%");
     if (progress) {
         element.setAttribute("role", "progressbar");
-        element.setAttribute("aria-label", "npm resolutions");
+        element.setAttribute("aria-label", label);
         element.setAttribute("aria-valuemin", "0");
         element.setAttribute("aria-valuemax", String(totalResolutions));
         element.setAttribute("aria-valuenow", String(completedResolutions));
@@ -645,6 +675,13 @@ function showNodeScanMessage(message, completedResolutions = 0, totalResolutions
     }
 }
 
+function showResolutionProgress(id, completedResolutions = 0, totalResolutions = 0, resolutionType = "Gradle") {
+    const completed = Math.min(totalResolutions, Math.max(0, completedResolutions));
+    showScanMessage(id, totalResolutions
+        ? `${completed} / ${totalResolutions} ${resolutionType} resolutions completed`
+        : "Scan in progress...", completed, totalResolutions, `${resolutionType} resolutions`);
+}
+
 function updateNodeScanSteps(phase, completedResolutions = 0, totalResolutions) {
     const coverage = phase === "COVERAGE";
     updateScanStep("nodeStepResolution", phase === "OSV" || coverage ? "DONE" : "RUNNING");
@@ -652,10 +689,7 @@ function updateNodeScanSteps(phase, completedResolutions = 0, totalResolutions) 
     updateScanStep("nodeStepCoverage", coverage ? "RUNNING" : "WAITING");
     const targetCount = Object.keys(targetState?.nodeDependencies || {}).length;
     const total = totalResolutions ?? (targetCount ? targetCount + 1 : 0);
-    const completed = Math.min(total, Math.max(0, completedResolutions));
-    showNodeScanMessage(total
-        ? `${completed} / ${total} npm resolutions completed`
-        : "Scan in progress...", completed, total);
+    showResolutionProgress("nodeScanMessage", completedResolutions, total, "npm");
 }
 
 async function loadCachedNodeSecurity() {
@@ -674,9 +708,7 @@ async function loadCachedNodeSecurity() {
         console.error("Could not load Node security", error);
         if (generation !== targetScanGeneration) return;
         nodeSecurityScan = null;
-        const status = document.getElementById("nodeScanStatus");
-        status.hidden = false;
-        status.textContent = error.message;
+        showScanStatusError("nodeScanStatus", "scanNode", error.message);
     }
 }
 
@@ -731,6 +763,7 @@ async function scanNodeSecurity() {
             showNodeScanMessage(`FAILED: ${error.message}`);
         }
     } finally {
+        if (generation === targetScanGeneration) setScanStatusDismissible("nodeScanStatus", true);
         button.disabled = false;
         button.textContent = "SCAN";
     }
