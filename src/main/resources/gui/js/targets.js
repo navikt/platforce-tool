@@ -481,6 +481,7 @@ async function saveTargets() {
         pluginSecurityScan = null;
         nodeSecurityScan = null;
         document.getElementById("pluginScanStatus").hidden = true;
+        document.getElementById("bomScanStatus").hidden = true;
         document.getElementById("nodeScanStatus").hidden = true;
         normalSecurityReady = false;
         bomSecurityReady = false;

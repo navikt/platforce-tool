@@ -106,18 +106,25 @@ function showScanStatusError(id, scanButtonId, message) {
     setScanStatusDismissible(id, true);
 }
 
+function targetScanIds(includeBoms) {
+    return includeBoms
+        ? { container: "bomScanStatus", message: "bomScanMessage", step: "bomStep" }
+        : { container: "targetScanDetails", message: "targetScanMessage", step: "scanStep" };
+}
+
 function showScanDetails(includeBoms = false) {
+    const ids = targetScanIds(includeBoms);
     const container =
-        document.getElementById("targetScanDetails");
+        document.getElementById(ids.container);
 
     container.hidden = false;
-    container.style.display = "block";
+    container.style.display = includeBoms ? "" : "block";
 
     container.innerHTML = `
-        ${scanStatusCloseButtonHtml("targetScanDetails", includeBoms ? "scanBoms" : "scanTargets")}
-        <div id="targetScanSteps">
+        ${scanStatusCloseButtonHtml(ids.container, includeBoms ? "scanBoms" : "scanTargets")}
+        <div id="${includeBoms ? "bomScanSteps" : "targetScanSteps"}">
             <div
-                id="scanStepResolution"
+                id="${ids.step}Resolution"
                 class="target-scan-step running"
             >
                 <span class="step-status">RUNNING</span>
@@ -125,7 +132,7 @@ function showScanDetails(includeBoms = false) {
             </div>
 
             <div
-                id="scanStepOsv"
+                id="${ids.step}Osv"
                 class="target-scan-step"
             >
                 <span class="step-status">WAITING</span>
@@ -133,17 +140,17 @@ function showScanDetails(includeBoms = false) {
             </div>
 
             <div
-                id="scanStepDone"
+                id="${ids.step}Done"
                 class="target-scan-step"
             >
                 <span class="step-status">WAITING</span>
                 <span>Update security status</span>
             </div>
         </div>
-        <div id="targetScanMessage" style="margin-top:8px"></div>
+        <div id="${ids.message}" style="margin-top:8px"></div>
     `;
-    setScanStatusDismissible("targetScanDetails", false);
-    showResolutionProgress("targetScanMessage", 0,
+    setScanStatusDismissible(ids.container, false);
+    showResolutionProgress(ids.message, 0,
         includeBoms ? 0 : Object.keys(targetState?.dependencies || {}).length + 1,
         includeBoms ? "BOM coverage" : "Gradle");
 }
@@ -246,6 +253,7 @@ function updateBomScanButton() {
 async function scanTargetSecurity(includeBoms = false) {
     includeBoms = includeBoms === true;
     if (includeBoms && !normalSecurityReady) return;
+    const ids = targetScanIds(includeBoms);
     const generation = targetScanGeneration;
     const button =
         document.getElementById(includeBoms ? "scanBoms" : "scanTargets");
@@ -265,7 +273,7 @@ async function scanTargetSecurity(includeBoms = false) {
 
     try {
         updateScanStep(
-            "scanStepResolution",
+            `${ids.step}Resolution`,
             "RUNNING",
         );
 
@@ -279,12 +287,12 @@ async function scanTargetSecurity(includeBoms = false) {
         }
 
         updateScanStep(
-            "scanStepResolution",
+            `${ids.step}Resolution`,
             "DONE",
         );
 
         updateScanStep(
-            "scanStepOsv",
+            `${ids.step}Osv`,
             "RUNNING",
         );
 
@@ -313,37 +321,37 @@ async function scanTargetSecurity(includeBoms = false) {
         );
 
         updateScanStep(
-            "scanStepOsv",
+            `${ids.step}Osv`,
             "DONE",
         );
 
         updateScanStep(
-            "scanStepDone",
+            `${ids.step}Done`,
             "DONE",
         );
 
-        showScanMessage("targetScanMessage", "DONE");
+        showScanMessage(ids.message, "DONE");
     } catch (error) {
         console.error(error);
 
         updateScanStep(
-            "scanStepResolution",
+            `${ids.step}Resolution`,
             "FAILED",
         );
 
         updateScanStep(
-            "scanStepOsv",
+            `${ids.step}Osv`,
             "FAILED",
         );
 
         updateScanStep(
-            "scanStepDone",
+            `${ids.step}Done`,
             "FAILED",
         );
 
-        showScanMessage("targetScanMessage", `FAILED: ${error.message}`);
+        showScanMessage(ids.message, `FAILED: ${error.message}`);
     } finally {
-        setScanStatusDismissible("targetScanDetails", true);
+        setScanStatusDismissible(ids.container, true);
         button.disabled = false;
         document.getElementById(includeBoms ? "scanTargets" : "scanBoms").disabled = false;
         button.textContent = "SCAN";
@@ -352,6 +360,7 @@ async function scanTargetSecurity(includeBoms = false) {
 }
 
 async function startOrWaitForResolution(includeBoms = false) {
+    const ids = targetScanIds(includeBoms);
     const query = includeBoms ? "?includeBoms=true" : "";
     const startResponse =
         await fetch(
@@ -368,7 +377,7 @@ async function startOrWaitForResolution(includeBoms = false) {
     let snapshot = await startResponse.json();
     const expectedFingerprint = snapshot.targetFingerprint;
 
-    showResolutionProgress("targetScanMessage", snapshot.completedResolutions, snapshot.totalResolutions,
+    showResolutionProgress(ids.message, snapshot.completedResolutions, snapshot.totalResolutions,
         includeBoms ? "BOM coverage" : "Gradle");
     if (snapshot.status === "READY") {
         return snapshot;
@@ -402,7 +411,7 @@ async function startOrWaitForResolution(includeBoms = false) {
         if (snapshot.targetFingerprint !== expectedFingerprint) {
             throw new Error("Target versions changed during resolution. Run SCAN again.");
         }
-        showResolutionProgress("targetScanMessage", snapshot.completedResolutions, snapshot.totalResolutions,
+        showResolutionProgress(ids.message, snapshot.completedResolutions, snapshot.totalResolutions,
             includeBoms ? "BOM coverage" : "Gradle");
     }
 

@@ -105,7 +105,7 @@ function repositoryResponse(url) {
 for (const { name, id, scanButtonId, run, start } of [
     { name: "Dependencies", id: "targetScanDetails", scanButtonId: "scanTargets",
         run: app => app.context.scanTargetSecurity(), start: app => app.context.showScanDetails() },
-    { name: "Platform BOMs", id: "targetScanDetails", scanButtonId: "scanBoms",
+    { name: "Platform BOMs", id: "bomScanStatus", scanButtonId: "scanBoms",
         run: app => app.context.scanTargetSecurity(true), start: app => app.context.showScanDetails(true) },
     { name: "Plugins", id: "pluginScanStatus", scanButtonId: "scanPlugins",
         run: app => app.context.scanPluginSecurity(), start: app => app.context.showPluginScanDetails() },
@@ -212,10 +212,12 @@ test("immediately ready security result also reloads repository data", async () 
             app.value("normalSecurityReady = true");
             const total = includeBoms ? 6 : 4;
             const type = includeBoms ? "BOM coverage" : "Gradle";
+            const messageId = includeBoms ? "bomScanMessage" : "targetScanMessage";
+            const containerId = includeBoms ? "bomScanStatus" : "targetScanDetails";
             const observed = [];
             let polls = 0;
             app.responses(url => {
-                const message = app.element("targetScanMessage");
+                const message = app.element(messageId);
                 if (url.includes("/target-resolution/security/start")) {
                     assert.equal(message.textContent, `${total} / ${total} ${type} resolutions completed`);
                     assert.equal(message.style["--scan-resolution-progress"], "100%");
@@ -237,10 +239,10 @@ test("immediately ready security result also reloads repository data", async () 
                 [`0 / ${total} ${type} resolutions completed`, "0%"],
                 [`${total / 2} / ${total} ${type} resolutions completed`, "50%"]
             ]);
-            assert.equal(app.element("targetScanMessage").textContent, "DONE");
-            assert.equal(app.element("targetScanMessage").getAttribute("role"), null);
-            assert.equal(app.element("targetScanMessage").classList.contains("scan-resolution-progress"), false);
-            assert.equal((app.element("targetScanDetails").innerHTML.match(/id="targetScanMessage"/g) || []).length, 1);
+            assert.equal(app.element(messageId).textContent, "DONE");
+            assert.equal(app.element(messageId).getAttribute("role"), null);
+            assert.equal(app.element(messageId).classList.contains("scan-resolution-progress"), false);
+            assert.equal(app.element(containerId).innerHTML.split(`id="${messageId}"`).length - 1, 1);
         });
     }
 
@@ -287,6 +289,75 @@ test("BOM scan requires cached normal readiness and explicitly opts in", async (
     assert.equal(app.value("targetSecurityScan.platformBoms[0].key"), "example:bom");
     assert.equal(app.element("scanBoms").disabled, false);
     assert.equal(app.element("scanTargets").disabled, false);
+});
+
+for (const failed of [false, true]) {
+    test(`BOM scan ${failed ? "failure" : "progress and completion"} stays separate from dependency status and dismissal`, async () => {
+        const app = gui();
+        app.responses(url => url.includes("/target-resolution")
+            ? { status: "READY", targetFingerprint: "targets", normalReady: true, result: { targets: [] } }
+            : repositoryResponse(url));
+        await app.context.scanTargetSecurity();
+        const dependencyBox = app.element("targetScanDetails");
+        const dependencyHtml = dependencyBox.innerHTML;
+        const priorSteps = app.steps.length;
+        let polls = 0;
+        app.responses(url => {
+            assert.equal(dependencyBox.innerHTML, dependencyHtml);
+            assert.equal(app.element("targetScanMessage").textContent, "DONE");
+            assert.equal(app.element("targetScanDetailsClose").disabled, false);
+            if (url.includes("/target-resolution/security/start")) {
+                assert.equal(app.element("bomScanMessage").style["--scan-resolution-progress"], "100%");
+                return { status: "READY", targetFingerprint: "targets", normalReady: true, bomReady: true, result: { targets: [] } };
+            }
+            if (url.includes("/target-resolution")) {
+                if (url.includes("/start")) {
+                    return { status: "RUNNING", targetFingerprint: "targets", completedResolutions: 1, totalResolutions: 2 };
+                }
+                assert.equal(app.element("bomScanMessage").textContent, "1 / 2 BOM coverage resolutions completed");
+                assert.equal(app.element("bomScanMessage").style["--scan-resolution-progress"], "50%");
+                polls++;
+                return failed
+                    ? { status: "FAILED", targetFingerprint: "targets", error: "BOM resolution failed" }
+                    : { status: "READY", targetFingerprint: "targets", completedResolutions: 2, totalResolutions: 2 };
+            }
+            return repositoryResponse(url);
+        });
+        await app.context.scanTargetSecurity(true);
+        assert.equal(polls, 1);
+        assert.equal(app.element("bomScanMessage").textContent, failed ? "FAILED: BOM resolution failed" : "DONE");
+        assert.ok(app.steps.slice(priorSteps).every(([id]) => id.startsWith("bomStep")));
+        assert.ok(app.steps.some(([id, status]) => id === "bomStepDone" && status === (failed ? "FAILED" : "DONE")));
+        assert.equal(app.element("bomScanStatusClose").disabled, false);
+        app.value(app.element("bomScanStatus").innerHTML.match(/onclick="([^"]+)"/)[1]);
+        assert.equal(app.element("bomScanStatus").hidden, true);
+        assert.equal(app.element("bomScanStatus").innerHTML, "");
+        assert.equal(dependencyBox.hidden, false);
+        assert.equal(dependencyBox.innerHTML, dependencyHtml);
+        assert.equal(app.element("targetScanMessage").textContent, "DONE");
+    });
+}
+
+test("starting a dependency scan does not clear an existing BOM status box", () => {
+    const app = gui();
+    app.context.showScanDetails(true);
+    app.context.showScanMessage("bomScanMessage", "DONE");
+    app.context.setScanStatusDismissible("bomScanStatus", true);
+    const markup = app.element("bomScanStatus").innerHTML;
+    app.context.showScanDetails();
+    assert.equal(app.element("bomScanStatus").innerHTML, markup);
+    assert.equal(app.element("bomScanMessage").textContent, "DONE");
+    assert.equal(app.element("bomScanStatusClose").disabled, false);
+});
+
+test("saving target versions hides stale BOM scan feedback", async () => {
+    const app = gui();
+    app.context.showScanDetails(true);
+    assert.equal(app.element("bomScanStatus").hidden, false);
+    app.responses(url => url === "/internal/api/target-versions/update" ? {} : repositoryResponse(url));
+    await app.context.saveTargets();
+    assert.equal(app.element("bomScanStatus").hidden, true);
+    assert.equal(app.element("bomScanStatus").style.display, "");
 });
 
 test("security snapshot readiness gates normal and BOM target rows independently", async () => {

@@ -78,6 +78,15 @@ test("NODE targets follow Platform BOMs with scan controls and no explanatory bl
     assert.match(html, /id="upgradeAllNodeDependencies" class="icon-btn target-upgrade-all"/);
 });
 
+test("Platform BOMs have their own initially hidden scan status before their target rows", () => {
+    const section = html.slice(html.indexOf('class="target-section platform-boms"'),
+        html.indexOf('class="target-section node"'));
+    assert.match(section, /id="bomScanStatus" class="target-scan-details" role="status" aria-live="polite" hidden/);
+    assert.ok(section.indexOf('id="bomScanStatus"') < section.indexOf('id="platformBomsTable"'));
+    assert.doesNotMatch(section, /id="targetScanDetails"/);
+    assert.equal(html.split('id="bomScanStatus"').length - 1, 1);
+});
+
 test("Node target rows share the Plugins and Platform BOMs grid and button columns", () => {
     const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
     const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
