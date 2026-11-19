@@ -203,6 +203,7 @@ class Application {
                     dependencyScanCache,
                     dependencyScanViewService,
                     pullRequestService,
+                    nodeSecurityScanner,
                 ),
             ),
             notify = { autoReporter?.report(it) },

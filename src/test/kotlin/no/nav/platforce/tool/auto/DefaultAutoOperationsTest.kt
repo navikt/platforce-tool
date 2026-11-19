@@ -1,11 +1,16 @@
 package no.nav.platforce.tool.auto
 
+import com.google.gson.JsonParser
 import no.nav.platforce.tool.github.GithubClient
 import no.nav.platforce.tool.github.GithubPullRequest
+import no.nav.platforce.tool.node.NodeCombinedResolution
+import no.nav.platforce.tool.node.NodeSecurityScanner
+import no.nav.platforce.tool.node.NodeSecurityService
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
+import no.nav.platforce.tool.repositories.PullRequestReadinessException
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.resolution.PlatformBomResolution
 import no.nav.platforce.tool.resolution.ResolvedDependency
@@ -43,9 +48,15 @@ class DefaultAutoOperationsTest {
         var optedIn = setOf("example/repo")
         var ignored = emptyList<String>()
         var vulnerableName: String? = null
+        var vulnerableVersion: String? = null
         var unresolved = false
         var missingBom = false
         var listingFailure: IOException? = null
+        var nodeResolutionFailure = false
+        var nodeLookupFailure = false
+        var nodeChild: ResolvedDependency? = null
+        var lockGenerations = 0
+        var lockFailure = false
         val files =
             mutableMapOf(
                 "build.gradle" to "dependencies {\n    implementation 'example:library:1.0'\n}",
@@ -83,17 +94,20 @@ class DefaultAutoOperationsTest {
         val resolveQueue = QueuedExecutor()
         val securityQueue = QueuedExecutor()
         val pluginQueue = QueuedExecutor()
+        val nodeQueue = QueuedExecutor()
         val osv =
             object : VulnerabilityService {
-                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> =
-                    dependencies.associate { node ->
+                override fun find(dependencies: List<ResolvedDependency>): Map<String, List<Vulnerability>> {
+                    if (nodeLookupFailure && dependencies.any { it.group == "npm" }) throw IOException("OSV unavailable")
+                    return dependencies.associate { node ->
                         "${node.key}:${node.version}" to
-                            if (node.name == vulnerableName) {
+                            if (node.name == vulnerableName && (vulnerableVersion == null || node.version == vulnerableVersion)) {
                                 listOf(Vulnerability("TEST-AUTO", "Synthetic", emptyList(), emptyList(), emptyList()))
                             } else {
                                 emptyList()
                             }
                     }
+                }
             }
         val resolution =
             GradleTargetResolutionScanner(
@@ -151,11 +165,44 @@ class DefaultAutoOperationsTest {
                 service = PluginSecurityService(osv),
                 executor = pluginQueue,
             )
-        val view = DependencyScanViewService(cache, security, dependencyScanner)
+
+        private fun npmTree(
+            key: String,
+            version: String,
+            versions: Map<String, String> = emptyMap(),
+        ): List<ResolvedDependency> =
+            listOf(ResolvedDependency("npm", key, version, version, emptyList())) +
+                if (key == "parent") {
+                    listOfNotNull(nodeChild?.let { it.copy(version = versions[it.name] ?: it.version) })
+                } else {
+                    emptyList()
+                }
+
+        val nodeSecurity =
+            NodeSecurityScanner(
+                NodeSecurityService(
+                    { key, version ->
+                        check(!nodeResolutionFailure) { "npm resolution failed" }
+                        npmTree(key, version)
+                    },
+                    osv,
+                    { normal, overrides ->
+                        val packages = normal.flatMap { (key, version) -> npmTree(key, version, normal + overrides) }
+                        NodeCombinedResolution(
+                            packages,
+                            (normal + overrides).mapValues { (key, version) ->
+                                if (key in normal) npmTree(key, version, normal + overrides) else packages.filter { it.name == key }
+                            },
+                        )
+                    },
+                ),
+                nodeQueue,
+            )
+        val view = DependencyScanViewService(cache, security, dependencyScanner, nodeSecurity)
         val operations =
             DefaultAutoOperations(
                 AvailableVersionsService(OkHttpClient()),
-                TargetVersionsUpdater(resolution, security, plugins),
+                TargetVersionsUpdater(resolution, security, plugins, nodeSecurityScanner = nodeSecurity),
                 security,
                 resolution,
                 plugins,
@@ -163,7 +210,13 @@ class DefaultAutoOperationsTest {
                 dependencyScanner,
                 cache,
                 view,
-                DependencyPullRequestService(github, view),
+                DependencyPullRequestService(github, view) { _, resolution, _, _ ->
+                    lockGenerations++
+                    check(JsonParser.parseString(resolution).asJsonObject.has("dependencies"))
+                    if (lockFailure) throw IOException("npm lock refresh failed")
+                    "generated-lock"
+                },
+                nodeSecurity,
                 readTargets = { state.snapshot() },
                 writeTargets = { _, expected, updated ->
                     check(state == expected)
@@ -171,6 +224,7 @@ class DefaultAutoOperationsTest {
                     security.invalidate("alice")
                     resolution.invalidate("alice")
                     plugins.invalidate("alice")
+                    nodeSecurity.invalidate("alice")
                 },
                 users = { listOf("alice", "bob") },
                 optedIn = { optedIn },
@@ -181,26 +235,164 @@ class DefaultAutoOperationsTest {
             if (resolveQueue.queuedTasks > 0) resolveQueue.runNext()
             if (securityQueue.queuedTasks > 0) securityQueue.runNext()
             if (pluginQueue.queuedTasks > 0) pluginQueue.runNext()
+            if (nodeQueue.queuedTasks > 0) nodeQueue.runNext()
         }
 
         fun scans() {
             operations.scanDependencies("alice", state, ::tick)
             operations.scanBoms("alice", state, ::tick)
             operations.scanPlugins("alice", state, ::tick)
+            operations.scanNode("alice", state, ::tick)
         }
     }
 
     @Test
-    fun `Node Auto opt ins are skipped without security prerequisites or GitHub writes`() {
+    fun `Node Auto requires matching user scoped security results before GitHub writes`() {
         val fixture = Fixture()
         fixture.files.clear()
         fixture.files["package.json"] = """{"dependencies":{"express":"^4.21.2"}}"""
         fixture.state.nodeDependencies["express"] = "5.0.0"
-        val report = fixture.operations.createPullRequest("alice", fixture.state, "example/repo") {}
-        assertEquals("Skipped: Node.js Auto updates are not supported yet", report.message)
+        assertThrows(PullRequestReadinessException::class.java) {
+            fixture.operations.createPullRequest("alice", fixture.state, "example/repo") {}
+        }
+        fixture.operations.scanNode("alice", fixture.state, fixture::tick)
+        assertThrows(PullRequestReadinessException::class.java) {
+            fixture.operations.createPullRequest("bob", fixture.state, "example/repo") {}
+        }
+        val original = fixture.state.snapshot()
+        fixture.state.nodeDependencies["express"] = "5.1.0"
+        assertThrows(PullRequestReadinessException::class.java) {
+            fixture.operations.createPullRequest("alice", fixture.state, "example/repo") {}
+        }
+        fixture.state = original
         assertFalse(fixture.recording.calls.any { it.startsWith("create") || it.startsWith("update") })
         assertEquals(0, fixture.resolveQueue.queuedTasks)
         assertEquals(0, fixture.securityQueue.queuedTasks)
+    }
+
+    @Test
+    fun `Node Auto refreshes existing npm lockfiles and creates the usual guarded pull request`() {
+        val fixture = Fixture()
+        fixture.files.clear()
+        fixture.files["package.json"] = """{"dependencies":{"parent":"^1.0.0"},"devDependencies":{"dev-only":"^1.0.0"}}"""
+        fixture.files["package-lock.json"] = "old-lock"
+        fixture.state.nodeDependencies["parent"] = "1.1.0"
+        fixture.operations.scanNode("alice", fixture.state, fixture::tick)
+        val snapshot = fixture.nodeSecurity.get("alice", fixture.state)
+        val report = fixture.operations.createPullRequest("alice", fixture.state, "example/repo", fixture::tick)
+        assertEquals("https://github.com/example/repo/pull/1", report.url)
+        assertEquals("chore: update Node dependencies", fixture.recording.pullRequestTitle)
+        assertEquals(setOf("package.json", "package-lock.json"), fixture.recording.updatedFiles.keys)
+        val manifest = JsonParser.parseString(fixture.recording.updatedFiles.getValue("package.json")).asJsonObject
+        assertEquals("^1.1.0", manifest.getAsJsonObject("dependencies")["parent"].asString)
+        assertEquals("^1.0.0", manifest.getAsJsonObject("devDependencies")["dev-only"].asString)
+        assertEquals("generated-lock", fixture.recording.updatedFiles["package-lock.json"])
+        assertEquals(1, fixture.lockGenerations)
+        assertEquals(snapshot, fixture.nodeSecurity.get("alice", fixture.state))
+        assertEquals(0, fixture.nodeQueue.queuedTasks)
+        assertEquals(0, fixture.resolveQueue.queuedTasks)
+        assertFalse(fixture.recording.calls.any { it.contains("getFile:example/repo:build.gradle") })
+    }
+
+    @Test
+    fun `Node Auto stops on transitive vulnerabilities unresolved packages and failed OSV queries`() {
+        for (failure in listOf("vulnerable", "unresolved", "unsupported", "osv")) {
+            val fixture = Fixture()
+            fixture.state.nodeDependencies["parent"] = "1.1.0"
+            fixture.nodeChild = ResolvedDependency("npm", "child", "1.0.0", "1.0.0", emptyList())
+            when (failure) {
+                "vulnerable" -> fixture.vulnerableName = "child"
+                "unresolved" -> fixture.nodeResolutionFailure = true
+                "unsupported" -> fixture.state.nodeDependencies["parent"] = "latest"
+                "osv" -> fixture.nodeLookupFailure = true
+            }
+            val stopped =
+                assertThrows(AutoStopped::class.java) {
+                    fixture.operations.scanNode("alice", fixture.state, fixture::tick)
+                }
+            assertEquals(failure == "vulnerable", stopped.vulnerabilitiesFound)
+            assertTrue(stopped.report.message.contains("unfinished"))
+            assertFalse(fixture.recording.calls.any { it.startsWith("create") || it.startsWith("update") })
+        }
+    }
+
+    @Test
+    fun `Node Auto applies scanned transitive overrides and removes unused overrides through the shared PR service`() {
+        val fixture = Fixture()
+        fixture.files.clear()
+        fixture.files["package.json"] = """{"dependencies":{"parent":"^1.0.0"},"overrides":{"unused":"^3.0.0"}}"""
+        fixture.state =
+            fixture.state.copy(
+                nodeDependencies = mutableMapOf("parent" to "1.1.0", "cover" to "2.0.0", "unused" to "3.0.0"),
+                nodeTransientDependencies = setOf("cover", "unused"),
+            )
+        fixture.nodeChild = ResolvedDependency("npm", "cover", "1.0.0", "1.0.0", emptyList())
+        fixture.vulnerableName = "cover"
+        fixture.vulnerableVersion = "1.0.0"
+        val scan = fixture.operations.scanNode("alice", fixture.state, fixture::tick)
+        assertTrue(scan.details!!.contains("REMOVE npm:unused:3.0.0"))
+        val report = fixture.operations.createPullRequest("alice", fixture.state, "example/repo", fixture::tick)
+        assertEquals("https://github.com/example/repo/pull/1", report.url)
+        val manifest = JsonParser.parseString(fixture.recording.updatedFiles.getValue("package.json")).asJsonObject
+        assertEquals("^2.0.0", manifest.getAsJsonObject("overrides")["cover"].asString)
+        assertFalse(manifest.getAsJsonObject("overrides").has("unused"))
+        assertFalse(fixture.recording.updatedFiles.containsKey("package-lock.json"))
+    }
+
+    @Test
+    fun `Node Auto stops if saved targets or process ownership change while scanning`() {
+        for (changeTargets in listOf(false, true)) {
+            val fixture = Fixture()
+            fixture.state.nodeDependencies["parent"] = "1.1.0"
+            val original = fixture.state.snapshot()
+            assertThrows(AutoInterrupted::class.java) {
+                fixture.operations.scanNode("alice", original) {
+                    if (fixture.nodeQueue.queuedTasks > 0) {
+                        if (changeTargets) {
+                            fixture.state.nodeDependencies["parent"] = "1.2.0"
+                        } else {
+                            throw AutoInterrupted("Auto ownership was lost")
+                        }
+                    }
+                    fixture.tick()
+                }
+            }
+            assertFalse(fixture.recording.calls.any { it.startsWith("create") || it.startsWith("update") })
+        }
+    }
+
+    @Test
+    fun `Node Auto keeps opt in access ignored repository and write time guards`() {
+        for (guard in listOf("opt-out", "access", "ignored", "target-change", "write-opt-out", "lock-failure", "unsupported-lock")) {
+            val fixture = Fixture()
+            fixture.files.clear()
+            fixture.files["package.json"] = """{"dependencies":{"parent":"^1.0.0"}}"""
+            fixture.files["package-lock.json"] = "old-lock"
+            fixture.state.nodeDependencies["parent"] = "1.1.0"
+            fixture.operations.scanNode("alice", fixture.state, fixture::tick)
+            when (guard) {
+                "opt-out" -> fixture.optedIn = emptySet()
+                "access" -> fixture.installed = emptyList()
+                "ignored" -> fixture.ignored = listOf("example/repo")
+                "lock-failure" -> fixture.lockFailure = true
+                "unsupported-lock" -> fixture.files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'"
+            }
+            val action = {
+                fixture.operations.createPullRequest("alice", fixture.state.snapshot(), "example/repo") {
+                    fixture.tick()
+                    if (fixture.recording.calls.any { it.startsWith("createBranch") }) {
+                        if (guard == "target-change") fixture.state.nodeDependencies["parent"] = "1.2.0"
+                        if (guard == "write-opt-out") fixture.optedIn = emptySet()
+                    }
+                }
+            }
+            when (guard) {
+                "target-change", "write-opt-out" -> assertThrows(AutoInterrupted::class.java) { action() }
+                "lock-failure", "unsupported-lock" -> assertThrows(PullRequestReadinessException::class.java) { action() }
+                else -> assertTrue(action().message.startsWith("Skipped"))
+            }
+            assertFalse(fixture.recording.calls.any { it.startsWith("updateFile") || it.startsWith("createPullRequest") })
+        }
     }
 
     @Test

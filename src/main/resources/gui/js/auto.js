@@ -33,14 +33,10 @@ function createAutoToggle(repository) {
 
 function updateAutoToggle(button) {
     const repository = button.dataset.repository;
-    const nodeRepository = lastLoadedData?.scans?.some(scan =>
-        scan.repository.toLowerCase() === repository && scan.projectType === "NODE");
-    const nodeDisabled = nodeRepository && !autoRepositories.has(repository);
     button.setAttribute("aria-checked", String(autoRepositories.has(repository)));
     const running = autoProcessRun?.status === "RUNNING";
-    button.disabled = nodeDisabled || !autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || running || autoRepositoriesSaving.has(repository);
-    button.title = nodeRepository ? "Node.js Auto updates are not supported yet; existing opt-ins can be removed"
-        : running ? "Auto settings are locked while the process is running"
+    button.disabled = !autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || running || autoRepositoriesSaving.has(repository);
+    button.title = running ? "Auto settings are locked while the process is running"
         : !autoProcessStatusLoaded ? "Waiting for confirmed Auto process status" : "Global opt-in shared by all users";
 }
 
@@ -94,8 +90,6 @@ async function loadAutoRepositories() {
 async function saveAutoRepository(repository) {
     if (!autoRepositoriesLoaded || !autoProcessStatusLoaded || autoProcessStarting || autoProcessRun?.status === "RUNNING" || autoRepositoriesSaving.has(repository)) return;
     const enabled = !autoRepositories.has(repository);
-    if (enabled && lastLoadedData?.scans?.some(scan =>
-        scan.repository.toLowerCase() === repository && scan.projectType === "NODE")) return;
     autoRepositoriesSaving.add(repository);
     autoReadGeneration++;
     updateAutoToggles();
@@ -190,13 +184,14 @@ function autoUserPill(username) {
 }
 
 function autoLogText(node, text) {
-    const scans = /\b(?:dependency scan|dependencies scan|scan dependencies|plugin scan|scan plugins|BOM scan|scan BOMs)\b/gi;
+    const scans = /\b(?:dependency scan|dependencies scan|scan dependencies|plugin scan|scan plugins|BOM scan|scan BOMs|Node scan|scan Node)\b/gi;
     let offset = 0;
     for (const match of text.matchAll(scans)) {
         const before = document.createElement("span");
         before.textContent = text.slice(offset, match.index);
         const pill = document.createElement("span");
-        const kind = /dependenc/i.test(match[0]) ? "dependency" : /plugin/i.test(match[0]) ? "plugin" : "platform-bom";
+        const kind = /dependenc/i.test(match[0]) ? "dependency" : /plugin/i.test(match[0]) ? "plugin"
+            : /node/i.test(match[0]) ? "node" : "platform-bom";
         pill.className = `auto-log-pill auto-scan-pill ${kind}-pill`;
         pill.textContent = match[0];
         node.append(before, pill);

@@ -2,13 +2,15 @@ package no.nav.platforce.tool.auto
 
 import no.nav.platforce.tool.db.PostgresDatabase
 import no.nav.platforce.tool.github.GithubClient
+import no.nav.platforce.tool.node.NodeSecurityScanner
+import no.nav.platforce.tool.node.NodeSecurityStatus
+import no.nav.platforce.tool.node.nodeTargetVersion
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
 import no.nav.platforce.tool.pullrequests.SupersededPullRequestCleanupException
 import no.nav.platforce.tool.repositories.DependencyScanCache
 import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.DependencyStatus
-import no.nav.platforce.tool.repositories.RepositoryProjectType
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.resolution.ResolvedDependency
 import no.nav.platforce.tool.security.PluginSecurityScanner
@@ -36,6 +38,7 @@ class DefaultAutoOperations(
     private val cache: DependencyScanCache,
     private val view: DependencyScanViewService,
     private val pullRequests: DependencyPullRequestService,
+    private val nodeSecurity: NodeSecurityScanner,
     private val scanTimeout: Duration = Duration.ofMinutes(30),
     private val readTargets: (String) -> TargetVersionsState = { UserContextCache.get(it).targetVersionsStore.get(includeIgnored = true) },
     private val writeTargets: (String, TargetVersionsState, TargetVersionsState) -> Unit = { username, expected, updated ->
@@ -57,7 +60,8 @@ class DefaultAutoOperations(
         username: String,
         key: String,
         current: String,
-    ) = versions.available(username, key, current)
+        kind: String,
+    ) = versions.available(username, key, current, kind)
 
     override fun saveTargets(
         username: String,
@@ -249,6 +253,51 @@ class DefaultAutoOperations(
         }
     }
 
+    override fun scanNode(
+        username: String,
+        state: TargetVersionsState,
+        checkActive: () -> Unit,
+    ): AutoReport {
+        guard(username, state, checkActive)
+        val effective = state.withoutIgnoredDependencies()
+        nodeSecurity.start(username, effective)
+        waitForScan(username, state, checkActive) { nodeSecurity.get(username, effective).let { it.status to it.error } }
+        val result = checkNotNull(nodeSecurity.get(username, effective).result)
+        val issues =
+            result.targets.filter {
+                it.status in setOf(NodeSecurityStatus.VULNERABLE, NodeSecurityStatus.UNRESOLVED, NodeSecurityStatus.UNSUPPORTED)
+            }
+        val removals =
+            result.targets.filter { it.status == NodeSecurityStatus.TRANSIENT_UNUSED }.map {
+                "REMOVE npm:${it.key}:${it.targetVersion}: redundant transient override."
+            }
+        val expected = effective.nodeDependencies.mapValues { nodeTargetVersion(it.value) }
+        if (issues.isNotEmpty() || result.targets.associate { it.key to it.targetVersion } != expected) {
+            throw AutoStopped(
+                AutoReport(
+                    "Auto stopped: Node vulnerabilities or incomplete checks; work is unfinished",
+                    (
+                        issues.map { target ->
+                            "npm:${target.key}:${target.targetVersion}: ${target.status} " +
+                                (
+                                    target.error
+                                        ?: target.vulnerableDependencies
+                                            .flatMap { it.vulnerabilities }
+                                            .distinctBy { it.id }
+                                            .joinToString { it.id }
+                                )
+                        } + removals
+                    ).joinToString("\n").ifBlank { "Security results do not cover every saved Node target." },
+                ),
+                vulnerabilitiesFound = issues.any { it.status == NodeSecurityStatus.VULNERABLE },
+            )
+        }
+        return AutoReport(
+            "Node scan finished: ${result.targets.size} targets checked; no unresolved target vulnerabilities",
+            removals.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+        )
+    }
+
     override fun repositories(): List<String> {
         val installed = github.listRepositories().map { it.lowercase(Locale.ROOT) }.toSet()
         return optedIn().filter { it in installed }
@@ -271,9 +320,6 @@ class DefaultAutoOperations(
                     ?: throw AutoStopped(AutoReport("Auto stopped: repository could not be scanned; work is unfinished", repository))
             cache.updateRepository(username, inventory)
             guard(username, state, checkActive)
-            if (inventory.projectType == RepositoryProjectType.NODE) {
-                return@withRefreshLock AutoReport("Skipped: Node.js Auto updates are not supported yet")
-            }
             view.requirePullRequestReady(username, effective, repository)
             val scan = view.get(username, effective).single { it.repository == repository }
             val actionable =

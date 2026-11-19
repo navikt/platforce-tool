@@ -93,22 +93,31 @@ function server(initial = []) {
     };
 }
 
-test("Node Auto switches prevent opting in but allow removing existing opt ins", async () => {
+test("Node Auto switches support explicit opt in and opt out with the usual process locks", async () => {
     const backend = server();
     const ui = app(backend.fetch);
     ui.value('lastLoadedData = { scans: [{ repository: "example/node", projectType: "NODE" }] }');
     await ui.context.loadAutoRepositories();
     const toggle = ui.context.createAutoToggle("example/node");
-    assert.equal(toggle.disabled, true);
-    assert.match(toggle.title, /Node.js Auto updates are not supported/);
-    await ui.context.saveAutoRepository("example/node");
-    assert.equal(backend.calls.length, 1);
-    backend.repositories.add("example/node");
-    await ui.context.loadAutoRepositories();
     assert.equal(toggle.disabled, false);
+    assert.match(toggle.title, /Global opt-in/);
+    assert.equal(toggle.attributes["aria-checked"], "false");
+    await ui.context.saveAutoRepository("example/node");
+    assert.equal(backend.repositories.has("example/node"), true);
+    assert.equal(toggle.attributes["aria-checked"], "true");
+    assert.equal(toggle.disabled, false);
+    ui.value('autoProcessRun = { status: "RUNNING" }');
+    ui.context.updateAutoToggles();
+    assert.equal(toggle.disabled, true);
+    const calls = backend.calls.length;
+    await ui.context.saveAutoRepository("example/node");
+    assert.equal(backend.calls.length, calls);
+    ui.value("autoProcessRun = null");
+    ui.context.updateAutoToggles();
     await ui.context.saveAutoRepository("example/node");
     assert.equal(backend.repositories.size, 0);
-    assert.equal(toggle.disabled, true);
+    assert.equal(toggle.attributes["aria-checked"], "false");
+    assert.equal(toggle.disabled, false);
 });
 
 test("Auto tab precedes Deployments and renders a sorted compact global list independently of scanner teams", async () => {
@@ -741,6 +750,18 @@ test("Auto scan pills and compact successful reports also apply to persisted leg
     assert.match(entries[0].children[0].children[0].textContent, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     assert.equal(entries[0].children[0].children[0].textContent,
         ui.context.formatDeploymentTimestamp(snapshot.logs[0].timestamp));
+});
+
+test("Node Auto scan reports use the shared compact scan pill", async () => {
+    const snapshot = processSnapshot("COMPLETED", [
+        logEntry(1, { step: "Scan Node", message: "Node scan finished: 5 targets checked; no unresolved target vulnerabilities" })
+    ]);
+    const ui = app(async () => ({ ok: true, json: async () => snapshot }));
+    await ui.context.loadAutoProcess();
+    const entry = logEntries(ui)[0];
+    assert.match(entry.children[1].children[1].className, /node-pill/);
+    assert.equal(entry.children.some(node => node.tagName === "details"), false);
+    assert.equal(entry.children[1].textContent, snapshot.logs[0].message);
 });
 
 test("Auto omits repeated user pills while retaining the user inventory and styled actionable reports", async () => {

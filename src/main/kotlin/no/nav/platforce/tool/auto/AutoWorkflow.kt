@@ -1,5 +1,6 @@
 package no.nav.platforce.tool.auto
 
+import no.nav.platforce.tool.node.compareNodeVersions
 import no.nav.platforce.tool.targets.AvailableVersions
 import no.nav.platforce.tool.targets.TargetVersionsState
 import no.nav.platforce.tool.targets.snapshot
@@ -12,6 +13,7 @@ interface AutoOperations {
         username: String,
         key: String,
         current: String,
+        kind: String = "dependency",
     ): AvailableVersions
 
     fun saveTargets(
@@ -33,6 +35,12 @@ interface AutoOperations {
     ): AutoReport
 
     fun scanPlugins(
+        username: String,
+        state: TargetVersionsState,
+        checkActive: () -> Unit,
+    ): AutoReport
+
+    fun scanNode(
         username: String,
         state: TargetVersionsState,
         checkActive: () -> Unit,
@@ -78,17 +86,23 @@ class AutoWorkflow(
         progress.step("Draft latest stable non-major versions") {
             original = operations.targets(username).snapshot()
             state = original.snapshot()
-            original.dependencies.toSortedMap().filterKeys { it !in original.ignoredDependencies }.forEach { (key, current) ->
-                progress.checkActive()
-                val available = operations.available(username, key, current)
-                val next = latestStableNonMajor(available)
-                val withoutDateCheck = latestStableNonMajor(available, requireReleaseDate = false)
-                if (withoutDateCheck != null && withoutDateCheck != next) {
-                    warnings += "Warning: $key $withoutDateCheck skipped because its release date is unknown."
-                }
-                if (next != null) {
-                    state.dependencies[key] = next
-                    changes += "$key: $current -> $next"
+            for ((kind, targets) in listOf(
+                "dependency" to original.dependencies.filterKeys { it !in original.ignoredDependencies },
+                "node" to original.nodeDependencies,
+            )) {
+                targets.toSortedMap().forEach { (key, current) ->
+                    progress.checkActive()
+                    val available = operations.available(username, key, current, kind)
+                    val next = latestStableNonMajor(available, kind = kind)
+                    val withoutDateCheck = latestStableNonMajor(available, requireReleaseDate = false, kind = kind)
+                    val label = if (kind == "node") "npm:$key" else key
+                    if (withoutDateCheck != null && withoutDateCheck != next) {
+                        warnings += "Warning: $label $withoutDateCheck skipped because its release date is unknown."
+                    }
+                    if (next != null) {
+                        (if (kind == "node") state.nodeDependencies else state.dependencies)[key] = next
+                        changes += "$label: $current -> $next"
+                    }
                 }
             }
             val summary =
@@ -112,6 +126,7 @@ class AutoWorkflow(
         progress.step("Scan Dependencies") { operations.scanDependencies(username, state, progress::checkActive) }
         progress.step("Scan BOMs") { operations.scanBoms(username, state, progress::checkActive) }
         progress.step("Scan Plugins") { operations.scanPlugins(username, state, progress::checkActive) }
+        progress.step("Scan Node") { operations.scanNode(username, state, progress::checkActive) }
         progress.step("Refresh Dependency Scanner") { operations.refreshRepositories(username, state, progress::checkActive) }
         var created = 0
         val repositories = operations.repositories().distinct().sorted()
@@ -132,6 +147,7 @@ class AutoWorkflow(
 internal fun latestStableNonMajor(
     available: AvailableVersions,
     requireReleaseDate: Boolean = true,
+    kind: String = "dependency",
 ): String? {
     fun major(version: String) =
         Regex("^\\d+")
@@ -140,11 +156,12 @@ internal fun latestStableNonMajor(
             ?.trimStart('0')
             ?.ifEmpty { "0" }
     val major = major(available.currentVersion) ?: return null
+    val ordering = if (kind == "node") Comparator(::compareNodeVersions) else compareBy<String> { ComparableVersion(it) }
     return available.versions
         .filter {
             !it.prerelease && !it.majorUpgrade && !it.young && (!requireReleaseDate || it.releaseDate != null) &&
                 major(it.version) == major &&
-                ComparableVersion(it.version) > ComparableVersion(available.currentVersion)
-        }.maxWithOrNull(compareBy { ComparableVersion(it.version) })
+                ordering.compare(it.version, available.currentVersion) > 0
+        }.maxWithOrNull { first, second -> ordering.compare(first.version, second.version) }
         ?.version
 }

@@ -61,15 +61,23 @@ class AutoProcessTest {
             username: String,
             key: String,
             current: String,
+            kind: String,
         ): AvailableVersions {
-            record("available:$key")
+            record("available:${if (kind == "node") "node:" else ""}$key")
+            val nextVersion = if (kind == "node") "1.2.0" else "1.2"
             return AvailableVersions(
                 key,
                 current,
                 if (upgrade) {
                     listOf(
-                        AvailableVersion("1.2", false, false, releaseDate = upgradeReleaseDate, young = upgradeYoung),
-                        AvailableVersion("2.0", false, true, releaseDate = upgradeReleaseDate),
+                        AvailableVersion(
+                            nextVersion,
+                            false,
+                            false,
+                            releaseDate = upgradeReleaseDate,
+                            young = upgradeYoung,
+                        ),
+                        AvailableVersion(if (kind == "node") "2.0.0" else "2.0", false, true, releaseDate = upgradeReleaseDate),
                     )
                 } else {
                     emptyList()
@@ -115,6 +123,16 @@ class AutoProcessTest {
         ): AutoReport {
             record("plugins")
             return AutoReport("Plugins checked")
+        }
+
+        override fun scanNode(
+            username: String,
+            state: TargetVersionsState,
+            checkActive: () -> Unit,
+        ): AutoReport {
+            record("node")
+            checkActive()
+            return AutoReport("Node targets checked")
         }
 
         override fun refreshRepositories(
@@ -244,6 +262,7 @@ class AutoProcessTest {
                 "dependencies",
                 "boms",
                 "plugins",
+                "node",
                 "refresh",
                 "pr:example/current",
                 "pr:example/updated",
@@ -296,8 +315,35 @@ class AutoProcessTest {
         executor.runNext()
         assertFalse(operations.calls.any { it.startsWith("save:") })
         assertTrue(operations.calls.contains("plugins"))
+        assertTrue(operations.calls.contains("node"))
         assertTrue(operations.calls.indexOf("refresh") < operations.calls.indexOf("pr:example/current"))
         assertEquals(AutoRunStatus.COMPLETED, service.snapshot().run?.status)
+    }
+
+    @Test
+    fun `Auto drafts npm versions with the shared maturity policy saves roles and scans before repository writes`() {
+        val operations =
+            Operations().apply {
+                stored =
+                    stored.copy(
+                        nodeDependencies = mutableMapOf("parent" to "1.0.0", "@scope/package" to "1.0.0"),
+                        nodeTransientDependencies = setOf("parent"),
+                    )
+            }
+        val executor = QueuedExecutor()
+        val service = AutoProcessService(MemoryAutoRunStore(), AutoWorkflow(operations), executor)
+        service.start("alice")
+        executor.runNext()
+        assertEquals(AutoRunStatus.COMPLETED, service.snapshot().run?.status)
+        assertEquals(mapOf("parent" to "1.2.0", "@scope/package" to "1.2.0"), operations.stored.nodeDependencies)
+        assertEquals(setOf("parent"), operations.stored.nodeTransientDependencies)
+        assertTrue(operations.calls.containsAll(listOf("available:node:parent", "available:node:@scope/package")))
+        assertTrue(operations.calls.indexOf("save:alice") < operations.calls.indexOf("node"))
+        assertTrue(operations.calls.indexOf("node") < operations.calls.indexOf("refresh"))
+        assertTrue(operations.calls.indexOf("node") < operations.calls.indexOf("pr:example/updated"))
+        val draft = service.snapshot().logs.single { it.step == "Draft latest stable non-major versions" }
+        assertTrue(draft.details!!.contains("npm:parent: 1.0.0 -> 1.2.0"))
+        assertTrue(service.snapshot().logs.any { it.step == "Scan Node" })
     }
 
     @Test
@@ -305,6 +351,7 @@ class AutoProcessTest {
         listOf(false, true).forEach { unknown ->
             val operations =
                 Operations().apply {
+                    stored.nodeDependencies["parent"] = "1.0.0"
                     upgradeYoung = !unknown
                     if (unknown) upgradeReleaseDate = null
                 }
@@ -314,6 +361,7 @@ class AutoProcessTest {
             executor.runNext()
             assertFalse(operations.calls.any { it.startsWith("save:") })
             assertEquals("1.0", operations.stored.dependencies["example:library"])
+            assertEquals("1.0.0", operations.stored.nodeDependencies["parent"])
             assertEquals(AutoRunStatus.COMPLETED, service.snapshot().run?.status)
             val report = service.snapshot().logs.single { it.step == "Draft latest stable non-major versions" }
             if (unknown) {
@@ -368,7 +416,7 @@ class AutoProcessTest {
 
     @Test
     fun `each unsafe scan or unsuccessful refresh stops all following stages and PR creation`() {
-        listOf("dependencies", "boms", "plugins", "refresh").forEach { stage ->
+        listOf("dependencies", "boms", "plugins", "node", "refresh").forEach { stage ->
             val operations = Operations().apply { fail = stage }
             val executor = QueuedExecutor()
             val service = AutoProcessService(MemoryAutoRunStore(), AutoWorkflow(operations), executor)
@@ -600,5 +648,26 @@ class AutoProcessTest {
         assertEquals("1.9", latestStableNonMajor(versions, requireReleaseDate = false))
         assertNull(latestStableNonMajor(versions.copy(currentVersion = "latest.release")))
         assertNull(latestStableNonMajor(versions.copy(versions = listOf(candidate("2.0", major = true)))))
+    }
+
+    @Test
+    fun `Node Auto selection uses semantic version precedence and ignores build metadata`() {
+        val versions =
+            AvailableVersions(
+                "parent",
+                "1.0.0+build.1",
+                listOf(
+                    AvailableVersion("1.0.0+build.2", false, false, "2024-01-01T00:00:00Z"),
+                    AvailableVersion("1.10.0", false, false, "2024-01-01T00:00:00Z"),
+                    AvailableVersion("1.9.0", false, false, "2024-01-01T00:00:00Z"),
+                    AvailableVersion("1.11.0", false, false, "2024-01-01T00:00:00Z", young = true),
+                    AvailableVersion("1.12.0", false, false),
+                    AvailableVersion("1.13.0-beta.1", true, false, "2024-01-01T00:00:00Z"),
+                    AvailableVersion("2.0.0", false, true, "2024-01-01T00:00:00Z"),
+                ),
+            )
+        assertEquals("1.10.0", latestStableNonMajor(versions, kind = "node"))
+        assertEquals("1.12.0", latestStableNonMajor(versions, requireReleaseDate = false, kind = "node"))
+        assertNull(latestStableNonMajor(versions.copy(versions = versions.versions.take(1)), kind = "node"))
     }
 }
