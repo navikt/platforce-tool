@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.targets
 
 import com.google.gson.Gson
+import mu.KotlinLogging
 import no.nav.platforce.tool.node.NodeSecurityScanner
 import no.nav.platforce.tool.resolution.GradleTargetResolutionScanner
 import no.nav.platforce.tool.security.PluginSecurityScanner
@@ -27,7 +28,13 @@ fun targetVersionsRoutes(
     "/internal/api/target-versions/update" bind Method.POST to { request ->
         val context = request.userContext()
         val body = request.bodyString()
-        val parsed = Gson().fromJson(body, TargetVersionsState::class.java).snapshot()
+        val parsed =
+            try {
+                Gson().fromJson(body, TargetVersionsState::class.java).snapshot()
+            } catch (failure: IllegalArgumentException) {
+                KotlinLogging.logger { }.warn { "Invalid target versions: ${failure.message}" }
+                return@to Response(Status.BAD_REQUEST).body(failure.message.orEmpty())
+            }
 
         TargetVersionsUpdater(resolutionScanner, securityScanner, pluginSecurityScanner, upgradeSecurityScanner, nodeSecurityScanner)
             .save(context, parsed)

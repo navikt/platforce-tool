@@ -7,6 +7,7 @@ async function renderTargets(data) {
         dependencies: data.dependencies || {},
         platformBoms: data.platformBoms || {},
         nodeDependencies: Object.fromEntries(Object.entries(data.nodeDependencies || {}).map(([key, version]) => [key, nodeTargetVersion(version)])),
+        salesforceDependencies: data.salesforceDependencies || {},
         gradleVersion: data.gradleVersion || "",
         transientDependencies: new Set(data.transientDependencies || []),
         nodeTransientDependencies: new Set(data.nodeTransientDependencies || []),
@@ -27,10 +28,15 @@ function renderTargetTables() {
         .filter(([key]) => !ignoredDependencies.includes(key)), "dependency");
     renderTable("platformBomsTable", Object.entries(targetState.platformBoms), "platform_bom");
     renderTable("nodeTable", Object.entries(targetState.nodeDependencies), "node");
+    renderTable("salesforceTable", Object.entries(targetState.salesforceDependencies), "salesforce");
     renderGradleVersion(targetState.gradleVersion);
 }
 
 function addDraftTarget(kind, key, version, nodeTransient) {
+    if (kind === "SALESFORCE" && !validSalesforceTargetVersion(version)) {
+        showTargetSaveMessage("Salesforce targets require major.minor.patch.build or major.minor.patch.LATEST; pinned package IDs cannot be drafted.", false);
+        return;
+    }
     captureTargetDrafts();
     if (kind === "PLUGIN") {
         targetState.plugins[key] = version;
@@ -53,6 +59,8 @@ function addDraftTarget(kind, key, version, nodeTransient) {
         }
     }
 
+    if (kind === "SALESFORCE") targetState.salesforceDependencies[key] = version;
+
     if (kind === "GRADLE") {
         targetState.gradleVersion = version;
     }
@@ -70,6 +78,10 @@ function addDraftTarget(kind, key, version, nodeTransient) {
 
 function nodeTargetVersion(version) {
     return version.trim().replace(/^[~^](?=\d)/, "");
+}
+
+function validSalesforceTargetVersion(version) {
+    return version.length <= 100 && /^\d+\.\d+\.\d+\.(?:\d+|LATEST)$/.test(version);
 }
 
 function renderGradleVersion(version) {
@@ -127,7 +139,7 @@ function renderTable(containerId, entries, type) {
             targetState.drafted?.has(`${type.toUpperCase()}:${key}`);
         const isTransient =
             (type === "node" ? targetState.nodeTransientDependencies : type === "dependency" ? targetState.transientDependencies : null)?.has(key);
-        const securityTarget = findTargetSecurity(type, key, version);
+        const securityTarget = type === "salesforce" ? null : findTargetSecurity(type, key, version);
 
         const row = document.createElement("div");
         row.className = `target-row${drafted ? " drafted" : ""}`;
@@ -135,9 +147,9 @@ function renderTable(containerId, entries, type) {
         
             <input class="key" />
             <input class="version" />
-            ${securityStatusHtml(securityTarget)}
+            ${type === "salesforce" ? "" : securityStatusHtml(securityTarget)}
             ${transientTargetButtonHtml(type, isTransient)}
-            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
+            ${(type === "salesforce" ? "" : targetUpgradeButtonHtml()) + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -158,7 +170,7 @@ function renderTable(containerId, entries, type) {
         row.querySelector(".key").value = key;
         row.querySelector(".version").value = version;
         bindDependencyUsage(row, type);
-        bindTargetUpgrades(row, type);
+        if (type !== "salesforce") bindTargetUpgrades(row, type);
         bindTransientTarget(row, type);
 
         row.querySelector(".remove-btn").onclick = () => {
@@ -191,26 +203,34 @@ function renderTable(containerId, entries, type) {
         addRow.querySelector(".key").placeholder = "package or @scope/package";
         addRow.querySelector(".version").placeholder = "exact version";
     }
+    if (type === "salesforce") {
+        addRow.querySelector(".key").placeholder = "Salesforce package";
+        addRow.querySelector(".version").placeholder = "0.1.0.LATEST";
+    }
     addRow.querySelector(".add-btn").onclick = () => {
         const kInput = addRow.querySelector(".key");
         const vInput = addRow.querySelector(".version");
         const k = kInput.value.trim();
         const v = type === "node" ? nodeTargetVersion(vInput.value) : vInput.value.trim();
         if (!k || !v) return;
+        if (type === "salesforce" && !validSalesforceTargetVersion(v)) {
+            showTargetSaveMessage("Salesforce targets require major.minor.patch.build or major.minor.patch.LATEST.", false);
+            return;
+        }
         if (type === "dependency" && ignoredDependencies.includes(k)) {
             showTargetSaveMessage("Remove this dependency from Ignored Dependencies before adding it as a target.", false);
             return;
         }
-        const securityTarget = findTargetSecurity(type, k, v);
+        const securityTarget = type === "salesforce" ? null : findTargetSecurity(type, k, v);
         const newRow = document.createElement("div");
         newRow.className = "target-row";
         newRow.innerHTML = `
        
             <input class="key" />
             <input class="version" />
-            ${securityStatusHtml(securityTarget)}
+            ${type === "salesforce" ? "" : securityStatusHtml(securityTarget)}
             ${transientTargetButtonHtml(type)}
-            ${targetUpgradeButtonHtml() + dependencyUsageButtonHtml(type)}
+            ${(type === "salesforce" ? "" : targetUpgradeButtonHtml()) + dependencyUsageButtonHtml(type)}
             <button class="icon-btn remove-btn${securityTarget?.status === "UNUSED" ? " unused-target-remove" : ""}"
                     title="${securityTarget?.status === "UNUSED" ? "Remove unused target: not declared in any currently scanned repository" : "Remove"}">
                 ${TRASH_SVG}
@@ -231,7 +251,7 @@ function renderTable(containerId, entries, type) {
         newRow.querySelector(".key").value = k;
         newRow.querySelector(".version").value = v;
         bindDependencyUsage(newRow, type);
-        bindTargetUpgrades(newRow, type);
+        if (type !== "salesforce") bindTargetUpgrades(newRow, type);
         bindTransientTarget(newRow, type);
         newRow.querySelector(".remove-btn").onclick = () => newRow.remove();
         const statusButton =
@@ -249,7 +269,7 @@ function renderTable(containerId, entries, type) {
 }
 
 function declaredTargetKeysField(type) {
-    return type === "node" ? "declaredNodeDependencyKeys"
+    return type === "salesforce" ? "declaredSalesforceDependencyKeys" : type === "node" ? "declaredNodeDependencyKeys"
         : type === "plugin" ? "declaredPluginKeys" : type === "platform_bom" ? "declaredPlatformBomKeys" : "declaredDependencyKeys";
 }
 
@@ -269,7 +289,7 @@ function dependencyUsageRepositories(key, type = "dependency") {
 
 function dependencyUsageButtonHtml(type = "dependency") {
     const available = dependencyUsageAvailable(type);
-    const label = type === "plugin" ? "Show repositories using this plugin" : type === "platform_bom" ? "Show repositories using this platform BOM" : "Show repositories using this dependency";
+    const label = type === "salesforce" ? "Show repositories using this Salesforce package" : type === "plugin" ? "Show repositories using this plugin" : type === "platform_bom" ? "Show repositories using this platform BOM" : "Show repositories using this dependency";
     return `<button type="button" class="icon-btn dependency-usage-btn" data-usage-type="${type}" aria-label="${label}"
         aria-expanded="false" title="${available ? label : "Run Dependency Scanner first"}"
         ${available ? "" : "disabled"}>
@@ -391,6 +411,7 @@ function readTargetInputs() {
         },
         platformBoms: read("platformBomsTable"),
         nodeDependencies,
+        salesforceDependencies: read("salesforceTable"),
         nodeTransientDependencies,
         gradleVersion: readSingleVersion("gradleTable"),
         transientDependencies:
@@ -404,6 +425,7 @@ function captureTargetDrafts() {
     targetState.dependencies = inputs.dependencies;
     targetState.platformBoms = inputs.platformBoms;
     targetState.nodeDependencies = inputs.nodeDependencies;
+    targetState.salesforceDependencies = inputs.salesforceDependencies;
     targetState.nodeTransientDependencies = new Set(inputs.nodeTransientDependencies);
     targetState.gradleVersion = inputs.gradleVersion;
 }
@@ -463,6 +485,9 @@ async function saveTargets() {
     closeTargetSaveMessage(true);
     let saved = false;
     try {
+        if (Object.values(payload.salesforceDependencies).some(version => !validSalesforceTargetVersion(version))) {
+            throw new Error("Salesforce targets require major.minor.patch.build or major.minor.patch.LATEST.");
+        }
         const response = await fetch("/internal/api/target-versions/update", {
             method: "POST",
             headers: {
@@ -491,6 +516,7 @@ async function saveTargets() {
             dependencies: payload.dependencies,
             platformBoms: payload.platformBoms,
             nodeDependencies: payload.nodeDependencies,
+            salesforceDependencies: payload.salesforceDependencies,
             gradleVersion: payload.gradleVersion,
             transientDependencies: new Set(payload.transientDependencies),
             nodeTransientDependencies: new Set(payload.nodeTransientDependencies),

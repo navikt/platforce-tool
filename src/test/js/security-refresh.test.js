@@ -597,6 +597,118 @@ test("Node targets load, draft, capture and save independently of Maven and BOM 
     assert.deepEqual([...app.context.dependencyUsageRepositories("ws")], ["example/gradle"]);
 });
 
+test("Salesforce targets load draft capture and save separately without npm version normalization", async () => {
+    const app = gui();
+    await app.context.renderTargets({
+        salesforceDependencies: { "crm-platform-base": "0.253.0.LATEST" },
+        nodeDependencies: { tool: "^1.0.0" }
+    });
+    const row = (key, version) => ({ querySelector: selector => ({ value: selector === ".key" ? key : version }) });
+    app.rows.set("#salesforceTable .target-row", [row("crm-platform-base", "0.254.0.LATEST")]);
+    app.rows.set("#nodeTable .target-row", [row("tool", "1.0.0")]);
+    app.context.captureTargetDrafts();
+    assert.equal(app.value('targetState.salesforceDependencies["crm-platform-base"]'), "0.254.0.LATEST");
+    app.context.addDraftTarget("SALESFORCE", "crm-journal-utilities", "0.42.0.LATEST");
+    assert.equal(app.value('targetState.salesforceDependencies["crm-journal-utilities"]'), "0.42.0.LATEST");
+    assert.equal(app.value('targetState.drafted.has("SALESFORCE:crm-journal-utilities")'), true);
+    assert.equal(app.value('targetState.nodeDependencies["crm-journal-utilities"]'), undefined);
+    app.rows.set("#salesforceTable .target-row", [row("crm-platform-base", "0.254.0.LATEST"), row("crm-journal-utilities", "0.42.0.LATEST")]);
+    let saved;
+    app.responses((url, options) => {
+        if (url.endsWith("/target-versions/update")) { saved = JSON.parse(options.body); return {}; }
+        return repositoryResponse(url);
+    });
+    await app.context.saveTargets();
+    assert.deepEqual(saved.salesforceDependencies, { "crm-platform-base": "0.254.0.LATEST", "crm-journal-utilities": "0.42.0.LATEST" });
+    assert.deepEqual(saved.nodeDependencies, { tool: "1.0.0" });
+    assert.equal(app.value('targetState.salesforceDependencies["crm-platform-base"]'), "0.254.0.LATEST");
+    app.rows.set("#salesforceTable .target-row", [row("crm-platform-base", "^1.0.0")]);
+    const count = app.calls.length;
+    await app.context.saveTargets();
+    assert.equal(app.calls.length, count);
+    assert.match(app.element("targetSaveMessageText").textContent, /Salesforce targets require/);
+    app.context.addDraftTarget("SALESFORCE", "pinned", "04t000000000001AAA");
+    assert.equal(app.value('targetState.salesforceDependencies.pinned'), undefined);
+});
+
+test("Salesforce scanner rows retain manifest and directory provenance and only npm changes require Node readiness", () => {
+    const app = gui();
+    const card = {
+        querySelector: selector => selector === ".repo-header" ? { addEventListener() {} }
+            : selector === ".repo-actions" ? { prepend() {} } : null
+    };
+    app.context.createAutoToggle = () => ({});
+    app.context.document.createElement = () => card;
+    const scan = {
+        projectType: "SALESFORCE",
+        findings: [{ kind: "SALESFORCE", key: "crm-platform-base", currentVersion: "0.253.0.LATEST",
+            targetVersion: "0.254.0.LATEST", declaration: "src/audit", sourceFile: "sfdx-project.json", status: "UPDATE" }],
+        untrackedSalesforceDependencies: [
+            { key: "crm-journal", version: "0.41.0.LATEST", declaration: "src/model" },
+            { key: "pinned", version: "04t000000000001AAA", declaration: "src/model" }
+        ]
+    };
+    const render = () => app.context.renderRepo({ name: "example/salesforce", state: "SCANNED" },
+        { "example/salesforce": scan }, { appendChild() {} });
+    render();
+    assert.match(card.innerHTML, /sfdx-project\.json \/ src\/audit/);
+    assert.match(card.innerHTML, /data-kind="SALESFORCE"/);
+    assert.match(card.innerHTML, /data-version="0\.41\.0\.LATEST"/);
+    assert.match(card.innerHTML, /Pinned package ID or alias/);
+    assert.doesNotMatch(card.innerHTML, /Run Node security scan first|\^0\.254/);
+    scan.findings.push({ kind: "NODE", key: "tool", currentVersion: "1.0.0", targetVersion: "1.1.0", status: "UPDATE" });
+    render();
+    assert.match(card.innerHTML, /Run Node security scan first/);
+    app.value('nodeSecurityScan = { targets: [{ status: "OK" }] }');
+    render();
+    assert.doesNotMatch(card.innerHTML, /Run Node security scan first/);
+    assert.match(card.innerHTML, /onclick="event.stopPropagation\(\); createPr\('example\/salesforce'\)"/);
+});
+
+test("Salesforce target rows add remove and show usage without npm upgrades or security badges", () => {
+    const app = gui();
+    const rows = [];
+    const table = app.element("salesforceTable");
+    table.appendChild = row => rows.push(row);
+    table.insertBefore = (row, before) => rows.splice(rows.indexOf(before), 0, row);
+    app.context.document.createElement = () => {
+        const inputs = new Map();
+        return {
+            querySelector(selector) {
+                if (selector === ".target-status-pill") return null;
+                if (!inputs.has(selector)) inputs.set(selector, { value: "", addEventListener() {} });
+                return inputs.get(selector);
+            },
+            remove() { rows.splice(rows.indexOf(this), 1); }
+        };
+    };
+    const usage = [];
+    app.context.bindDependencyUsage = (row, type) => usage.push(type);
+    app.context.bindTargetUpgrades = () => { throw new Error("Salesforce must not use npm or Maven metadata"); };
+    app.context.findTargetSecurity = () => { throw new Error("Salesforce must not display npm security results"); };
+    app.context.renderTable("salesforceTable", [["crm-platform-base", "0.253.0.LATEST"]], "salesforce");
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].querySelector(".version").value, "0.253.0.LATEST");
+    assert.match(rows[0].innerHTML, /data-usage-type="salesforce"/);
+    assert.doesNotMatch(rows[0].innerHTML, /target-upgrade-btn|transient-btn|target-status-pill/);
+    const add = rows[1];
+    assert.equal(add.querySelector(".key").placeholder, "Salesforce package");
+    add.querySelector(".key").value = "crm-journal";
+    add.querySelector(".version").value = "0.42.0.LATEST";
+    add.querySelector(".add-btn").onclick();
+    assert.equal(rows.length, 3);
+    assert.deepEqual(usage, ["salesforce", "salesforce"]);
+    app.rows.set("#salesforceTable .target-row", rows);
+    assert.equal(app.context.readTargetInputs().salesforceDependencies["crm-journal"], "0.42.0.LATEST");
+    rows[1].querySelector(".remove-btn").onclick();
+    assert.equal(rows.length, 2);
+    add.querySelector(".key").value = "bad";
+    add.querySelector(".version").value = "04t000000000001AAA";
+    add.querySelector(".add-btn").onclick();
+    assert.equal(rows.length, 2);
+    assert.match(app.element("targetSaveMessageText").textContent, /Salesforce targets require/);
+});
+
 test("Node repository uses dependency rows and statuses without declaration subtitles or version prefixes", () => {
     const app = gui();
     const card = {

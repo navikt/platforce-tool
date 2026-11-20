@@ -42,6 +42,7 @@ fun enrichNodeRepositorySecurity(
 
     val findings =
         scan.findings.map { finding ->
+            if (finding.kind != DependencyKind.NODE) return@map finding
             val target = targets[finding.key] ?: return@map finding
             val plannedCoverage =
                 finding.status == DependencyStatus.UPDATE && target.relatedTo.isNotEmpty() &&

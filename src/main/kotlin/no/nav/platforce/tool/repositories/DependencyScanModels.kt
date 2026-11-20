@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.repositories
 
 import no.nav.platforce.tool.node.NodeDependencyDeclaration
+import no.nav.platforce.tool.salesforce.SalesforceDependencyDeclaration
 import no.nav.platforce.tool.security.PlatformBomSecurityResult
 
 data class RepositoryDependencyScan(
@@ -16,6 +17,8 @@ data class RepositoryDependencyScan(
     val projectType: RepositoryProjectType = RepositoryProjectType.GRADLE,
     val declaredNodeDependencyKeys: List<String> = emptyList(),
     val untrackedNodeDependencies: List<NodeDependencyDeclaration> = emptyList(),
+    val declaredSalesforceDependencyKeys: List<String> = emptyList(),
+    val untrackedSalesforceDependencies: List<SalesforceDependencyDeclaration> = emptyList(),
 )
 
 data class DependencyFinding(
@@ -30,6 +33,7 @@ data class DependencyFinding(
     val platformBomSecurity: PlatformBomSecurityResult? = null,
     val bomCoverage: List<DependencyReference> = emptyList(),
     val declaration: String? = null,
+    val sourceFile: String? = null,
 )
 
 data class DependencyReference(
@@ -44,6 +48,7 @@ enum class DependencyKind {
     PLATFORM_BOM,
     GRADLE,
     NODE,
+    SALESFORCE,
 }
 
 enum class DependencyStatus {

@@ -32,6 +32,7 @@ class DependencyScanCache {
                         plugins = it.plugins.toMap(),
                         dependencies = it.dependencies.toMap(),
                         nodeDependencies = it.nodeDependencies.toList(),
+                        salesforceDependencies = it.salesforceDependencies.toList(),
                     )
                 }
         }
@@ -48,6 +49,7 @@ class DependencyScanCache {
                     plugins = inventory.plugins.toMap(),
                     dependencies = inventory.dependencies.toMap(),
                     nodeDependencies = inventory.nodeDependencies.toList(),
+                    salesforceDependencies = inventory.salesforceDependencies.toList(),
                 )
             user.inventories =
                 if (user.inventories.any { it.repository == copy.repository }) {

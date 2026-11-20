@@ -1669,6 +1669,42 @@ button:hover {
     border: 1px solid #f7eadc;
 }
 
+.target-section.salesforce {
+    --target-columns: 300px 110px 28px 28px;
+    background: #f5fbff;
+    border: 1px solid #d0e7f5;
+}
+
+#salesforceTable .target-row {
+    grid-template-columns: var(--target-columns);
+}
+
+.salesforce-pill {
+    background: #e7f4ff;
+    color: #2458a6;
+    border: 1px solid #2458a6;
+}
+
+.target-section.salesforce .target-row:nth-child(odd),
+.finding-container:nth-child(odd) .salesforce-row {
+    background: #e7f4ff;
+}
+
+.target-section.salesforce .target-row:nth-child(even) {
+    background: #f5fbff;
+}
+
+.salesforce-description,
+.salesforce-source {
+    color: #666;
+    font-size: 12px;
+}
+
+.salesforce-source {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
 .section-pill {
     display: inline-block;
 

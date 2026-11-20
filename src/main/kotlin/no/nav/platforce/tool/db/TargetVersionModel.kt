@@ -43,6 +43,7 @@ enum class TargetVersionType {
     PLATFORM_BOM,
     GRADLE,
     NODE,
+    SALESFORCE,
 }
 
 fun ResultRow.toTargetVersion() =

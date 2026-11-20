@@ -184,7 +184,7 @@ test("unknown release dates are explicit and young or undated versions remain ma
 });
 
 test("repository usage reuses the security details box and shows GitHub icons instead of bullets", () => {
-    for (const type of ["dependency", "platform_bom", "plugin"]) {
+    for (const type of ["dependency", "platform_bom", "plugin", "salesforce"]) {
         const ui = app();
         vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/targets.js"), "utf8"), ui.context);
         ui.context.lastLoadedData = null;
@@ -215,7 +215,7 @@ test("repository usage reuses the security details box and shows GitHub icons in
 });
 
 test("usage crosshair loses only its center circle for undeclared targets after a scan and refreshes on edits", () => {
-    for (const type of ["dependency", "platform_bom", "plugin", "node"]) {
+    for (const type of ["dependency", "platform_bom", "plugin", "node", "salesforce"]) {
         const ui = app();
         vm.runInContext(readFileSync(resolve(__dirname, "../../main/resources/gui/js/targets.js"), "utf8"), ui.context);
         ui.context.lastLoadedData = null;

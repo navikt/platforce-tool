@@ -98,7 +98,10 @@ function renderRepo(repoView, scanMap, container) {
     const untrackedPlugins = scan?.untrackedPlugins ?? [];
     const untrackedPlatformBoms = scan?.untrackedPlatformBoms ?? [];
     const untrackedNodeDependencies = scan?.untrackedNodeDependencies ?? [];
-    const isNode = scan?.projectType === "NODE";
+    const untrackedSalesforceDependencies = scan?.untrackedSalesforceDependencies ?? [];
+    const isSalesforce = scan?.projectType === "SALESFORCE";
+    const isNode = scan?.projectType === "NODE" || isSalesforce;
+    const nodeActionable = findings.some(f => f.kind === "NODE" && ["UPDATE", "AHEAD", "ADD", "REMOVE"].includes(f.status));
 
     const ok = findings.filter(f => f.status === "OK").length;
     const update = findings.filter(f => f.status === "UPDATE").length;
@@ -111,7 +114,7 @@ function renderRepo(repoView, scanMap, container) {
     const hasActionable = findings.some(f =>
         f.status === "UPDATE" || f.status === "AHEAD" || f.status === "ADD" || f.status === "REMOVE"
     );
-    const securityReady = isNode
+    const securityReady = isSalesforce && !nodeActionable ? true : isNode
         ? nodeSecurityScan?.targets?.every(target => target.status !== "UNRESOLVED" && target.status !== "UNSUPPORTED") === true
         : normalSecurityReady;
     const prPrerequisite = !securityReady
@@ -141,7 +144,7 @@ function renderRepo(repoView, scanMap, container) {
     const isMissing = state === "NOT_IN_GITHUB";
     const isNotScanned = state === "NOT_SCANNED";
 
-    const untrackedCount = untrackedDependencies.length + untrackedPlugins.length + untrackedPlatformBoms.length + untrackedNodeDependencies.length;
+    const untrackedCount = untrackedDependencies.length + untrackedPlugins.length + untrackedPlatformBoms.length + untrackedNodeDependencies.length + untrackedSalesforceDependencies.length;
     const untrackedBadge =
         untrackedCount > 0
             ? `<span class="badge untracked">${untrackedCount} UNTRKD</span>`
@@ -355,7 +358,7 @@ function renderRepo(repoView, scanMap, container) {
                         <div class="finding-container">
                             <div class="row ${kind}-row">
                                 <div class="pill">${f.kind === "PLATFORM_BOM" ? "PLATFORM BOM" : f.kind === "NODE" ? "DEPENDENCY" : f.kind}</div>
-                                <div>${escapeHtml(f.key || "")}</div>
+                                <div>${escapeHtml(f.key || "")}${f.kind === "SALESFORCE" ? `<small class="salesforce-source">${escapeHtml(f.sourceFile || "sfdx-project.json")} / ${escapeHtml(f.declaration || "")}</small>` : ""}</div>
                 
                                 <div class="version-cell">
                                     <span class="current-version">
@@ -393,11 +396,11 @@ function renderRepo(repoView, scanMap, container) {
             </div>
 
             ${
-                (untrackedDependencies.length || untrackedPlugins.length || untrackedPlatformBoms.length || untrackedNodeDependencies.length)
+                (untrackedDependencies.length || untrackedPlugins.length || untrackedPlatformBoms.length || untrackedNodeDependencies.length || untrackedSalesforceDependencies.length)
                     ? `
                         <div class="untracked-section">
                             <div class="untracked-toggle">
-                                Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length + untrackedNodeDependencies.length}), platform BOMs (${untrackedPlatformBoms.length})
+                                Untracked plugins (${untrackedPlugins.length}), dependencies (${untrackedDependencies.length + untrackedNodeDependencies.length}), platform BOMs (${untrackedPlatformBoms.length})${untrackedSalesforceDependencies.length ? `, Salesforce packages (${untrackedSalesforceDependencies.length})` : ""}
                             </div>
                         
                             <div class="untracked-content">
@@ -474,6 +477,17 @@ function renderRepo(repoView, scanMap, container) {
                                                 data-key="${escapeHtml(dep.key)}"
                                                 data-version="${escapeHtml(nodeTargetVersion(dep.version))}">UNTRACKED</span>
                                         </div>
+                                    </div>
+                                `).join("")}
+                                ${untrackedSalesforceDependencies.map(dep => `
+                                    <div class="row untracked-row salesforce-row">
+                                        <div class="pill">SALESFORCE</div>
+                                        <div>${escapeHtml(dep.key)}<small class="salesforce-source">sfdx-project.json / ${escapeHtml(dep.declaration)}</small></div>
+                                        <div class="version-cell"><span class="current-version">${escapeHtml(dep.version)}</span></div>
+                                        <div><span class="status-pill status-unknown ${validSalesforceTargetVersion(dep.version) ? "target-draft-pill" : ""}"
+                                            data-kind="SALESFORCE" data-key="${escapeHtml(dep.key)}"
+                                            data-version="${escapeHtml(dep.version)}"
+                                            title="${validSalesforceTargetVersion(dep.version) ? "Draft Salesforce target" : "Pinned package ID or alias; automatic version updates are unavailable"}">UNTRACKED</span></div>
                                     </div>
                                 `).join("")}
                                 </div>

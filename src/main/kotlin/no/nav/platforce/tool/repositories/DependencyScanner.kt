@@ -6,6 +6,9 @@ import no.nav.platforce.tool.gradle.GradleDependencyParser
 import no.nav.platforce.tool.gradle.GradleWrapperParser
 import no.nav.platforce.tool.node.PackageJsonParser
 import no.nav.platforce.tool.node.nodeDependencyStatus
+import no.nav.platforce.tool.salesforce.SALESFORCE_MANIFEST
+import no.nav.platforce.tool.salesforce.parseSalesforceProject
+import no.nav.platforce.tool.salesforce.salesforceDependencyStatus
 import no.nav.platforce.tool.security.OverrideReason
 import no.nav.platforce.tool.security.TargetSecurityScan
 import no.nav.platforce.tool.security.TargetSecurityStatus
@@ -114,15 +117,32 @@ class DependencyScanner(
 
         val buildFile = tryGetBuildFile(owner, repo)
         if (buildFile == null) {
-            if (!githubClient.fileExists(owner, repo, "package.json")) return null
+            val hasNode = githubClient.fileExists(owner, repo, "package.json")
+            val hasSalesforce = githubClient.fileExists(owner, repo, SALESFORCE_MANIFEST)
+            if (!hasNode && !hasSalesforce) return null
             return RepositoryDependencyInventory(
                 repository = repository,
                 scannedAt = Instant.now().toString(),
                 plugins = emptyMap(),
                 dependencies = emptyMap(),
                 gradleVersion = null,
-                projectType = RepositoryProjectType.NODE,
-                nodeDependencies = PackageJsonParser().parse(githubClient.getFile(owner, repo, "package.json")),
+                projectType = if (hasSalesforce) RepositoryProjectType.SALESFORCE else RepositoryProjectType.NODE,
+                nodeDependencies =
+                    if (hasNode) {
+                        PackageJsonParser().parse(
+                            githubClient.getFile(owner, repo, "package.json"),
+                        )
+                    } else {
+                        emptyList()
+                    },
+                salesforceDependencies =
+                    if (hasSalesforce) {
+                        parseSalesforceProject(
+                            githubClient.getFile(owner, repo, SALESFORCE_MANIFEST),
+                        )
+                    } else {
+                        emptyList()
+                    },
             )
         }
 
@@ -151,13 +171,13 @@ class DependencyScanner(
         inventory: RepositoryDependencyInventory,
         targetState: TargetVersionsState,
     ): RepositoryDependencyScan {
-        if (inventory.projectType == RepositoryProjectType.NODE) {
+        if (inventory.projectType in setOf(RepositoryProjectType.NODE, RepositoryProjectType.SALESFORCE)) {
             val declarations =
                 inventory.nodeDependencies.filter { includeNodeDevDependencies || it.declaration != "devDependencies" }
             return RepositoryDependencyScan(
                 repository = inventory.repository,
                 scannedAt = inventory.scannedAt,
-                projectType = RepositoryProjectType.NODE,
+                projectType = inventory.projectType,
                 declaredDependencyKeys = emptyList(),
                 declaredPlatformBomKeys = emptyList(),
                 declaredPluginKeys = emptyList(),
@@ -176,10 +196,33 @@ class DependencyScanner(
                                 targetVersion = target,
                                 status = nodeDependencyStatus(dependency.version, target),
                                 declaration = dependency.declaration,
+                                sourceFile = "package.json",
                             )
                         }
-                    },
+                    } +
+                        inventory.salesforceDependencies.mapNotNull { dependency ->
+                            targetState.salesforceDependencies[dependency.key]?.let { target ->
+                                DependencyFinding(
+                                    kind = DependencyKind.SALESFORCE,
+                                    key = dependency.key,
+                                    currentVersion = dependency.version,
+                                    targetVersion = target,
+                                    status = salesforceDependencyStatus(dependency.version, target),
+                                    declaration = dependency.declaration,
+                                    sourceFile = SALESFORCE_MANIFEST,
+                                )
+                            }
+                        },
                 untrackedNodeDependencies = declarations.filter { it.key !in targetState.nodeDependencies },
+                declaredSalesforceDependencyKeys =
+                    inventory.salesforceDependencies
+                        .map { it.key }
+                        .distinct()
+                        .sorted(),
+                untrackedSalesforceDependencies =
+                    inventory.salesforceDependencies.filter {
+                        it.key !in targetState.salesforceDependencies
+                    },
             )
         }
         val findings = mutableListOf<DependencyFinding>()

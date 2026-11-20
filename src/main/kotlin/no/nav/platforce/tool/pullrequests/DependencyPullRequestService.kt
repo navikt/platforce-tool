@@ -14,6 +14,8 @@ import no.nav.platforce.tool.repositories.DependencyScanViewService
 import no.nav.platforce.tool.repositories.DependencyStatus
 import no.nav.platforce.tool.repositories.PullRequestReadinessException
 import no.nav.platforce.tool.repositories.RepositoryProjectType
+import no.nav.platforce.tool.salesforce.SALESFORCE_MANIFEST
+import no.nav.platforce.tool.salesforce.updateSalesforceProject
 import no.nav.platforce.tool.targets.TargetVersionsState
 import java.io.IOException
 
@@ -56,8 +58,18 @@ class DependencyPullRequestService(
             return "No changes required "
         }
         val isNode = scan.projectType == RepositoryProjectType.NODE
+        val isSalesforce = scan.projectType == RepositoryProjectType.SALESFORCE
+        val nodeChanges = actionable.any { it.kind == DependencyKind.NODE }
+        val salesforceChanges = actionable.any { it.kind == DependencyKind.SALESFORCE }
+        val title =
+            when {
+                nodeChanges && salesforceChanges -> "chore: update Node and Salesforce dependencies"
+                salesforceChanges -> "chore: update Salesforce dependencies"
+                isNode || isSalesforce -> "chore: update Node dependencies"
+                else -> "chore: update Gradle dependencies"
+            }
         val checkBeforeWrite = {
-            if (isNode) dependencyScanViewService.requirePullRequestReady(username, targetState, fullRepo)
+            if (isNode || isSalesforce) dependencyScanViewService.requirePullRequestReady(username, targetState, fullRepo)
             beforeWrite()
         }
 
@@ -81,7 +93,9 @@ class DependencyPullRequestService(
                 baseBranch,
             )
 
-        val nodeFiles = if (isNode) prepareNodeFiles(owner, repo, branchSha, scan.findings) else emptyList()
+        val manifestFiles =
+            (if (nodeChanges) prepareNodeFiles(owner, repo, branchSha, scan.findings) else emptyList()) +
+                (if (salesforceChanges) prepareSalesforceFile(owner, repo, branchSha, scan.findings) else emptyList())
 
         checkBeforeWrite()
         githubClient.createBranch(
@@ -91,8 +105,8 @@ class DependencyPullRequestService(
             branchSha,
         )
 
-        if (isNode) {
-            nodeFiles.forEach { file ->
+        if (isNode || isSalesforce) {
+            manifestFiles.forEach { file ->
                 checkBeforeWrite()
                 githubClient.updateFile(
                     owner,
@@ -101,7 +115,7 @@ class DependencyPullRequestService(
                     file.content,
                     file.sha,
                     branchName,
-                    "chore: update Node dependencies",
+                    title,
                 )
             }
         } else if (buildGradleFindings.isNotEmpty() || wrapperFindings.isNotEmpty()) {
@@ -165,20 +179,29 @@ class DependencyPullRequestService(
             githubClient.createPullRequest(
                 owner,
                 repo,
-                title = if (isNode) "chore: update Node dependencies" else "chore: update Gradle dependencies",
+                title = title,
                 body =
                     buildString {
                         appendLine(DEPENDENCY_PR_MARKER)
                         appendLine()
 
                         actionable.forEach { finding ->
-                            val targetVersion = if (isNode) "^${nodeTargetVersion(finding.targetVersion)}" else finding.targetVersion
+                            val targetVersion =
+                                if (finding.kind ==
+                                    DependencyKind.NODE
+                                ) {
+                                    "^${nodeTargetVersion(finding.targetVersion)}"
+                                } else {
+                                    finding.targetVersion
+                                }
                             val kind = if (finding.kind == DependencyKind.NODE) DependencyKind.DEPENDENCY else finding.kind
+                            val location =
+                                if (finding.kind == DependencyKind.SALESFORCE) " ($SALESFORCE_MANIFEST / ${finding.declaration})" else ""
                             when (finding.status) {
                                 DependencyStatus.ADD -> {
                                     val related = finding.relatedTo.takeIf { it.isNotEmpty() }
                                     val description =
-                                        if (isNode && finding.declaration in nodeDependencySections) {
+                                        if (finding.kind == DependencyKind.NODE && finding.declaration in nodeDependencySections) {
                                             "required dependency"
                                         } else {
                                             "transitive dependency override"
@@ -200,14 +223,14 @@ class DependencyPullRequestService(
 
                                 DependencyStatus.REMOVE -> {
                                     appendLine(
-                                        "- REMOVE ${finding.key}:$targetVersion (${if (isNode) "redundant" else "deprecated"} transitive override)",
+                                        "- REMOVE ${finding.key}:$targetVersion (${if (finding.kind == DependencyKind.NODE) "redundant" else "deprecated"} transitive override)",
                                     )
                                 }
 
                                 else -> {
                                     appendLine(
                                         "- $kind ${finding.key}: " +
-                                            "${finding.currentVersion} → $targetVersion",
+                                            "${finding.currentVersion} → $targetVersion$location",
                                     )
                                 }
                             }
@@ -270,6 +293,30 @@ class DependencyPullRequestService(
             throw PullRequestReadinessException("Cannot prepare Node pull request: ${failure.message}", failure)
         } catch (failure: JsonParseException) {
             throw PullRequestReadinessException("Cannot prepare Node pull request: ${failure.message}", failure)
+        }
+    }
+
+    private fun prepareSalesforceFile(
+        owner: String,
+        repo: String,
+        ref: String,
+        findings: List<DependencyFinding>,
+    ): List<FileUpdate> {
+        try {
+            val source =
+                githubClient.getFileAtRef(owner, repo, SALESFORCE_MANIFEST, ref)
+                    ?: throw PullRequestReadinessException("$SALESFORCE_MANIFEST is missing. Refresh the repository and try again.")
+            val content = updateSalesforceProject(source.content, findings)
+            check(content != source.content) { "No $SALESFORCE_MANIFEST changes remain. Refresh the repository and try again." }
+            return listOf(FileUpdate(SALESFORCE_MANIFEST, content, source.sha))
+        } catch (failure: IllegalArgumentException) {
+            throw PullRequestReadinessException("Cannot prepare Salesforce pull request: ${failure.message}", failure)
+        } catch (failure: IllegalStateException) {
+            throw PullRequestReadinessException("Cannot prepare Salesforce pull request: ${failure.message}", failure)
+        } catch (failure: IOException) {
+            throw PullRequestReadinessException("Cannot prepare Salesforce pull request: ${failure.message}", failure)
+        } catch (failure: JsonParseException) {
+            throw PullRequestReadinessException("Cannot prepare Salesforce pull request: ${failure.message}", failure)
         }
     }
 

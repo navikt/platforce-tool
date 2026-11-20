@@ -28,6 +28,7 @@ let targetState = {
     dependencies: {},
     platformBoms: {},
     nodeDependencies: {},
+    salesforceDependencies: {},
     gradleVersion: "",
     transientDependencies: new Set(),
     nodeTransientDependencies: new Set(),

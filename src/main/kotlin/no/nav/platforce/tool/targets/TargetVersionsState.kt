@@ -1,6 +1,7 @@
 package no.nav.platforce.tool.targets
 
 import no.nav.platforce.tool.node.nodeTargetVersion
+import no.nav.platforce.tool.salesforce.validateSalesforceTargets
 
 data class TargetVersionsState(
     val plugins: MutableMap<String, String>,
@@ -11,6 +12,7 @@ data class TargetVersionsState(
     val ignoredDependencies: Set<String> = emptySet(),
     val nodeDependencies: MutableMap<String, String> = mutableMapOf(),
     val nodeTransientDependencies: Set<String> = emptySet(),
+    val salesforceDependencies: MutableMap<String, String> = mutableMapOf(),
 )
 
 fun TargetVersionsState.snapshot(): TargetVersionsState =
@@ -25,6 +27,8 @@ fun TargetVersionsState.snapshot(): TargetVersionsState =
             (nodeDependencies as Map<String, String>?)?.mapValues { nodeTargetVersion(it.value) }?.toMutableMap() ?: mutableMapOf(),
         nodeTransientDependencies =
             (nodeTransientDependencies as Set<String>?)?.intersect((nodeDependencies as Map<String, String>?).orEmpty().keys) ?: emptySet(),
+        salesforceDependencies =
+            (salesforceDependencies as Map<String, String>?)?.toMutableMap()?.also(::validateSalesforceTargets) ?: mutableMapOf(),
     )
 
 fun TargetVersionsState.withoutIgnoredDependencies(): TargetVersionsState =

@@ -26,7 +26,15 @@ class DependencyScanViewService(
         val inventory =
             dependencyScanCache.get(username).singleOrNull { it.repository == repository }
                 ?: error("No scan found for $repository")
-        if (inventory.projectType == RepositoryProjectType.NODE) {
+        if (inventory.projectType == RepositoryProjectType.SALESFORCE &&
+            get(username, targetState).single { it.repository == repository }.findings.none {
+                it.kind == DependencyKind.NODE &&
+                    it.status in setOf(DependencyStatus.UPDATE, DependencyStatus.AHEAD, DependencyStatus.ADD, DependencyStatus.REMOVE)
+            }
+        ) {
+            return
+        }
+        if (inventory.projectType in setOf(RepositoryProjectType.NODE, RepositoryProjectType.SALESFORCE)) {
             if (nodeSecurityScanner?.ready(username, targetState) != true) {
                 throw PullRequestReadinessException(
                     "Run a matching Node security scan with no unresolved targets before creating a pull request",
@@ -64,7 +72,9 @@ class DependencyScanViewService(
         return dependencyScanCache.get(username).map { cached ->
             val inventory = cached.withoutIgnoredDependencies(targetState.ignoredDependencies)
             val scan = dependencyScanner.compare(inventory, targetState.withoutIgnoredDependencies())
-            if (inventory.projectType == RepositoryProjectType.NODE && nodeSecurityResult != null) {
+            if (inventory.projectType in setOf(RepositoryProjectType.NODE, RepositoryProjectType.SALESFORCE) &&
+                nodeSecurityResult != null
+            ) {
                 enrichNodeRepositorySecurity(
                     scan,
                     nodeSecurityResult,
@@ -75,7 +85,7 @@ class DependencyScanViewService(
                             .map { it.key }
                             .toSet(),
                 )
-            } else if (securityResult != null && inventory.projectType != RepositoryProjectType.NODE) {
+            } else if (securityResult != null && inventory.projectType == RepositoryProjectType.GRADLE) {
                 dependencyScanner.enrichSecurityScan(
                     scan = scan,
                     securityResult = securityResult,

@@ -57,6 +57,8 @@ class TargetVersionsStore(
                         .toMutableMap(),
                 nodeTransientDependencies =
                     versions.filter { it.type == TargetVersionType.NODE && it.transient }.map { it.key }.toSet(),
+                salesforceDependencies =
+                    versions.filter { it.type == TargetVersionType.SALESFORCE }.associate { it.key to it.version }.toMutableMap(),
             )
         return if (includeIgnored) state else state.withoutIgnoredDependencies()
     }
@@ -127,6 +129,18 @@ class TargetVersionsStore(
                         key = it.key,
                         version = nodeTargetVersion(it.value),
                         transient = it.key in normalized.nodeTransientDependencies,
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                } +
+                normalized.salesforceDependencies.map {
+                    TargetVersion(
+                        userId = userId,
+                        team = team,
+                        type = TargetVersionType.SALESFORCE,
+                        key = it.key,
+                        version = it.value,
+                        transient = false,
                         createdAt = now,
                         updatedAt = now,
                     )

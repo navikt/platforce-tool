@@ -87,6 +87,12 @@ test("Platform BOMs have their own initially hidden scan status before their tar
     assert.equal(html.split('id="bomScanStatus"').length - 1, 1);
 });
 
+test("Salesforce targets have a manual section without npm security or registry upgrade controls", () => {
+    const section = html.slice(html.indexOf('class="target-section salesforce"'), html.indexOf('class="target-section dependencies"'));
+    assert.match(section, /id="salesforceTable"/);
+    assert.match(section, /not included in npm security scans/);
+    assert.doesNotMatch(section, /SCAN|upgradeAll/);
+});
 test("Node target rows share the Plugins and Platform BOMs grid and button columns", () => {
     const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
     const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
