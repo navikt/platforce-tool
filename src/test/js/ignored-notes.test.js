@@ -246,6 +246,11 @@ test("ignored repository fields show all known teams as sorted safe pills withou
     ui.context.renderIgnoredRepositories();
     assert.deepEqual(ui.get("ignoredReposTable").children[0].children[0].children.slice(1).map(pill => pill.textContent),
         ["updated-team"]);
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    assert.match(css, /\.ignored-repository-field\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow:\s*hidden;/);
+    assert.match(css, /\.ignored-repository-field \.key\s*\{[^}]*flex:\s*0 0 auto;[^}]*max-width:\s*100%;/);
+    assert.match(css, /\.ignored-repository-field \.ignored-team-pill\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*nowrap;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/);
+    assert.match(css, /\.ignored-repository-field \.key \+ \.ignored-team-pill\s*\{[^}]*margin-left:\s*auto;/);
 });
 
 test("ignored dependency crosshairs reuse raw inventory usage, include ignored repositories, and refresh without changing targets", () => {

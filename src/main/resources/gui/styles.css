@@ -1542,10 +1542,11 @@ button:hover {
 
 .ignored-repository-field {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 4px;
     min-width: 0;
+    overflow: hidden;
     padding: 6px;
     border: 1px solid #ccc;
     border-radius: 6px;
@@ -1553,7 +1554,7 @@ button:hover {
 }
 
 .ignored-repository-field .key {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     max-width: 100%;
     padding: 0;
     border: 0;
@@ -1561,13 +1562,21 @@ button:hover {
 }
 
 .ignored-repository-field .ignored-team-pill {
+    flex: 0 1 auto;
+    min-width: 0;
     padding: 1px 6px;
     font-size: 11px;
     background: #eef5ff;
     border-color: #dce8f7;
     color: #2458a6;
     cursor: default;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ignored-repository-field .key + .ignored-team-pill {
+    margin-left: auto;
 }
 
 .ignored-note {
