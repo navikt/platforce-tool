@@ -11,7 +11,7 @@ function app(fetch) {
         let text = "";
         let markup = "";
         const node = {
-            tagName, children: [], parentNode: null, attributes: {}, listeners: {}, value: "", open: false,
+            tagName, children: [], parentNode: null, attributes: {}, dataset: {}, listeners: {}, value: "", open: false,
             get textContent() { return text + this.children.map(child => child.textContent).join(""); },
             set textContent(value) { text = String(value); this.children = []; },
             get innerHTML() { return markup; },
@@ -21,6 +21,13 @@ function app(fetch) {
                 for (const [, tag, attributes] of value.matchAll(/<(input|button)\b([^>]*)>/g)) {
                     const child = element(tag);
                     child.className = attributes.match(/class="([^"]+)"/)?.[1] || "";
+                    for (const [, name, value] of attributes.matchAll(/([\w-]+)="([^"]*)"/g)) {
+                        child.setAttribute(name, value);
+                        if (name.startsWith("data-")) {
+                            child.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+                        }
+                    }
+                    child.disabled = /\bdisabled\b/.test(attributes);
                     this.appendChild(child);
                 }
             },
@@ -50,7 +57,18 @@ function app(fetch) {
                 return null;
             },
             setAttribute(key, value) { this.attributes[key] = value; },
+            getAttribute(key) { return this.attributes[key]; },
+            closest(selector) {
+                if (selector.startsWith(".") && this.className?.split(" ").includes(selector.slice(1))) return this;
+                return this.parentNode?.closest(selector) || null;
+            },
             addEventListener(name, listener) { this.listeners[name] = listener; }
+        };
+        node.classList = {
+            contains: name => (node.className || "").split(" ").includes(name),
+            add(name) { if (!this.contains(name)) node.className = `${node.className || ""} ${name}`.trim(); },
+            remove(name) { node.className = (node.className || "").split(" ").filter(value => value !== name).join(" "); },
+            toggle(name, active) { if (active ?? !this.contains(name)) this.add(name); else this.remove(name); }
         };
         return node;
     }
@@ -59,11 +77,22 @@ function app(fetch) {
         return elements.get(id);
     }
     const context = vm.createContext({
-        document: { getElementById: get, createElement: element },
+        document: {
+            getElementById: get, createElement: element,
+            querySelectorAll(selector) {
+                const matches = [];
+                const visit = node => {
+                    if (selector.startsWith(".") && node.className?.split(" ").includes(selector.slice(1))) matches.push(node);
+                    node.children.forEach(visit);
+                };
+                elements.forEach(visit);
+                return matches;
+            }
+        },
         console: { log() {}, error() {} },
         fetch
     });
-    for (const file of ["state", "shared", "api", "ignored"]) {
+    for (const file of ["state", "shared", "api", "targets", "ignored"]) {
         vm.runInContext(readFileSync(resolve(__dirname, `../../main/resources/gui/js/${file}.js`), "utf8"), context);
     }
     context.render = () => {};
@@ -150,12 +179,12 @@ test("ignored rows place trash directly after aligned fields and use the scanner
     ]) {
         const current = editor(ui, kind, key);
         const row = ui.get(table).children[0];
-        assert.equal(row.children[0].className, "key");
+        assert.equal(row.querySelector(".key").value, key);
         assert.equal(row.children[1].className, "icon-btn remove");
-        assert.equal(row.children[2], current.container);
+        assert.equal(row.children[kind === "REPOSITORY" ? 2 : 3], current.container);
         assert.equal(ui.get(table).children[1].children[0].tagName, "input");
-        assert.equal(current.container.children[0], current.toggle);
-        assert.equal(current.container.children[1], current.preview);
+        assert.equal(current.container.children[0], current.preview);
+        assert.equal(current.container.children[1], current.toggle);
         assert.equal(current.toggle.tagName, "button");
         assert.equal(current.toggle.className, "note-icon");
         assert.equal(current.toggle.innerHTML, ui.value("CREATE_NOTE_SVG"));
@@ -186,6 +215,112 @@ test("ignored rows place trash directly after aligned fields and use the scanner
         /grid-template-columns:\s*var\(--ignored-key-width\) 28px minmax\(0, 1fr\)/.test(body)));
     assert.match(css, /\.ignored-note \.note-icon\[data-has-note="true"\]\s*\{\s*opacity:\s*0\.85;/);
     assert.match(css, /\.ignored-note \.note-icon:hover,\s*\.ignored-note \.note-icon:focus-visible\s*\{\s*opacity:\s*1;/);
+    assert.match(css, /\.ignored-note\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 28px;/);
+    assert.match(css, /\.ignored-note-preview\s*\{\s*grid-column:\s*1;/);
+    assert.match(css, /\.ignored-note \.note-icon\s*\{\s*grid-column:\s*2;/);
+});
+
+test("ignored repository fields show all known teams as sorted safe pills without changing the repository identity", () => {
+    const ui = app(server().fetch);
+    ui.value(`ignoredRepositories = ["EXAMPLE/REPO", "example/unknown"];
+        selectedTeam = "team-a";
+        lastLoadedData = { repos: [
+            { name: "example/repo", team: "team-b" },
+            { name: "Example/Repo", team: "team-a" },
+            { name: "example/repo", team: "team-a" },
+            { name: "example/repo", team: "<script>team</script>" },
+            { name: "example/repo", team: null },
+            { name: "example/other", team: "unrelated-team" }
+        ] }`);
+    ui.context.renderIgnoredRepositories();
+    const row = ui.get("ignoredReposTable").children[0];
+    const field = row.children[0];
+    assert.equal(field.className, "ignored-repository-field");
+    assert.equal(field.children[0].value, "EXAMPLE/REPO");
+    assert.equal(field.children[0].attributes["aria-label"], "Ignored repository EXAMPLE/REPO");
+    const pills = field.children.slice(1);
+    assert.deepEqual(pills.map(pill => pill.textContent), ["<script>team</script>", "team-a", "team-b"]);
+    assert.ok(pills.every(pill => pill.className === "team-pill ignored-team-pill" && pill.children.length === 0));
+    assert.equal(ui.get("ignoredReposTable").children[1].children[0].children.length, 1);
+    ui.value('lastLoadedData.repos = [{ name: "example/repo", team: "updated-team" }]');
+    ui.context.renderIgnoredRepositories();
+    assert.deepEqual(ui.get("ignoredReposTable").children[0].children[0].children.slice(1).map(pill => pill.textContent),
+        ["updated-team"]);
+});
+
+test("ignored dependency crosshairs reuse raw inventory usage, include ignored repositories, and refresh without changing targets", () => {
+    const ui = app(server().fetch);
+    ui.value('ignoredDependencies = ["example:library", "example:unused"]; ignoredRepositories = ["ignored/repo"]');
+    ui.context.renderIgnoredDependencies();
+    let row = ui.get("ignoredDepsTable").children[0];
+    assert.equal(row.querySelector(".dependency-usage-btn").disabled, true);
+    assert.equal(row.querySelector(".dependency-usage-btn").title, "Run Dependency Scanner first");
+    ui.value(`lastLoadedData = { scans: [
+        { repository: "example/current", declaredDependencyKeys: ["example:library"] },
+        { repository: "ignored/repo", declaredDependencyKeys: ["example:library"] },
+        { repository: "example/current", declaredDependencyKeys: ["example:library"] },
+        { repository: "example/add-only", declaredDependencyKeys: [], findings: [{ key: "example:library", status: "ADD" }] }
+    ] }`);
+    ui.context.renderIgnoredDependencies();
+    row = ui.get("ignoredDepsTable").children[0];
+    const button = row.querySelector(".dependency-usage-btn");
+    assert.equal(row.children[1].className, "icon-btn remove");
+    assert.equal(row.children[2], button);
+    assert.equal(button.disabled, false);
+    assert.match(button.innerHTML, /r="2"/);
+    button.onclick();
+    const details = row.querySelector(".dependency-usage-details");
+    assert.equal(details.classList.contains("hidden"), false);
+    const content = details.children[0];
+    assert.equal(content.children[0].textContent, "2 scanned repositories declare example:library.");
+    assert.deepEqual(content.children[1].children.map(item => item.children[1].textContent),
+        ["example/current", "ignored/repo"]);
+    assert.equal(content.children[1].children[1].children[1].href, "https://github.com/ignored/repo");
+    assert.equal(content.children[1].children[1].children[1].rel, "noopener noreferrer");
+    button.onclick();
+    assert.equal(details.classList.contains("hidden"), true);
+    const unusedRow = ui.get("ignoredDepsTable").children[1];
+    const unused = unusedRow.querySelector(".dependency-usage-btn");
+    assert.equal(unused.disabled, false);
+    assert.doesNotMatch(unused.innerHTML, /r="2"/);
+    unused.onclick();
+    assert.equal(unusedRow.querySelector(".dependency-usage-details").children[0].children[0].textContent,
+        "0 scanned repositories declare example:unused.");
+    ui.value('lastLoadedData.scans[0].declaredDependencyKeys.push("example:unused")');
+    ui.context.refreshDependencyUsageButtons();
+    assert.match(unused.innerHTML, /r="2"/);
+    assert.equal(unused.getAttribute("aria-expanded"), "false");
+    assert.equal(unusedRow.querySelector(".dependency-usage-details").classList.contains("hidden"), true);
+    assert.equal(ui.value('Object.keys(targetState.dependencies).length'), 0);
+    for (const scans of ['[]', '[{ repository: "unknown/repo" }]']) {
+        ui.value(`lastLoadedData.scans = ${scans}`);
+        ui.context.refreshDependencyUsageButtons();
+        assert.equal(button.disabled, true);
+        assert.equal(unused.disabled, true);
+    }
+});
+
+test("ignored sections share target-version border tints and subtle alternating row backgrounds", () => {
+    assert.match(html, /class="target-section ignored ignored-repositories"/);
+    assert.match(html, /class="target-section ignored ignored-dependencies"/);
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    function rule(selector) {
+        return rules.findLast(([, selectors]) => selectors.split(",").map(value => value.trim()).includes(selector))?.[2];
+    }
+    for (const [section, target] of [["ignored-repositories", "plugins"], ["ignored-dependencies", "dependencies"]]) {
+        const panel = rule(`.target-section.${section}`);
+        const targetPanel = rule(`.target-section.${target}`);
+        assert.equal(panel.match(/background:\s*([^;]+)/)[1], targetPanel.match(/background:\s*([^;]+)/)[1]);
+        assert.equal(panel.match(/border:\s*([^;]+)/)[1], targetPanel.match(/border:\s*([^;]+)/)[1]);
+        for (const stripe of ["odd", "even"]) {
+            const background = rule(`.target-section.${section} .target-row:nth-child(${stripe})`).match(/background:\s*([^;]+)/)[1];
+            const targetBackground = rule(`.target-section.${target} .target-row:nth-child(${stripe})`).match(/background:\s*([^;]+)/)[1];
+            assert.equal(background, targetBackground);
+        }
+    }
+    assert.match(rule("#ignoredDepsTable .target-row"), /var\(--ignored-key-width\)/);
+    assert.match(css, /#ignoredDepsTable \.target-row,\s*#ignoredDepsTable \.add-row\s*\{\s*grid-template-columns:\s*var\(--ignored-key-width\) 28px 28px minmax\(0, 1fr\);/);
 });
 
 test("unignoring retains notes in the collapsed parent-less section and re-ignoring reattaches them", async () => {

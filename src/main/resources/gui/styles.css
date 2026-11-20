@@ -1530,14 +1530,49 @@ button:hover {
     padding: 5px;
 }
 
+#ignoredDepsTable .target-row,
+#ignoredDepsTable .add-row {
+    grid-template-columns: var(--ignored-key-width) 28px 28px minmax(0, 1fr);
+}
+
 #ignoredReposTable .key,
 #ignoredDepsTable .key {
     min-width: 0;
 }
 
+.ignored-repository-field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: white;
+}
+
+.ignored-repository-field .key {
+    flex: 0 1 auto;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.ignored-repository-field .ignored-team-pill {
+    padding: 1px 6px;
+    font-size: 11px;
+    background: #eef5ff;
+    border-color: #dce8f7;
+    color: #2458a6;
+    cursor: default;
+    overflow-wrap: anywhere;
+}
+
 .ignored-note {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 28px;
     column-gap: 6px;
     align-items: start;
     min-width: 0;
@@ -1545,6 +1580,8 @@ button:hover {
 }
 
 .ignored-note .note-icon {
+    grid-column: 2;
+    grid-row: 1;
     margin-left: 0;
     padding: 0;
     border: 0;
@@ -1563,14 +1600,15 @@ button:hover {
 }
 
 .ignored-note-preview {
-    grid-column: 2;
+    grid-column: 1;
+    grid-row: 1;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     padding-top: 6px;
 }
 
 .ignored-note-editor {
-    grid-column: 2;
+    grid-column: 1;
     grid-row: 2;
 }
 
@@ -1609,12 +1647,14 @@ button:hover {
     margin-bottom: 16px;
 }
 
-.target-section.plugins {
+.target-section.plugins,
+.target-section.ignored-repositories {
     background: #f9fbfe;
     border: 1px solid #dce8f7;
 }
 
-.target-section.dependencies {
+.target-section.dependencies,
+.target-section.ignored-dependencies {
     background: #f9fffa;
     border: 1px solid #dce8df;
 }
@@ -1669,19 +1709,23 @@ button:hover {
     border: 1px solid #a66324;
 }
 
-.target-section.plugins .target-row:nth-child(odd) {
+.target-section.plugins .target-row:nth-child(odd),
+.target-section.ignored-repositories .target-row:nth-child(odd) {
     background: #eef5ff;
 }
 
-.target-section.plugins .target-row:nth-child(even) {
+.target-section.plugins .target-row:nth-child(even),
+.target-section.ignored-repositories .target-row:nth-child(even) {
     background: #f9fbfe;
 }
 
-.target-section.dependencies .target-row:nth-child(odd) {
+.target-section.dependencies .target-row:nth-child(odd),
+.target-section.ignored-dependencies .target-row:nth-child(odd) {
     background: #eaf4ec;
 }
 
-.target-section.dependencies .target-row:nth-child(even) {
+.target-section.dependencies .target-row:nth-child(even),
+.target-section.ignored-dependencies .target-row:nth-child(even) {
     background: #f9fffa;
 }
 

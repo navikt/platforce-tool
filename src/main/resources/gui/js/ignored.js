@@ -80,7 +80,7 @@ function createIgnoredNoteEditor(kind, key) {
     error.className = "ignored-note-error";
     error.setAttribute("role", "alert");
     form.append(input, save, error);
-    container.append(toggle, preview, form);
+    container.append(preview, toggle, form);
     const editor = { container, preview, toggle, input, save, error, dirty: false, saving: false };
     ignoredNoteEditors.set(id, editor);
     input.addEventListener("input", () => { editor.dirty = true; });
@@ -187,7 +187,25 @@ function renderIgnoredRepositories() {
 
             row.innerHTML = `<input class="key" readonly />
                 <button type="button" class="icon-btn remove">${TRASH_SVG}</button>`;
-            row.querySelector(".key").value = repo;
+            const keyInput = row.querySelector(".key");
+            keyInput.value = repo;
+            keyInput.size = repo.length;
+            keyInput.title = repo;
+            keyInput.setAttribute("aria-label", `Ignored repository ${repo}`);
+            const field = document.createElement("div");
+            field.className = "ignored-repository-field";
+            row.insertBefore(field, keyInput);
+            field.appendChild(keyInput);
+            const teams = [...new Set((lastLoadedData?.repos || [])
+                .filter(entry => entry.name.toLowerCase() === repo.toLowerCase() && entry.team)
+                .map(entry => entry.team))].sort();
+            teams.forEach(team => {
+                const pill = document.createElement("span");
+                pill.className = "team-pill ignored-team-pill";
+                pill.textContent = team;
+                pill.title = `Team: ${team}`;
+                field.appendChild(pill);
+            });
             row.appendChild(createIgnoredNoteEditor("REPOSITORY", repo));
             row.querySelector(".remove").setAttribute("aria-label", `Stop ignoring ${repo}`);
 
@@ -282,10 +300,12 @@ function renderIgnoredDependencies() {
         const row = document.createElement("div");
         row.className = "target-row";
         row.innerHTML = `<input class="key" readonly />
-            <button type="button" class="icon-btn remove">${TRASH_SVG}</button>`;
+            <button type="button" class="icon-btn remove">${TRASH_SVG}</button>
+            ${dependencyUsageButtonHtml()}`;
         row.querySelector(".key").value = dependency;
         const button = row.querySelector(".remove");
         row.appendChild(createIgnoredNoteEditor("DEPENDENCY", dependency));
+        bindDependencyUsage(row);
         button.setAttribute("aria-label", `Stop ignoring ${dependency}`);
         button.onclick = () => updateIgnoredDependencies(
             ignoredDependencies.filter(key => key !== dependency), button);
