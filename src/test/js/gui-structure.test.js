@@ -223,8 +223,10 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
 
     let deploymentLoads = 0;
     let autoLoads = 0;
+    let ignoredNoteLoads = 0;
     app.context.loadDeployments = () => deploymentLoads++;
     app.context.loadAutoRepositories = () => autoLoads++;
+    app.context.loadIgnoredNotes = () => ignoredNoteLoads++;
     for (const tab of app.tabs) {
         tab.listeners.click();
         for (const name of ["scanner", "targets", "ignored", "auto", "deployments"]) {
@@ -234,6 +236,7 @@ test("feature files have no startup side effects and bootstrap exposes all inlin
     }
     assert.equal(deploymentLoads, 1);
     assert.equal(autoLoads, 1);
+    assert.equal(ignoredNoteLoads, 1);
     app.element("refreshAutoRepositories").listeners.click();
     assert.equal(autoLoads, 2);
     app.element("refreshDeployments").listeners.click();
@@ -252,6 +255,7 @@ test("bootstrap preserves startup order, selected team, cached security and unca
         "/internal/api/dependency-scan": [],
         "/internal/api/repository-notes": { "example/repo": "saved note" },
         "/internal/api/ignored-repositories": { repositories: ["ignored/repo"] },
+        "/internal/api/ignored-notes": [],
         "/internal/api/target-resolution/security": {
             status: "READY", normalReady: true, bomReady: true, result: security
         },

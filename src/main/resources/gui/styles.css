@@ -1505,6 +1505,71 @@ button:hover {
     padding: 16px;
 }
 
+.ignored-notes-description,
+.parentless-ignored-notes {
+    color: #666;
+    font-size: 13px;
+}
+
+#ignoredNotesError,
+.ignored-note-error {
+    color: #b00020;
+}
+
+#ignoredNotesError:empty,
+.ignored-note-error:empty {
+    display: none;
+}
+
+#ignoredReposTable .target-row,
+#ignoredDepsTable .target-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
+    align-items: start;
+    padding: 5px;
+}
+
+#ignoredReposTable .key,
+#ignoredDepsTable .key {
+    min-width: 0;
+}
+
+.ignored-note {
+    min-width: 0;
+    font-size: 13px;
+}
+
+.ignored-note-preview {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin-bottom: 4px;
+}
+
+.ignored-note summary,
+.parentless-ignored-notes summary {
+    cursor: pointer;
+}
+
+.ignored-note textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 6px 0;
+    padding: 6px;
+    resize: vertical;
+}
+
+.parentless-ignored-notes {
+    margin-top: 16px;
+}
+
+.parentless-ignored-note {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    padding: 8px 0;
+    overflow-wrap: anywhere;
+}
+
 #targetVersionsCard.open .target-content {
     display: block;
 }

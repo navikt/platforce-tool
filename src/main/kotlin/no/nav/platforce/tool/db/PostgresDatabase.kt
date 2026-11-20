@@ -4,6 +4,8 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import mu.KotlinLogging
 import no.nav.platforce.tool.config.env
+import no.nav.platforce.tool.notes.IgnoredNote
+import no.nav.platforce.tool.notes.IgnoredNoteKind
 import no.nav.platforce.tool.targets.snapshot
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -92,6 +94,39 @@ object PostgresDatabase {
         transaction(database) {
             if (dropFirst) SchemaUtils.drop(IgnoredDependenciesTable)
             SchemaUtils.create(IgnoredDependenciesTable)
+        }
+    }
+
+    fun createIgnoredNotesTable() {
+        transaction(database) {
+            SchemaUtils.create(IgnoredNotesTable)
+        }
+    }
+
+    fun getIgnoredNotes(): List<IgnoredNote> =
+        transaction(database) {
+            IgnoredNotesTable.selectAll().map {
+                IgnoredNote(
+                    IgnoredNoteKind.valueOf(it[IgnoredNotesTable.kind]),
+                    it[IgnoredNotesTable.key],
+                    it[IgnoredNotesTable.note],
+                )
+            }
+        }
+
+    fun saveIgnoredNote(note: IgnoredNote) {
+        transaction(database) {
+            if (note.note.isBlank()) {
+                IgnoredNotesTable.deleteWhere {
+                    (IgnoredNotesTable.kind eq note.kind.name) and (IgnoredNotesTable.key eq note.key)
+                }
+            } else {
+                IgnoredNotesTable.upsert {
+                    it[kind] = note.kind.name
+                    it[key] = note.key
+                    it[IgnoredNotesTable.note] = note.note
+                }
+            }
         }
     }
 

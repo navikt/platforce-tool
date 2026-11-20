@@ -17,6 +17,9 @@ import no.nav.platforce.tool.node.NodeSecurityResult
 import no.nav.platforce.tool.node.NodeSecurityScan
 import no.nav.platforce.tool.node.NodeSecuritySnapshot
 import no.nav.platforce.tool.node.NodeSecurityStatus
+import no.nav.platforce.tool.notes.IgnoredNote
+import no.nav.platforce.tool.notes.IgnoredNoteKind
+import no.nav.platforce.tool.notes.ignoredNotesRoutes
 import no.nav.platforce.tool.repositories.DependencyScanner
 import no.nav.platforce.tool.repositories.RepositoryViewService
 import no.nav.platforce.tool.repositories.withoutIgnoredDependencies
@@ -73,6 +76,11 @@ class LocalFrontendApi(
     private val upgradeScans = mutableMapOf<String, Long>()
     private var deploymentRefreshAfter: Instant? = null
     private val autoRepositories = mutableSetOf<String>()
+    private val ignoredNotes =
+        mutableMapOf(
+            (IgnoredNoteKind.REPOSITORY to "demo/archived-service") to
+                IgnoredNote(IgnoredNoteKind.REPOSITORY, "demo/archived-service", "Archived service; no dependency updates needed."),
+        )
 
     private fun pluginSecurity(): PluginSecuritySnapshot {
         val status =
@@ -474,6 +482,15 @@ class LocalFrontendApi(
                 Response(Status.OK).body("updated")
             },
             "/internal/api/repository-notes" bind Method.GET to { json(notes) },
+            *ignoredNotesRoutes(
+                read = { ignoredNotes.values.toList() },
+                save = { note ->
+                    val id = note.kind to note.key
+                    if (note.note.isBlank()) ignoredNotes.remove(id) else ignoredNotes[id] = note
+                    Unit
+                },
+                authenticate = {},
+            ).toTypedArray(),
             "/internal/api/repository-notes" bind Method.POST to { request ->
                 val parsed = body(request)
                 val repository = parsed.string("repository")

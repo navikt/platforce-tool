@@ -27,6 +27,7 @@ import no.nav.platforce.tool.node.NodeSecurityScanner
 import no.nav.platforce.tool.node.NodeSecurityService
 import no.nav.platforce.tool.node.NodeTargetResolver
 import no.nav.platforce.tool.node.nodeSecurityRoutes
+import no.nav.platforce.tool.notes.ignoredNotesRoutes
 import no.nav.platforce.tool.notes.repositoryNotesRoutes
 import no.nav.platforce.tool.pullrequests.DependencyPullRequestService
 import no.nav.platforce.tool.repositories.DependencyScanCache
@@ -70,6 +71,7 @@ import java.nio.file.Path
 class Application {
     init {
         PostgresDatabase.createIgnoredDependenciesTable()
+        PostgresDatabase.createIgnoredNotesTable()
         PostgresDatabase.createDeploymentRefreshMarkerTable()
         PostgresDatabase.createAutoRepositoriesTable()
         PostgresDatabase.createAutoProcessTables()
@@ -235,6 +237,7 @@ class Application {
                 nodeSecurityScanner,
             ).toTypedArray(),
             *repositoryNotesRoutes().toTypedArray(),
+            *ignoredNotesRoutes().toTypedArray(),
             *autoRepositoriesRoutes(githubClient::listRepositories).toTypedArray(),
             *autoProcessRoutes(autoProcess).toTypedArray(),
             *ignoredRepositoriesRoutes().toTypedArray(),

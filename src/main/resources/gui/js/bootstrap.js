@@ -67,6 +67,7 @@ document
                 selected === "ignored"
                     ? "block"
                     : "none";
+            if (selected === "ignored") loadIgnoredNotes();
         });
     });
 
@@ -145,6 +146,7 @@ async function init() {
     await initTargets();
     await loadAutoRepositories();
     await loadData();
+    await loadIgnoredNotes();
 
     await loadCachedTargetSecurity();
     await loadCachedPluginSecurity();

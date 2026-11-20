@@ -216,6 +216,7 @@ class LocalFrontendTest {
                 "/internal/api/dependency-scan",
                 "/internal/api/ignored-repositories",
                 "/internal/api/repository-notes",
+                "/internal/api/ignored-notes",
                 "/internal/api/target-resolution/security",
                 "/internal/api/dependency-scan/progress",
                 "/internal/api/deployments",
@@ -294,6 +295,27 @@ class LocalFrontendTest {
             "OK",
             results.first { it.asJsonObject["key"].asString == LocalFrontendFixtures.LEGACY }.asJsonObject["status"].asString,
         )
+    }
+
+    @Test
+    fun `global ignored notes retain removed parents and blank saves delete only the selected note`() {
+        val handler = LocalFrontendApi(directory).handler
+        val path = "/internal/api/ignored-notes"
+        val dependency = """{"kind":"DEPENDENCY","key":"example:library","note":"Pinned for compatibility"}"""
+        assertEquals(Status.OK, handler(Request(Method.POST, path).body(dependency)).status)
+        handler(Request(Method.POST, "/internal/api/ignored-repositories/update").body("""{"repositories":[]}"""))
+        val retained = JsonParser.parseString(handler(Request(Method.GET, path)).bodyString()).asJsonArray
+        assertEquals(2, retained.size())
+        assertTrue(retained.any { it.asJsonObject["key"].asString == "demo/archived-service" })
+        assertEquals(
+            Status.OK,
+            handler(
+                Request(Method.POST, path).body("""{"kind":"REPOSITORY","key":"demo/archived-service","note":""}"""),
+            ).status,
+        )
+        val remaining = JsonParser.parseString(handler(Request(Method.GET, path)).bodyString()).asJsonArray
+        assertEquals(1, remaining.size())
+        assertEquals("example:library", remaining.single().asJsonObject["key"].asString)
     }
 
     @Test

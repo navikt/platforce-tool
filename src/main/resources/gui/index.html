@@ -232,6 +232,8 @@
 <div id="ignoredTab" style="display:none">
     <div id="ignoredCard" class="repo open">
         <div class="ignore-content">
+            <p class="ignored-notes-description">Notes are shared globally. Removing an ignored item keeps its note.</p>
+            <p id="ignoredNotesError" role="alert"></p>
             <div class="target-grid">
                 <div class="target-section ignored">
                     <div class="target-section-header">
@@ -253,6 +255,11 @@
                     Save Ignored Repositories
                 </button>
             </div>
+            <details id="parentlessIgnoredNotes" class="parentless-ignored-notes" hidden>
+                <summary>Parent-less notes</summary>
+                <p>These notes are not attached to an item in your current Ignored lists.</p>
+                <div id="parentlessIgnoredNotesList"></div>
+            </details>
         </div>
     </div>
 </div>
