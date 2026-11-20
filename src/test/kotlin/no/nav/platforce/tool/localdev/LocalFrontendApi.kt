@@ -154,7 +154,10 @@ class LocalFrontendApi(
     private fun scans() =
         inventories.values.map { cached ->
             val inventory = cached.withoutIgnoredDependencies(targets.ignoredDependencies)
-            val scan = scanner.compare(inventory, targets.withoutIgnoredDependencies())
+            val scan =
+                scanner.compare(inventory, targets.withoutIgnoredDependencies()).copy(
+                    declaredDependencyKeys = cached.dependencies.keys.sorted(),
+                )
             if (securityReadyAt?.let { now() >= it } == true) {
                 scanner.enrichSecurityScan(scan, securityResult(), inventory)
             } else {

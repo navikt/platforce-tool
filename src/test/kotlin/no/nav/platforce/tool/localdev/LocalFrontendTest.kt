@@ -41,7 +41,7 @@ class LocalFrontendTest {
     }
 
     @Test
-    fun `ignored dependencies disappear from repository scans and resolution but saved versions survive`() {
+    fun `ignored dependencies disappear from findings and resolution but usage and saved versions survive`() {
         var time = 10_000L
         val handler = LocalFrontendApi(directory) { time }.handler
         val key = LocalFrontendFixtures.WEB
@@ -50,13 +50,18 @@ class LocalFrontendTest {
 
         fun ignore(dependencies: String) =
             handler(Request(Method.POST, "/internal/api/ignored-dependencies/update").body("""{"dependencies":$dependencies}"""))
+        val originalDeclarations =
+            get("/internal/api/dependency-scan").asJsonArray.associate { entry ->
+                val scan = entry.asJsonObject
+                scan["repository"].asString to scan["declaredDependencyKeys"]
+            }
         assertEquals(Status.OK, ignore("""["$key","example:untracked-library"]""").status)
         val scans = get("/internal/api/dependency-scan").asJsonArray
         scans.forEach { entry ->
             val scan = entry.asJsonObject
             assertTrue(scan["findings"].asJsonArray.none { it.asJsonObject["key"].asString == key })
             assertTrue(scan["untrackedDependencies"].asJsonArray.isEmpty)
-            assertTrue(scan["declaredDependencyKeys"].asJsonArray.none { it.asString == key })
+            assertEquals(originalDeclarations[scan["repository"].asString], scan["declaredDependencyKeys"])
         }
         handler(Request(Method.GET, "/internal/api/target-resolution/start"))
         time += 2000

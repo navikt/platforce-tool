@@ -47,7 +47,7 @@ class IgnoredDependenciesTest {
     }
 
     @Test
-    fun `cached repository scans hide ignored tracked and untracked dependencies only for their user`() {
+    fun `cached repository scans hide ignored dependencies but retain raw declarations for usage`() {
         val inventory =
             RepositoryDependencyInventory(
                 "example/repository",
@@ -75,7 +75,7 @@ class IgnoredDependenciesTest {
         val alice = view.get("alice", ignored).single()
         assertTrue(alice.findings.none { it.key == key })
         assertTrue(alice.untrackedDependencies.isEmpty())
-        assertTrue(alice.declaredDependencyKeys!!.isEmpty())
+        assertEquals(inventory.dependencies.keys.sorted(), alice.declaredDependencyKeys)
         val restored = stored.copy(ignoredDependencies = emptySet())
         assertEquals(
             "2.0",
@@ -95,6 +95,9 @@ class IgnoredDependenciesTest {
                 .map { it.key },
         )
         assertEquals(inventory, cache.get("alice").single())
+        cache.updateRepository("alice", inventory.copy(dependencies = mapOf("example:new" to "1.0")))
+        assertEquals(listOf("example:new"), view.get("alice", ignored).single().declaredDependencyKeys)
+        assertEquals(inventory.dependencies.keys.sorted(), view.get("bob", restored).single().declaredDependencyKeys)
     }
 
     @Test

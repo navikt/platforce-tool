@@ -256,8 +256,8 @@ test("ignored dependency crosshairs reuse raw inventory usage, include ignored r
     assert.equal(row.querySelector(".dependency-usage-btn").disabled, true);
     assert.equal(row.querySelector(".dependency-usage-btn").title, "Run Dependency Scanner first");
     ui.value(`lastLoadedData = { scans: [
-        { repository: "example/current", declaredDependencyKeys: ["example:library"] },
-        { repository: "ignored/repo", declaredDependencyKeys: ["example:library"] },
+        { repository: "example/current", declaredDependencyKeys: ["example:library"], findings: [], untrackedDependencies: [] },
+        { repository: "ignored/repo", declaredDependencyKeys: ["example:library"], findings: [], untrackedDependencies: [] },
         { repository: "example/current", declaredDependencyKeys: ["example:library"] },
         { repository: "example/add-only", declaredDependencyKeys: [], findings: [{ key: "example:library", status: "ADD" }] }
     ] }`);

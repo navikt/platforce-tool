@@ -71,7 +71,10 @@ class DependencyScanViewService(
 
         return dependencyScanCache.get(username).map { cached ->
             val inventory = cached.withoutIgnoredDependencies(targetState.ignoredDependencies)
-            val scan = dependencyScanner.compare(inventory, targetState.withoutIgnoredDependencies())
+            val scan =
+                dependencyScanner.compare(inventory, targetState.withoutIgnoredDependencies()).copy(
+                    declaredDependencyKeys = cached.dependencies.keys.sorted(),
+                )
             if (inventory.projectType in setOf(RepositoryProjectType.NODE, RepositoryProjectType.SALESFORCE) &&
                 nodeSecurityResult != null
             ) {
