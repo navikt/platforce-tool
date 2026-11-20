@@ -1502,10 +1502,10 @@ button:hover {
 }
 
 .ignore-content {
+    --ignored-key-width: 300px;
     padding: 16px;
 }
 
-.ignored-notes-description,
 .parentless-ignored-notes {
     color: #666;
     font-size: 13px;
@@ -1522,8 +1522,10 @@ button:hover {
 }
 
 #ignoredReposTable .target-row,
-#ignoredDepsTable .target-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
+#ignoredDepsTable .target-row,
+#ignoredReposTable .add-row,
+#ignoredDepsTable .add-row {
+    grid-template-columns: var(--ignored-key-width) 28px minmax(0, 1fr);
     align-items: start;
     padding: 5px;
 }
@@ -1534,17 +1536,44 @@ button:hover {
 }
 
 .ignored-note {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    column-gap: 6px;
+    align-items: start;
     min-width: 0;
     font-size: 13px;
 }
 
-.ignored-note-preview {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    margin-bottom: 4px;
+.ignored-note .note-icon {
+    margin-left: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
 }
 
-.ignored-note summary,
+.ignored-note .note-icon[data-has-note="true"] {
+    opacity: 0.85;
+}
+
+.ignored-note .note-icon:hover,
+.ignored-note .note-icon:focus-visible {
+    opacity: 1;
+    background: #f5f8ff;
+    color: #2c7be5;
+}
+
+.ignored-note-preview {
+    grid-column: 2;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    padding-top: 6px;
+}
+
+.ignored-note-editor {
+    grid-column: 2;
+    grid-row: 2;
+}
+
 .parentless-ignored-notes summary {
     cursor: pointer;
 }

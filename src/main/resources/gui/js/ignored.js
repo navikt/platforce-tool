@@ -36,7 +36,10 @@ async function loadIgnoredNotes() {
 function updateIgnoredNoteEditors() {
     ignoredNoteEditors.forEach((editor, id) => {
         const note = ignoredNotes.get(id)?.note || "";
-        editor.summary.textContent = note.trim() ? "Note" : "Add note";
+        const hasNote = Boolean(note.trim());
+        editor.toggle.innerHTML = hasNote ? EDIT_NOTE_SVG : CREATE_NOTE_SVG;
+        editor.toggle.setAttribute("data-has-note", String(hasNote));
+        editor.toggle.title = `${hasNote ? "Edit" : "Add"} note`;
         editor.preview.textContent = note;
         editor.preview.hidden = !note.trim();
         if (!editor.dirty && !editor.saving) editor.input.value = note;
@@ -54,9 +57,18 @@ function createIgnoredNoteEditor(kind, key) {
     container.className = "ignored-note";
     const preview = document.createElement("div");
     preview.className = "ignored-note-preview";
-    const details = document.createElement("details");
-    const summary = document.createElement("summary");
-    summary.setAttribute("aria-label", `Edit global note for ${kind.toLowerCase()} ${key}`);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "note-icon";
+    toggle.setAttribute("aria-label", `Edit global note for ${kind.toLowerCase()} ${key}`);
+    toggle.setAttribute("aria-expanded", "false");
+    const form = document.createElement("div");
+    form.className = "ignored-note-editor";
+    form.hidden = true;
+    toggle.addEventListener("click", () => {
+        form.hidden = !form.hidden;
+        toggle.setAttribute("aria-expanded", String(!form.hidden));
+    });
     const input = document.createElement("textarea");
     input.maxLength = 10000;
     input.rows = 3;
@@ -67,9 +79,9 @@ function createIgnoredNoteEditor(kind, key) {
     const error = document.createElement("p");
     error.className = "ignored-note-error";
     error.setAttribute("role", "alert");
-    details.append(summary, input, save, error);
-    container.append(preview, details);
-    const editor = { container, preview, summary, input, save, error, dirty: false, saving: false };
+    form.append(input, save, error);
+    container.append(toggle, preview, form);
+    const editor = { container, preview, toggle, input, save, error, dirty: false, saving: false };
     ignoredNoteEditors.set(id, editor);
     input.addEventListener("input", () => { editor.dirty = true; });
     save.addEventListener("click", async () => {
@@ -95,7 +107,8 @@ function createIgnoredNoteEditor(kind, key) {
             if (saved.note.trim()) ignoredNotes.set(id, saved);
             else ignoredNotes.delete(id);
             editor.dirty = false;
-            details.open = false;
+            form.hidden = true;
+            toggle.setAttribute("aria-expanded", "false");
         } catch (failure) {
             console.error("Could not save ignored note", failure);
             error.textContent = `Could not save note: ${failure.message}. Your draft is retained; retry Save.`;
@@ -175,7 +188,7 @@ function renderIgnoredRepositories() {
             row.innerHTML = `<input class="key" readonly />
                 <button type="button" class="icon-btn remove">${TRASH_SVG}</button>`;
             row.querySelector(".key").value = repo;
-            row.insertBefore(createIgnoredNoteEditor("REPOSITORY", repo), row.querySelector(".remove"));
+            row.appendChild(createIgnoredNoteEditor("REPOSITORY", repo));
             row.querySelector(".remove").setAttribute("aria-label", `Stop ignoring ${repo}`);
 
             row.querySelector(".remove")
@@ -272,7 +285,7 @@ function renderIgnoredDependencies() {
             <button type="button" class="icon-btn remove">${TRASH_SVG}</button>`;
         row.querySelector(".key").value = dependency;
         const button = row.querySelector(".remove");
-        row.insertBefore(createIgnoredNoteEditor("DEPENDENCY", dependency), button);
+        row.appendChild(createIgnoredNoteEditor("DEPENDENCY", dependency));
         button.setAttribute("aria-label", `Stop ignoring ${dependency}`);
         button.onclick = () => updateIgnoredDependencies(
             ignoredDependencies.filter(key => key !== dependency), button);

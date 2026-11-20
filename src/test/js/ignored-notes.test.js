@@ -9,12 +9,15 @@ function app(fetch) {
     const elements = new Map();
     function element(tagName = "div") {
         let text = "";
+        let markup = "";
         const node = {
             tagName, children: [], parentNode: null, attributes: {}, listeners: {}, value: "", open: false,
             get textContent() { return text + this.children.map(child => child.textContent).join(""); },
             set textContent(value) { text = String(value); this.children = []; },
+            get innerHTML() { return markup; },
             set innerHTML(value) {
                 this.replaceChildren();
+                markup = value;
                 for (const [, tag, attributes] of value.matchAll(/<(input|button)\b([^>]*)>/g)) {
                     const child = element(tag);
                     child.className = attributes.match(/class="([^"]+)"/)?.[1] || "";
@@ -117,7 +120,8 @@ test("each ignored kind has a global editor, safe plain-text notes, and shared p
     await dependency.save.listeners.click();
     assert.equal(repo.preview.textContent, text);
     assert.equal(repo.preview.children.length, 0);
-    assert.equal(repo.summary.textContent, "Note");
+    assert.equal(repo.toggle.innerHTML, ui.value("EDIT_NOTE_SVG"));
+    assert.equal(repo.toggle.attributes["data-has-note"], "true");
     assert.equal(repo.input.maxLength, 10000);
     assert.equal(repo.input.attributes["aria-label"], "Global note for repository Example/Repo");
     const other = app(backend.fetch);
@@ -132,6 +136,56 @@ test("each ignored kind has a global editor, safe plain-text notes, and shared p
     assert.equal(dependency.preview.textContent, "Updated globally");
     assert.match(html, /<details id="parentlessIgnoredNotes"[^>]*hidden>/);
     assert.doesNotMatch(html, /<details id="parentlessIgnoredNotes"[^>]*\bopen\b/);
+});
+
+test("ignored rows place trash directly after aligned fields and use the scanner note icon to toggle editing", async () => {
+    const ui = app(server().fetch);
+    ui.value('ignoredRepositories = ["example/repo"]; ignoredDependencies = ["example:library"]');
+    ui.context.renderIgnoredRepositories();
+    await ui.context.loadIgnoredNotes();
+    assert.doesNotMatch(html, /Notes are shared globally\. Removing an ignored item keeps its note\./);
+    for (const [table, kind, key] of [
+        ["ignoredReposTable", "REPOSITORY", "example/repo"],
+        ["ignoredDepsTable", "DEPENDENCY", "example:library"]
+    ]) {
+        const current = editor(ui, kind, key);
+        const row = ui.get(table).children[0];
+        assert.equal(row.children[0].className, "key");
+        assert.equal(row.children[1].className, "icon-btn remove");
+        assert.equal(row.children[2], current.container);
+        assert.equal(ui.get(table).children[1].children[0].tagName, "input");
+        assert.equal(current.container.children[0], current.toggle);
+        assert.equal(current.container.children[1], current.preview);
+        assert.equal(current.toggle.tagName, "button");
+        assert.equal(current.toggle.className, "note-icon");
+        assert.equal(current.toggle.innerHTML, ui.value("CREATE_NOTE_SVG"));
+        assert.equal(current.toggle.attributes["data-has-note"], "false");
+        assert.equal(current.preview.hidden, true);
+        const form = current.container.querySelector(".ignored-note-editor");
+        assert.equal(form.hidden, true);
+        current.toggle.listeners.click();
+        assert.equal(form.hidden, false);
+        assert.equal(current.toggle.attributes["aria-expanded"], "true");
+        draft(current, "Note text");
+        await current.save.listeners.click();
+        assert.equal(form.hidden, true);
+        assert.equal(current.toggle.attributes["aria-expanded"], "false");
+        assert.equal(current.toggle.attributes["data-has-note"], "true");
+        assert.equal(current.preview.textContent, "Note text");
+        current.toggle.listeners.click();
+        current.toggle.listeners.click();
+        assert.equal(form.hidden, true);
+    }
+    const css = readFileSync(resolve(__dirname, "../../main/resources/gui/styles.css"), "utf8");
+    assert.match(css, /\.ignore-content\s*\{[^}]*--ignored-key-width:\s*300px;/);
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    assert.ok(rules.some(([, selectors, body]) =>
+        ["#ignoredReposTable .target-row", "#ignoredDepsTable .target-row",
+            "#ignoredReposTable .add-row", "#ignoredDepsTable .add-row"]
+            .every(selector => selectors.split(",").map(value => value.trim()).includes(selector)) &&
+        /grid-template-columns:\s*var\(--ignored-key-width\) 28px minmax\(0, 1fr\)/.test(body)));
+    assert.match(css, /\.ignored-note \.note-icon\[data-has-note="true"\]\s*\{\s*opacity:\s*0\.85;/);
+    assert.match(css, /\.ignored-note \.note-icon:hover,\s*\.ignored-note \.note-icon:focus-visible\s*\{\s*opacity:\s*1;/);
 });
 
 test("unignoring retains notes in the collapsed parent-less section and re-ignoring reattaches them", async () => {
